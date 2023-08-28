@@ -33,6 +33,7 @@ sourcetar:
 	rm -rf package/flake-pilot
 	mkdir package/flake-pilot
 	cp Makefile package/flake-pilot
+	cp -a common package/flake-pilot/
 	cp -a podman-pilot package/flake-pilot/
 	cp -a flake-ctl package/flake-pilot/
 	cp -a firecracker-pilot package/flake-pilot/
@@ -69,11 +70,13 @@ build: man
 	upx --best --lzma target/release/firecracker-pilot
 
 clean:
+	cd common && cargo -v clean
 	cd podman-pilot && cargo -v clean
 	cd firecracker-pilot && cargo -v clean
 	cd flake-ctl && cargo -v clean
 	cd firecracker-pilot/firecracker-service/service && cargo -v clean
 	cd firecracker-pilot/guestvm-tools/sci && cargo -v clean
+	rm -rf common/vendor
 	rm -rf podman-pilot/vendor
 	rm -rf flake-ctl/vendor
 	rm -rf firecracker-pilot/firecracker-service/service/vendor

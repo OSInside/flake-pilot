@@ -23,6 +23,7 @@
 //
 use std::{thread, time};
 use flakes::user::User;
+use flakes::lookup::Lookup;
 use spinoff::{Spinner, spinners, Color};
 use ubyte::ByteUnit;
 use std::path::Path;
@@ -153,6 +154,10 @@ pub fn create(
       for the later VM process ID and and the name of
       the VM ID file.
     !*/
+    if ! Lookup::which(defaults::FIRECRACKER) {
+        panic!("{} not found in $PATH, installed ?", defaults::FIRECRACKER)
+    }
+
     let mut result: Vec<String> = Vec::new();
 
     // setup VM ID file name
@@ -379,7 +384,7 @@ pub fn call_instance(
     !*/
     let mut status_code = 0;
 
-    let mut firecracker = user.run("firecracker");
+    let mut firecracker = user.run(defaults::FIRECRACKER);
     if ! is_debug() {
         firecracker.stderr(Stdio::null());
     }

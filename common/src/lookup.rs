@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2023 Elektrobit Automotive GmbH
+// Copyright (c) 2023 SUSE Software Solutions Germany GmbH
 //
 // This file is part of flake-pilot
 //
@@ -21,14 +21,59 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use std::collections::HashMap;
 use std::env;
 use std::fs;
+
+use crate::flakelog::FlakeLog;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Lookup {
 }
 
 impl Lookup {
+    pub fn get_run_cmdline(
+        init: Vec<String>, quote_for_kernel_cmdline: bool
+    ) -> Vec<String> {
+        /*!
+        setup run commandline for the command call
+        !*/
+        let args: Vec<String> = env::args().collect();
+        let mut run: Vec<String> = init.clone();
+        for arg in &args[1..] {
+            FlakeLog::debug(&format!("Got Argument: {}", arg));
+            if ! arg.starts_with('@') && ! arg.starts_with('%') {
+                if quote_for_kernel_cmdline {
+                    run.push(arg.replace('-', "\\-").to_string());
+                } else {
+                    run.push(arg.to_string());
+                }
+            }
+        }
+        run
+    }
+
+    pub fn get_pilot_run_options() -> HashMap<String, String> {
+        /*!
+        read runtime options which are only meant to be used for the
+        pilot and should not interfere with the standard arguments
+        passed along to the command call. For this purpose we deviate
+        from the standard Unix/Linux commandline format and treat
+        options passed as %name:value to be a pilot option
+        !*/
+        let args: Vec<String> = env::args().collect();
+        let mut pilot_options = HashMap::new();
+        for arg in &args[1..] {
+            if arg.starts_with('%') {
+                let (name, value) = arg.rsplit_once(':').unwrap_or_default();
+                if ! name.is_empty() {
+                    pilot_options.insert(name.to_string(), value.to_string());
+                }
+            }
+        }
+        pilot_options
+    }
+
     pub fn which(command: &str) -> bool {
         if let Ok(path) = env::var("PATH") {
             for path_entry in path.split(':') {

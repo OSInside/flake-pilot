@@ -22,6 +22,7 @@
 // SOFTWARE.
 //
 use flakes::user::User;
+use flakes::lookup::Lookup;
 use spinoff::{Spinner, spinners, Color};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -121,8 +122,7 @@ pub fn create(
     );
     for arg in &args[1..] {
         if arg.starts_with('@') {
-            // The special @NAME argument is not passed to the
-            // actual call and can be used to run different container
+            // Handle @NAME argument to run different container
             // instances for the same application
             container_cid_file = format!("{}{}", container_cid_file, arg);
         }
@@ -224,10 +224,8 @@ pub fn create(
         // running the app multiple times with different arguments
         app.arg("4294967295d");
     } else {
-        for arg in &args[1..] {
-            if ! arg.starts_with('@') {
-                app.arg(arg);
-            }
+        for arg in Lookup::get_run_cmdline(Vec::new(), false) {
+            app.arg(arg);
         }
     }
     

@@ -231,17 +231,28 @@ pub fn create(
     
     // create container
     debug(&format!("{:?}", app.get_args()));
-    let spinner = Spinner::new_with_stream(
-        spinners::Line, "Launching flake...", Color::Yellow, spinoff::Streams::Stderr
-    );
+    let pilot_options = Lookup::get_pilot_run_options();
+    let mut spinner = None;
+    if ! pilot_options.contains_key("%silent") {
+        spinner = Some(
+            Spinner::new_with_stream(
+                spinners::Line, "Launching flake...",
+                Color::Yellow, spinoff::Streams::Stderr
+            )
+        );
+    }
     
     match run_podman_creation(app, delta_container, has_includes, runas, container_name, layers, &container_cid_file) {
         Ok(container) => {
-            spinner.success("Launching flake");
+            if spinner.is_some() {
+                spinner.unwrap().success("Launching flake");
+            }
             Ok(container)            
         },
         Err(err) => {
-            spinner.fail("Flake launch has failed");
+            if spinner.is_some() {
+                spinner.unwrap().fail("Flake launch has failed");
+            }
             Err(err)            
         },
     }

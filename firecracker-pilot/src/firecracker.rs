@@ -205,9 +205,16 @@ pub fn create(
     }
 
     // Setup VM...
-    let spinner = Spinner::new_with_stream(
-        spinners::Line, "Launching flake...", Color::Yellow, spinoff::Streams::Stderr
-    );
+    let pilot_options = Lookup::get_pilot_run_options();
+    let mut spinner = None;
+    if ! pilot_options.contains_key("%silent") {
+        spinner = Some(
+            Spinner::new_with_stream(
+                spinners::Line, "Launching flake...",
+                Color::Yellow, spinoff::Streams::Stderr
+            )
+        );
+    }
 
     // Create initial vm_id_file with process ID set to 0
     match std::fs::File::create(&vm_id_file) {
@@ -312,13 +319,15 @@ pub fn create(
                 provision_ok = false
             }
         }
-        if ! provision_ok {
-            spinner.fail("Flake launch has failed");
+        if spinner.is_some() && ! provision_ok {
+            spinner.unwrap().fail("Flake launch has failed");
             panic!("Failed to provision VM")
         }
     }
 
-    spinner.success("Launching flake");
+    if spinner.is_some() {
+        spinner.unwrap().success("Launching flake");
+    }
     result
 }
 

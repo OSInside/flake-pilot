@@ -1,6 +1,6 @@
 [package]
 name = "flake-ctl"
-version = "2.2.20"
+version = "2.2.21"
 authors = [
     "Michael Meyer <mijomeyer@t-online.de>",
     "Marcin Katulski <marcin.katulski@gmail.com>",

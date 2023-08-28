@@ -23,6 +23,8 @@
 //
 use std::env;
 
+pub const FIRECRACKER: &str =
+    "firecracker";
 pub const IMAGE_ROOT: &str =
     "image";
 pub const IMAGE_OVERLAY: &str =

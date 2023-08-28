@@ -21,6 +21,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-pub mod lookup;
-pub mod user;
-pub mod error;
+use std::env;
+use std::fs;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Lookup {
+}
+
+impl Lookup {
+    pub fn which(command: &str) -> bool {
+        if let Ok(path) = env::var("PATH") {
+            for path_entry in path.split(':') {
+                let abs_command = format!("{}/{}", path_entry, command);
+                if fs::metadata(abs_command).is_ok() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}

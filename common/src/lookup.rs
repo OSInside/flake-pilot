@@ -66,7 +66,9 @@ impl Lookup {
         for arg in &args[1..] {
             if arg.starts_with('%') {
                 let (name, value) = arg.rsplit_once(':').unwrap_or_default();
-                if ! name.is_empty() {
+                if name.is_empty() {
+                    pilot_options.insert(arg.to_string(), "".to_string());
+                } else {
                     pilot_options.insert(name.to_string(), value.to_string());
                 }
             }

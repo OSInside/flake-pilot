@@ -1,4 +1,3 @@
-use flakes::user::User;
 //
 // Copyright (c) 2022 Elektrobit Automotive GmbH
 //
@@ -22,6 +21,7 @@ use flakes::user::User;
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use flakes::user::User;
 use spinoff::{Spinner, spinners, Color};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -29,7 +29,7 @@ use std::env;
 use std::fs;
 use crate::config::{RuntimeSection, config};
 use crate::defaults::debug;
-use crate::error::{FlakeError, CommandError, CommandExtTrait};
+use flakes::error::{FlakeError, CommandError, CommandExtTrait};
 use tempfile::tempfile;
 use std::io::{Write, Read};
 use std::fs::File;

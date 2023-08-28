@@ -1,14 +1,11 @@
-[profile.release]
-# strip = true
-opt-level = "z"
-lto = true
-codegen-units = 1
-panic = "abort"
-
 [package]
 name = "flake-ctl"
 version = "2.2.20"
-authors = ["Marcus Schäfer <marcus.schaefer@elektrobit.com>"]
+authors = [
+    "Michael Meyer <mijomeyer@t-online.de>",
+    "Marcin Katulski <marcin.katulski@gmail.com>",
+    "Marcus Schäfer <marcus.schaefer@gmail.com>"
+]
 edition = "2018"
 license = "MIT"
 

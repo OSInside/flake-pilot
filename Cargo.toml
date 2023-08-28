@@ -1,3 +1,16 @@
+[profile.release]
+# strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.static]
+inherits = "release"
+opt-level = 0
+lto = false
+strip = false
+
 [workspace]
 members = [
     "flake-ctl", 

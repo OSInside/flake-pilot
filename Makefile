@@ -66,8 +66,8 @@ build: man
 	upx --best --lzma target/release/podman-pilot
 	upx --best --lzma target/release/flake-ctl
 	upx --best --lzma target/release/firecracker-service
-	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --release --target $(ARCH)-unknown-linux-gnu
 	upx --best --lzma target/release/firecracker-pilot
+	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --profile static --target $(ARCH)-unknown-linux-gnu
 
 clean:
 	cd common && cargo -v clean
@@ -103,7 +103,7 @@ install:
 		$(DESTDIR)$(BINDIR)/firecracker-pilot
 	install -m 755 target/release/firecracker-service \
 		$(DESTDIR)$(BINDIR)/firecracker-service
-	install -m 755 target/$(ARCH)-unknown-linux-gnu/release/sci \
+	install -m 755 target/$(ARCH)-unknown-linux-gnu/static/sci \
 		$(DESTDIR)$(SBINDIR)/sci
 	install -m 755 target/release/flake-ctl \
 		$(DESTDIR)$(BINDIR)/flake-ctl

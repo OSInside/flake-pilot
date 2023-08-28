@@ -4,14 +4,14 @@ on:
       - "master"
   pull_request:
 
-name: Robot Full Test
+name: CI-Robot-Integration-Tests
 jobs:
   robot_test:
     runs-on: ubuntu-latest
     name: Run Robot Framework Tests
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install Dependencies
         run: |
           sudo apt update
@@ -32,4 +32,3 @@ jobs:
           name: robot-log
           path: /home/runner/work/flake-pilot/flake-pilot/log.html
           retention-days: 5
-          

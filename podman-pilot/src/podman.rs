@@ -113,49 +113,20 @@ pub fn create(
       tar:
         - tar-archive-file-name-to-include
     !*/
-    let args: Vec<String> = env::args().collect();
-    let mut layers: Vec<String> = Vec::new();
+    // Read optional @NAME pilot argument to differentiate
+    // simultaneous instances of the same container application
+    let (name, _): (Vec<_>, Vec<_>) = env::args().skip(1).partition(|arg| arg.starts_with('@'));
 
     // setup container ID file name
-    let mut container_cid_file = format!(
-        "{}/{}", defaults::CONTAINER_CID_DIR, program_name
-    );
-    for arg in &args[1..] {
-        if arg.starts_with('@') {
-            // Handle @NAME argument to run different container
-            // instances for the same application
-            container_cid_file = format!("{}{}", container_cid_file, arg);
-        }
-    }
-    container_cid_file = format!("{}.cid", container_cid_file);
+    let suffix = name.first().map(String::as_str).unwrap_or("");
 
-    let container_section = &config().container;
-
-    // check for includes
-    let tar_includes = &config().tars();
-    let has_includes = !tar_includes.is_empty();
-
-    // setup podman container to use
-    let container_name = container_section.name;
-
-    // setup base container if specified
-    let delta_container = container_section.base_container.is_some();
-    let container_base_name= container_section.base_container.unwrap_or_default();
-
-    if container_section.base_container.is_some() {
-        // get additional container layers
-
-        layers.extend(config().layers().iter()
-            .inspect(|layer| debug(&format!("Adding layer: [{layer}]")))
-            .map(|x| (*x).to_owned()));
-    }
+    let container_cid_file = format!("{}/{}{suffix}.cid", defaults::CONTAINER_CID_DIR, program_name);
 
     // setup app command path name to call
     let target_app_path = get_target_app_path(program_name);
 
     // get runtime section
-    let RuntimeSection { runas, resume, attach, .. } = config().runtime();
-    let runas = runas.to_owned();
+    let RuntimeSection { runas, resume, attach, podman } = config().runtime();
 
     let mut app = runas.run("podman");
     app.arg("create")
@@ -183,47 +154,33 @@ pub fn create(
     }
 
     // create the container with configured runtime arguments
-    let mut has_runtime_arguments: bool = false;
-    if let Some(RuntimeSection { podman, .. }) = &config().container.runtime {
 
-        let podman = podman.as_ref().cloned().unwrap_or_default(); 
+    let has_runtime_args = podman.as_ref().map(|p| !p.is_empty()).unwrap_or_default();
+    app.args(podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')));
 
-        app.args(podman.iter().flat_map(|x| x.splitn(2, ' ')));
-        has_runtime_arguments = !podman.is_empty();
-    }
-
-    // setup default runtime arguments if not configured
-    if ! has_runtime_arguments {
-        if resume {
-            app.arg("-ti");
-        } else {
-            app.arg("--rm").arg("-ti");
+    if !has_runtime_args {
+        if !resume {
+            app.arg("--rm");
         }
+        app.arg("-ti");
     }
 
     // setup container name to use
-    if delta_container {
-        app.arg(container_base_name);
-    } else {
-        app.arg(container_name);
-    }
+    app.arg(config().container.base_container.unwrap_or(config().container.name));
 
     // setup entry point
     if resume {
         // create the container with a sleep entry point
         // to keep it in running state
-        app.arg("sleep");
-    } else if target_app_path != "/" {
-        app.arg(target_app_path);
-    }
-
-    // setup program arguments
-    if resume {
         // sleep "forever" ... I will be dead by the time this sleep ends ;)
         // keeps the container in running state to accept podman exec for
         // running the app multiple times with different arguments
-        app.arg("4294967295d");
+        app.arg("sleep").arg("4294967295d");
+
     } else {
+        if target_app_path != "/" {
+            app.arg(target_app_path);
+        }
         for arg in Lookup::get_run_cmdline(Vec::new(), false) {
             app.arg(arg);
         }
@@ -242,12 +199,12 @@ pub fn create(
         );
     }
     
-    match run_podman_creation(app, delta_container, has_includes, runas, container_name, layers, &container_cid_file) {
-        Ok(container) => {
+    match run_podman_creation(app) {
+        Ok(cid) => {
             if spinner.is_some() {
                 spinner.unwrap().success("Launching flake");
             }
-            Ok(container)            
+            Ok((cid, container_cid_file))
         },
         Err(err) => {
             if spinner.is_some() {
@@ -256,69 +213,60 @@ pub fn create(
             Err(err)            
         },
     }
-
 }
 
-fn run_podman_creation(
-    mut app: Command, 
-    delta_container: bool, 
-    has_includes: bool, 
-    runas: User,
-    container_name: &str,
-    mut layers: Vec<String>,
-    container_cid_file: &str
-) -> Result<(String, String), FlakeError> {
+fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
 
     let output = app.perform()?;
 
     let cid = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned();
 
-    if delta_container || has_includes {
+    let runas = config().runtime().runas;
+
+    let is_delta_container = config().container.base_container.is_some();
+    let has_includes = !config().tars().is_empty();
+
+    let instance_mount_point = if is_delta_container || has_includes {
         debug("Mounting instance for provisioning workload");
-        let instance_mount_point = mount_container(
-            &cid, runas, false
-        )?;
+        mount_container(&cid, runas, false)?
+    } else {
+        return Ok(cid);
+    };
 
-        if delta_container {
-            // Create tmpfile to hold accumulated removed data
-            let removed_files = tempfile()?;
+    if is_delta_container {
+        // Create tmpfile to hold accumulated removed data
+        let removed_files = tempfile()?;
 
-            debug("Provisioning delta container...");
-            update_removed_files(
-                &instance_mount_point, &removed_files
-            )?;
-            debug(&format!(
-                "Adding main app [{}] to layer list", container_name
-            ));
-            layers.push(container_name.to_string());
-            for layer in layers {
-                debug(&format!(
-                    "Syncing delta dependencies [{}]...", layer
-                ));
-                let app_mount_point = mount_container(
-                    &layer, runas, true
-                )?;
-                update_removed_files(
-                    &app_mount_point, &removed_files
-                )?;
-                sync_delta(
-                    &app_mount_point, &instance_mount_point, runas
-                )?;
-                // TODO: Behaviour (continue on error) retained from previous implementation, is this correct?
-                let _ = umount_container(&layer, runas, true);
-            }
-            debug("Syncing host dependencies...");
-            sync_host(&instance_mount_point, &removed_files, runas)?;
-            
-            let _ = umount_container(&cid, runas, false);
+        debug("Provisioning delta container...");
+        update_removed_files(&instance_mount_point, &removed_files)?;
+
+        let layers = config().layers();
+        let layers = layers.iter()
+            .inspect(|layer| debug(&format!("Adding layer: [{layer}]")))
+            .chain(Some(&config().container.name));
+
+        debug(&format!("Adding main app [{}] to layer list", config().container.name));
+
+        for layer in layers {
+            debug(&format!("Syncing delta dependencies [{layer}]..."));
+            let app_mount_point = mount_container(layer, runas, true)?;
+            update_removed_files(&app_mount_point, &removed_files)?;
+            sync_delta(&app_mount_point, &instance_mount_point, runas)?;
+
+            // TODO: Behaviour (continue on error) retained from previous implementation, is this correct?
+            let _ = umount_container(&layer, runas, true);
         }
+        debug("Syncing host dependencies...");
+        sync_host(&instance_mount_point, &removed_files, runas)?;
 
-        if has_includes {
-            debug("Syncing includes...");
-            sync_includes(&instance_mount_point, runas)?;
-        }
+        let _ = umount_container(&cid, runas, false);
     }
-    Ok((cid, container_cid_file.to_owned()))
+
+    if has_includes {
+        debug("Syncing includes...");
+        sync_includes(&instance_mount_point, runas)?;
+    }
+    Ok(cid)
         
 }
 
@@ -354,9 +302,7 @@ pub fn start(
     Ok(())
 }
 
-pub fn get_target_app_path(
-    program_name: &str
-) -> String {
+pub fn get_target_app_path(program_name: &str) -> String {
     /*!
     setup application command path name
 

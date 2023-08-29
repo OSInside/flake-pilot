@@ -1,6 +1,6 @@
 [package]
 name = "firecracker-service"
-version = "2.2.21"
+version = "2.2.22"
 edition = "2018"
 license = "MIT"
 

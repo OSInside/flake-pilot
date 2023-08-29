@@ -124,11 +124,21 @@ arguments exists, the following defaults will apply:
 
 All caller arguments will be passed to the program call inside
 of the instance except for arguments that starts with the '@'
-sign. Caller arguments of this type are only used in the instance
-ID file name but will not be passed to the program call inside of
-the instance. This allows users to differentiate the same
-program call between different instances when using
-a resume based flake setup.
+or '%' sign. Caller arguments of this type are only used for
+the podman-pilot startup itself. See the OPTIONS section
+for the available runtime options.
+
+OPTIONS
+-------
+
+@NAME
+
+  This allows users to distribute the exact same program call to different
+  instances when using a non resume based flake setup.
+
+%silent
+
+  This stops the progress spinner to be displayed
 
 DEBUGGING
 ---------

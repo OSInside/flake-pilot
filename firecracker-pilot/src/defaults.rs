@@ -46,7 +46,7 @@ pub const FIRECRACKER_VMID_DIR: &str =
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
     "/run/sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
-pub const GC_THRESHOLD: i32 = 20;
+pub const GC_THRESHOLD: usize = 20;
 pub const VM_CID: u32 = 3;
 pub const VM_PORT: u32 =
     52;

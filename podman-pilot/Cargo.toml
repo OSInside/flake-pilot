@@ -1,6 +1,6 @@
 [package]
 name = "podman-pilot"
-version = "2.2.22"
+version = "2.2.23"
 edition = "2018"
 license = "MIT"
 

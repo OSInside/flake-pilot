@@ -32,12 +32,18 @@ pub enum FlakeError {
     #[error("Failed to run {}", .0)]
     CommandError(#[from] CommandError),
 
+    #[error("IOError: {kind:?} {message:?}")]
+    IOError {
+        kind: String,
+        message: String
+    },
+
     /// IO operation pass through
     #[error(transparent)]
     IO(#[from] std::io::Error),
-    #[cfg(feature = "json")]
 
     /// MalformedJson pass through
+    #[cfg(feature = "json")]
     #[error(transparent)]
     MalformedJson(#[from] serde_json::Error),
 

@@ -561,7 +561,6 @@ pub fn gc_cid_file(container_cid_file: &String, user: User) -> Result<bool, Flak
     let mut exists = user.run("podman");
         exists.arg("container").arg("exists").arg(&cid);
 
-
     if !exists.status()?.success() {
         fs::remove_file(container_cid_file)?;
         Ok(false)
@@ -570,13 +569,25 @@ pub fn gc_cid_file(container_cid_file: &String, user: User) -> Result<bool, Flak
     }
 }
 
-pub fn gc(user: User) -> Result<(), std::io::Error> {
+pub fn gc(user: User) -> Result<(), FlakeError> {
     /*!
     Garbage collect CID files for which no container exists anymore
     !*/
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
-    let paths = fs::read_dir(defaults::CONTAINER_CID_DIR)?;
+    let paths;
+    match fs::read_dir(defaults::CONTAINER_CID_DIR) {
+        Ok(result) => { paths = result },
+        Err(error) => {
+            return Err(FlakeError::IOError {
+                kind: format!("{:?}", error.kind()),
+                message: format!("fs::read_dir failed on {}: {}",
+                    defaults::CONTAINER_CID_DIR,
+                    error.to_string()
+                )
+            })
+        }
+    };
     for path in paths {
         cid_file_names.push(format!("{}", path?.path().display()));
         cid_file_count += 1;

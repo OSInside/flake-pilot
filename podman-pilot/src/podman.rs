@@ -21,7 +21,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use flakes::user::User;
+use flakes::user::{User, chmod, mkdir};
 use flakes::lookup::Lookup;
 use spinoff::{Spinner, spinners, Color};
 use std::path::Path;
@@ -30,7 +30,8 @@ use std::env;
 use std::fs;
 use crate::config::{RuntimeSection, config};
 use crate::defaults::debug;
-use flakes::error::{FlakeError, CommandError, CommandExtTrait};
+use flakes::error::FlakeError;
+use flakes::command::{CommandError, CommandExtTrait};
 use tempfile::tempfile;
 use std::io::{Write, Read};
 use std::fs::File;
@@ -567,22 +568,6 @@ pub fn gc_cid_file(container_cid_file: &String, user: User) -> Result<bool, Flak
     } else {
         Ok(true)
     }
-}
-
-pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), CommandError> {
-    /*!
-    Chmod filename via sudo
-    !*/
-    user.run("chmod").arg(mode).arg(filename).perform()?;
-    Ok(())
-}
-
-pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), CommandError> {
-    /*!
-    Make directory via sudo
-    !*/
-    user.run("mkdir").arg("-p").arg("-m").arg(mode).arg(dirname).perform()?;
-    Ok(())
 }
 
 pub fn gc(user: User) -> Result<(), std::io::Error> {

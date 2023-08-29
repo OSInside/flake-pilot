@@ -37,7 +37,6 @@ use std::io::{Write, SeekFrom, Seek};
 use std::fs::File;
 use serde::{Serialize, Deserialize};
 use serde_json::{self};
-use std::collections::HashMap;
 
 use crate::defaults;
 
@@ -206,9 +205,16 @@ pub fn create(
     }
 
     // Setup VM...
-    let spinner = Spinner::new_with_stream(
-        spinners::Line, "Launching flake...", Color::Yellow, spinoff::Streams::Stderr
-    );
+    let pilot_options = Lookup::get_pilot_run_options();
+    let mut spinner = None;
+    if ! pilot_options.contains_key("%silent") {
+        spinner = Some(
+            Spinner::new_with_stream(
+                spinners::Line, "Launching flake...",
+                Color::Yellow, spinoff::Streams::Stderr
+            )
+        );
+    }
 
     // Create initial vm_id_file with process ID set to 0
     match std::fs::File::create(&vm_id_file) {
@@ -313,13 +319,15 @@ pub fn create(
                 provision_ok = false
             }
         }
-        if ! provision_ok {
-            spinner.fail("Flake launch has failed");
+        if spinner.is_some() && ! provision_ok {
+            spinner.unwrap().fail("Flake launch has failed");
             panic!("Failed to provision VM")
         }
     }
 
-    spinner.success("Launching flake");
+    if spinner.is_some() {
+        spinner.unwrap().success("Launching flake");
+    }
     result
 }
 
@@ -450,7 +458,7 @@ pub fn get_exec_port() -> u32 {
     case use the pilot call option %port:number to bind to a port
     of your choice
     !*/
-    let pilot_options = get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options();
     let port;
     if pilot_options.contains_key("%port") {
         port = pilot_options["%port"].parse::<u32>().unwrap_or_default();
@@ -520,7 +528,9 @@ pub fn send_command_to_instance(
     !*/
     let mut status_code;
     let mut retry_count = 0;
-    let run = get_run_cmdline(program_name, false);
+    let mut run: Vec<String> = Vec::new();
+    run.push(get_target_app_path(program_name));
+    run = Lookup::get_run_cmdline(run, false);
     let vsock_uds_path = format!(
         "/run/sci_cmd_{}.sock", get_meta_name(program_name)
     );
@@ -659,9 +669,9 @@ pub fn create_firecracker_config(
                     }
 
                     // setup run commandline for the command call
-                    let run = get_run_cmdline(
-                        program_name, true
-                    );
+                    let mut run: Vec<String> = Vec::new();
+                    run.push(get_target_app_path(program_name));
+                    run = Lookup::get_run_cmdline(run, true);
 
                     // set boot_args
                     if is_debug() {
@@ -784,53 +794,6 @@ pub fn init_meta_dirs() {
             panic!("Failed to create {}", meta_dir);
         }
     }
-}
-
-pub fn get_run_cmdline(
-    program_name: &str,
-    quote_for_kernel_cmdline: bool
-) -> Vec<String> {
-    /*!
-    setup run commandline for the command call
-    !*/
-    let args: Vec<String> = env::args().collect();
-    let mut run: Vec<String> = Vec::new();
-    let target_app_path = get_target_app_path(
-        program_name
-    );
-    run.push(target_app_path);
-    for arg in &args[1..] {
-        debug(&format!("Got Argument: {}", arg));
-        if ! arg.starts_with('@') && ! arg.starts_with('%') {
-            if quote_for_kernel_cmdline {
-                run.push(arg.replace('-', "\\-").to_string());
-            } else {
-                run.push(arg.to_string());
-            }
-        }
-    }
-    run
-}
-
-pub fn get_pilot_run_options() -> HashMap<String, String> {
-    /*!
-    read runtime options which are only meant to be used for the
-    pilot and should not interfere with the standard arguments
-    passed along to the command call. For this purpose we deviate
-    from the standard Unix/Linux commandline format and treat
-    options passed as %name:value to be a pilot option
-    !*/
-    let args: Vec<String> = env::args().collect();
-    let mut pilot_options = HashMap::new();
-    for arg in &args[1..] {
-        if arg.starts_with('%') {
-            let (name, value) = arg.rsplit_once(':').unwrap_or_default();
-            if ! name.is_empty() {
-                pilot_options.insert(name.to_string(), value.to_string());
-            }
-        }
-    }
-    pilot_options
 }
 
 pub fn vm_running(vmid: &String, user: User) -> bool {

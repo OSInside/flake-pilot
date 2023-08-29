@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2023 Elektrobit Automotive GmbH
+// Copyright (c) 2023 SUSE Software Solutions Germany GmbH
 //
 // This file is part of flake-pilot
 //
@@ -21,10 +21,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-#[macro_use]
-extern crate log;
+use std::env;
 
-pub mod lookup;
-pub mod user;
-pub mod error;
-pub mod flakelog;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FlakeLog {
+}
+
+impl FlakeLog {
+    pub fn debug(message: &str) {
+        if Self::is_debug() {
+            debug!("{}", message)
+        }
+    }
+
+    pub fn is_debug() -> bool {
+        env::var("PILOT_DEBUG").is_ok()
+    }
+}

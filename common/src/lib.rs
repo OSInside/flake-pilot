@@ -26,5 +26,6 @@ extern crate log;
 
 pub mod lookup;
 pub mod user;
+pub mod command;
 pub mod error;
 pub mod flakelog;

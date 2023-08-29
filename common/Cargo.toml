@@ -10,5 +10,9 @@ crate-type = ["lib"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
 log = { version = "0.4" }
 thiserror = { version = "1.0" }
+
+[features]
+json = ["serde_json"]

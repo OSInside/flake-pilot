@@ -34,7 +34,6 @@ use std::process::{Stdio, id};
 use std::env;
 use std::fs;
 use crate::config::{config, RuntimeSection, EngineSection};
-use crate::defaults::{debug, is_debug};
 use tempfile::{NamedTempFile, tempdir};
 use std::io::{Write, SeekFrom, Seek};
 use std::fs::File;
@@ -246,7 +245,9 @@ fn run_creation(
             let mut mkfs = runas.run("mkfs.ext2");
             mkfs.arg("-F")
                 .arg(&vm_overlay_file);
-            debug(&format!("sudo {:?}", mkfs.get_args()));
+            if Lookup::is_debug() {
+                debug!("sudo {:?}", mkfs.get_args());
+            }
             mkfs.perform()?;
         }
     }
@@ -263,7 +264,9 @@ fn run_creation(
             User::ROOT
         )?;
         if has_includes {
-            debug("Syncing includes...");
+            if Lookup::is_debug() {
+                debug!("Syncing includes...");
+            }
             sync_includes(&vm_mount_point, User::ROOT)?;
         }
         umount_vm(tmp_dir, User::ROOT)?;
@@ -320,10 +323,10 @@ pub fn call_instance(
     Run firecracker with specified configuration
     !*/
     let mut firecracker = user.run(defaults::FIRECRACKER);
-    if ! is_debug() {
+    if ! Lookup::is_debug() {
         firecracker.stderr(Stdio::null());
     }
-    if ! is_debug() && ! is_blocking {
+    if ! Lookup::is_debug() && ! is_blocking {
         firecracker
             .stdin(Stdio::piped())
             .stdout(Stdio::piped());
@@ -334,11 +337,15 @@ pub fn call_instance(
         .arg(id().to_string())
         .arg("--config-file")
         .arg(config_file.path());
-    debug(&format!("sudo {:?}", firecracker.get_args()));
+    if Lookup::is_debug() {
+        debug!("sudo {:?}", firecracker.get_args())
+    }
 
     let child = firecracker.spawn()?;
     let pid = child.id();
-    debug(&format!("PID {}", pid));
+    if Lookup::is_debug() {
+        debug!("PID {}", pid)
+    }
 
     File::create(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
 
@@ -378,7 +385,9 @@ pub fn check_connected(program_name: &String, user: User) -> Result<(), FlakeErr
     );
     loop {
         if retry_count == defaults::RETRIES {
-            debug("Max retries for VM connection check exceeded");
+            if Lookup::is_debug() {
+                debug!("Max retries for VM connection check exceeded")
+            }
             return Err(FlakeError::OperationError(OperationError::MaxTriesExceeded))
         }
         let mut vm_command = user.run("bash");
@@ -389,7 +398,9 @@ pub fn check_connected(program_name: &String, user: User) -> Result<(), FlakeErr
                 defaults::SOCAT,
                 vsock_uds_path
             ));
-        debug(&format!("sudo {:?}", vm_command.get_args()));
+        if Lookup::is_debug() {
+            debug!("sudo {:?}", vm_command.get_args());
+        }
         let output = vm_command.output()?;
         if String::from_utf8_lossy(&output.stdout).starts_with("OK") {
             return Ok(())
@@ -420,7 +431,9 @@ pub fn send_command_to_instance(
     );
     loop {
         if retry_count == defaults::RETRIES {
-            debug("Max retries for VM command transfer exceeded");
+            if Lookup::is_debug() {
+                debug!("Max retries for VM command transfer exceeded");
+            }
             status_code = 1;
             return status_code
         }
@@ -434,7 +447,9 @@ pub fn send_command_to_instance(
                 defaults::SOCAT,
                 vsock_uds_path
             ));
-        debug(&format!("sudo {:?}", vm_command.get_args()));
+        if Lookup::is_debug() {
+            debug!("sudo {:?}", vm_command.get_args());
+        }
         match vm_command.output() {
             Ok(output) => {
                 if String::from_utf8_lossy(&output.stdout).starts_with("OK") {
@@ -478,7 +493,9 @@ pub fn execute_command_at_instance(
     // wait for UDS socket to appear
     loop {
         if retry_count == defaults::RETRIES {
-            debug("Max retries for UDS socket lookup exceeded");
+            if Lookup::is_debug() {
+                debug!("Max retries for UDS socket lookup exceeded");
+            }
             Err(OperationError::MaxTriesExceeded)?
         }
         if Path::new(&vsock_uds_path).exists() {
@@ -503,7 +520,9 @@ pub fn execute_command_at_instance(
             &format!("UNIX-LISTEN:{}_{}",
             vsock_uds_path, exec_port
         ));
-    debug(&format!("sudo {:?}", vm_exec.get_args()));
+    if Lookup::is_debug() {
+        debug!("sudo {:?}", vm_exec.get_args());
+    }
     let child = vm_exec.spawn()?;
     send_command_to_instance(
         program_name, user, exec_port
@@ -538,7 +557,7 @@ pub fn create_firecracker_config(
     run = Lookup::get_run_cmdline(run, true);
 
     // set boot_args
-    if is_debug() {
+    if Lookup::is_debug() {
         boot_args.push("PILOT_DEBUG=1".to_string());
     }
     if engine_section.overlay_size.is_some() {
@@ -547,7 +566,7 @@ pub fn create_firecracker_config(
     for boot_option in engine_section.boot_args
     {
         if resume
-            && ! is_debug()
+            && ! Lookup::is_debug()
             && boot_option.starts_with("console=")
         {
             // in resume mode the communication is handled
@@ -616,8 +635,9 @@ pub fn create_firecracker_config(
     if let Some(vcpu_count) = engine_section.vcpu_count {
         firecracker_config.machine_config.vcpu_count = vcpu_count;
     }
-
-    debug(&serde_json::to_string(&firecracker_config)?);
+    if Lookup::is_debug() {
+        debug!("{}", &serde_json::to_string(&firecracker_config)?);
+    }
     serde_json::to_writer(
         config_file, &firecracker_config
     )?;
@@ -650,13 +670,17 @@ pub fn vm_running(vmid: &String, user: User) -> Result<bool, FlakeError> {
     /*!
     Check if VM with specified vmid is running
     !*/
-    debug(&format!("vm id is {vmid}"));
+    if Lookup::is_debug() {
+        debug!("vm id is {vmid}");
+    }
     if vmid == "0" {
         return Ok(false)
     }
     let mut running = user.run("kill");
     running.arg("-0").arg(vmid);
-    debug(&format!("{:?}", running.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", running.get_args());
+    }
 
     let output = running.output()?;
     Ok(output.status.success())
@@ -704,7 +728,9 @@ pub fn gc_meta_files(
     match fs::read_to_string(vm_id_file) {
         Ok(vmid) => {
             if ! vm_running(&vmid, user)? {
-                debug(&format!("Deleting {}", vm_id_file));
+                if Lookup::is_debug() {
+                    debug!("Deleting {}", vm_id_file);
+                }
                 match fs::remove_file(vm_id_file) {
                     Ok(_) => { },
                     Err(error) => {
@@ -715,7 +741,9 @@ pub fn gc_meta_files(
                     "/run/sci_cmd_{}.sock", get_meta_name(program_name)
                 );
                 if Path::new(&vsock_uds_path).exists() {
-                    debug(&format!("Deleting {}", vsock_uds_path));
+                    if Lookup::is_debug() {
+                        debug!("Deleting {}", vsock_uds_path);
+                    }
                     delete_file(&vsock_uds_path, user);
                 }
                 let vm_overlay_file = format!(
@@ -729,7 +757,9 @@ pub fn gc_meta_files(
                         .unwrap()
                 );
                 if Path::new(&vm_overlay_file).exists() && ! resume {
-                    debug(&format!("Deleting {}", vm_overlay_file));
+                    if Lookup::is_debug() {
+                        debug!("Deleting {}", vm_overlay_file);
+                    }
                     match fs::remove_file(&vm_overlay_file) {
                         Ok(_) => { },
                         Err(error) => {
@@ -798,14 +828,20 @@ pub fn sync_includes(
     !*/
     let tar_includes = &config().tars();
     for tar in tar_includes {
-        debug(&format!("Adding tar include: [{}]", tar));
+        if Lookup::is_debug() {
+            debug!("Adding tar include: [{}]", tar);
+        }
         let mut call = user.run("tar");
         call.arg("-C").arg(target)
             .arg("-xf").arg(tar);
-        debug(&format!("{:?}", call.get_args()));
+        if Lookup::is_debug() {
+            debug!("{:?}", call.get_args());
+        }
         let output = call.perform()?;
-        debug(&String::from_utf8_lossy(&output.stdout));
-        debug(&String::from_utf8_lossy(&output.stderr));
+        if Lookup::is_debug() {
+            debug!("{}", &String::from_utf8_lossy(&output.stdout));
+            debug!("{}", &String::from_utf8_lossy(&output.stderr));
+        }
     }
     Ok(())
 }
@@ -834,7 +870,9 @@ pub fn mount_vm(
     let mut mount_image = user.run("mount");
     mount_image.arg(rootfs_image_path)
         .arg(&image_mount_point);
-    debug(&format!("{:?}", mount_image.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", mount_image.get_args());
+    }
     mount_image.perform()?;
     // 3. mount Overlay image
     let overlay_mount_point = format!(
@@ -843,7 +881,9 @@ pub fn mount_vm(
     let mut mount_overlay = user.run("mount");
     mount_overlay.arg(overlay_path)
         .arg(&overlay_mount_point);
-    debug(&format!("{:?}", mount_overlay.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", mount_overlay.get_args());
+    }
     mount_overlay.perform()?;
     // 4. mount as overlay
     [
@@ -868,7 +908,9 @@ pub fn mount_vm(
             sub_dir, defaults::OVERLAY_WORK
         ))
         .arg(&root_mount_point);
-    debug(&format!("{:?}", mount_overlay.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", mount_overlay.get_args());
+    }
     mount_overlay.perform()?;
     Ok(root_mount_point)
 }
@@ -886,7 +928,9 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
         umount.stderr(Stdio::null());
         umount.stdout(Stdio::null());
         umount.arg(format!("{}/{}", &sub_dir, &mount_point));
-        debug(&format!("{:?}", umount.get_args()));
+        if Lookup::is_debug() {
+            debug!("{:?}", umount.get_args());
+        }
         umount.perform().map(|_| ())
     }).collect();
 

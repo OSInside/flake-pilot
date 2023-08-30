@@ -22,9 +22,9 @@
 // SOFTWARE.
 //
 use std::process::{ExitCode, Output, Termination};
+use crate::command::{CommandError, ProcessError};
 use thiserror::Error;
 
-use crate::command::{CommandError, ProcessError};
 
 #[derive(Debug, Error)]
 pub enum FlakeError {
@@ -61,7 +61,6 @@ pub enum OperationError {
     #[error("Max retries for VM connection check exceeded")]
     MaxTriesExceeded
 }
-
 
 impl Termination for FlakeError {
     /// A failed sub command will forward its error code

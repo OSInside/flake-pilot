@@ -61,26 +61,26 @@ sourcetar:
 	rm -rf package/flake-pilot
 
 .PHONY:build
-build: man
+build: compress man
+
+compile:
 	cargo build -v --release
+	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --profile static --target $(ARCH)-unknown-linux-gnu
+
+compress: compile
 	upx --best --lzma target/release/podman-pilot
 	upx --best --lzma target/release/flake-ctl
-	upx --best --lzma target/release/firecracker-service
 	upx --best --lzma target/release/firecracker-pilot
-	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --profile static --target $(ARCH)-unknown-linux-gnu
 
 clean:
 	cd common && cargo -v clean
 	cd podman-pilot && cargo -v clean
 	cd firecracker-pilot && cargo -v clean
 	cd flake-ctl && cargo -v clean
-	cd firecracker-pilot/firecracker-service/service && cargo -v clean
 	cd firecracker-pilot/guestvm-tools/sci && cargo -v clean
 	rm -rf common/vendor
 	rm -rf podman-pilot/vendor
 	rm -rf flake-ctl/vendor
-	rm -rf firecracker-pilot/firecracker-service/service/vendor
-	rm -rf firecracker-pilot/firecracker-service/service-communication/vendor
 	rm -rf firecracker-pilot/guestvm-tools/sci/vendor
 	${MAKE} -C doc clean
 	$(shell find . -name Cargo.lock | xargs rm -f)
@@ -101,8 +101,6 @@ install:
 		$(DESTDIR)$(BINDIR)/podman-pilot
 	install -m 755 target/release/firecracker-pilot \
 		$(DESTDIR)$(BINDIR)/firecracker-pilot
-	install -m 755 target/release/firecracker-service \
-		$(DESTDIR)$(BINDIR)/firecracker-service
 	install -m 755 target/$(ARCH)-unknown-linux-gnu/static/sci \
 		$(DESTDIR)$(SBINDIR)/sci
 	install -m 755 target/release/flake-ctl \
@@ -124,7 +122,6 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl
 	rm -f $(DESTDIR)$(BINDIR)/podman-pilot
 	rm -f $(DESTDIR)$(BINDIR)/firecracker-pilot
-	rm -f $(DESTDIR)$(BINDIR)/firecracker-service
 	rm -rf $(DESTDIR)$(FLAKEDIR) $(DESTDIR)$(SHAREDIR) $(DESTDIR)$(TEMPLATEDIR)
 
 man:

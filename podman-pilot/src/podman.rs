@@ -29,7 +29,6 @@ use std::process::{Command, Stdio};
 use std::env;
 use std::fs;
 use crate::config::{RuntimeSection, config};
-use crate::defaults::debug;
 use flakes::error::FlakeError;
 use flakes::command::{CommandError, CommandExtTrait};
 use tempfile::tempfile;
@@ -188,7 +187,9 @@ pub fn create(
     }
     
     // create container
-    debug(&format!("{:?}", app.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", app.get_args());
+    }
     let pilot_options = Lookup::get_pilot_run_options();
     let mut spinner = None;
     if ! pilot_options.contains_key("%silent") {
@@ -228,7 +229,9 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     let has_includes = !config().tars().is_empty();
 
     let instance_mount_point = if is_delta_container || has_includes {
-        debug("Mounting instance for provisioning workload");
+        if Lookup::is_debug() {
+            debug!("Mounting instance for provisioning workload");
+        }
         mount_container(&cid, runas, false)?
     } else {
         return Ok(cid);
@@ -237,19 +240,24 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     if is_delta_container {
         // Create tmpfile to hold accumulated removed data
         let removed_files = tempfile()?;
-
-        debug("Provisioning delta container...");
+        if Lookup::is_debug() {
+            debug!("Provisioning delta container...");
+        }
         update_removed_files(&instance_mount_point, &removed_files)?;
 
         let layers = config().layers();
         let layers = layers.iter()
-            .inspect(|layer| debug(&format!("Adding layer: [{layer}]")))
+            .inspect(|layer| if Lookup::is_debug() { debug!("Adding layer: [{layer}]") })
             .chain(Some(&config().container.name));
 
-        debug(&format!("Adding main app [{}] to layer list", config().container.name));
+        if Lookup::is_debug() {
+            debug!("Adding main app [{}] to layer list", config().container.name);
+        }
 
         for layer in layers {
-            debug(&format!("Syncing delta dependencies [{layer}]..."));
+            if Lookup::is_debug() {
+                debug!("Syncing delta dependencies [{layer}]...");
+            }
             let app_mount_point = mount_container(layer, runas, true)?;
             update_removed_files(&app_mount_point, &removed_files)?;
             sync_delta(&app_mount_point, &instance_mount_point, runas)?;
@@ -257,14 +265,18 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             // TODO: Behaviour (continue on error) retained from previous implementation, is this correct?
             let _ = umount_container(&layer, runas, true);
         }
-        debug("Syncing host dependencies...");
+        if Lookup::is_debug() {
+            debug!("Syncing host dependencies...");
+        }
         sync_host(&instance_mount_point, &removed_files, runas)?;
 
         let _ = umount_container(&cid, runas, false);
     }
 
     if has_includes {
-        debug("Syncing includes...");
+        if Lookup::is_debug() {
+            debug!("Syncing includes...");
+        }
         sync_includes(&instance_mount_point, runas)?;
     }
     Ok(cid)
@@ -354,7 +366,9 @@ pub fn call_instance(
             }
         }
     }
-    debug(&format!("{:?}", call.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
     call.status()?;
     Ok(())
 }
@@ -374,7 +388,9 @@ pub fn mount_container(
     } else {
         call.arg("mount").arg(container_name);
     }
-    debug(&format!("{:?}", call.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
 
     let output = call.perform()?;
 
@@ -395,7 +411,9 @@ pub fn umount_container(
     } else {
         call.arg("umount").arg(mount_point);
     }
-    debug(&format!("{:?}", call.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
     call.perform()?;
     Ok(())
 }
@@ -409,14 +427,20 @@ pub fn sync_includes(
     let tar_includes = &config().tars();
     
     for tar in tar_includes {
-        debug(&format!("Adding tar include: [{}]", tar));
+        if Lookup::is_debug() {
+            debug!("Adding tar include: [{}]", tar);
+        }
         let mut call = user.run("tar");
         call.arg("-C").arg(target)
             .arg("-xf").arg(tar);
-        debug(&format!("{:?}", call.get_args()));
+        if Lookup::is_debug() {
+            debug!("{:?}", call.get_args());
+        }
         let output = call.perform()?;
-        debug(&String::from_utf8_lossy(&output.stdout));
-        debug(&String::from_utf8_lossy(&output.stderr));
+        if Lookup::is_debug() {
+            debug!("{}", &String::from_utf8_lossy(&output.stdout));
+            debug!("{}", &String::from_utf8_lossy(&output.stderr));
+        }
     }
     Ok(())
 }
@@ -431,7 +455,9 @@ pub fn sync_delta(
     call.arg("-av")
         .arg(format!("{}/", &source))
         .arg(format!("{}/", &target));
-    debug(&format!("{:?}", call.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
 
     call.perform()?;
 
@@ -452,7 +478,9 @@ pub fn sync_host(
 
 
     if removed_files_contents.is_empty() {
-        debug("There are no host dependencies to resolve");
+        if Lookup::is_debug() {
+            debug!("There are no host dependencies to resolve");
+        }
         return Ok(())
     }
 
@@ -464,7 +492,9 @@ pub fn sync_host(
         .arg("--files-from").arg(&host_deps)
         .arg("/")
         .arg(format!("{}/", &target));
-    debug(&format!("{:?}", call.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
 
     call.perform()?;
     Ok(())
@@ -485,7 +515,9 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     let mut running_status = false;
     let mut running = user.run("podman");
     running.arg("ps").arg("--format").arg("{{.ID}}");
-    debug(&format!("{:?}", running.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", running.get_args());
+    }
 
     let output = running.perform()?;
     let mut running_cids = String::new();
@@ -508,7 +540,9 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, std::io::E
     !*/
     let mut exists = user.run("podman");
     exists.arg("image").arg("exists").arg(name);
-    debug(&format!("{:?}", exists.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", exists.get_args());
+    }
     Ok(exists.status()?.success())
 }
 
@@ -518,15 +552,17 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     !*/
     let mut pull = user.run("podman");
     pull.arg("pull").arg(uri);
-    debug(&format!("{:?}", pull.get_args()));
+    if Lookup::is_debug() {
+        debug!("{:?}", pull.get_args());
+    }
 
     pull.perform()?;
 
     let mut prune = user.run("podman");
     prune.arg("image").arg("prune").arg("--force");
     match prune.status() {
-        Ok(status) => { debug(&format!("{:?}", status)) },
-        Err(error) => { debug(&format!("{:?}", error)) }
+        Ok(status) => { if Lookup::is_debug() { debug!("{:?}", status) }},
+        Err(error) => { if Lookup::is_debug() { debug!("{:?}", error) }}
     }
 
     Ok(())
@@ -540,11 +576,15 @@ pub fn update_removed_files(
     to the accumulated_file
     !*/
     let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
-    debug(&format!("Looking up host deps from {}", host_deps));
+    if Lookup::is_debug() {
+        debug!("Looking up host deps from {}", host_deps);
+    }
     if Path::new(&host_deps).exists() {
         let data = fs::read_to_string(&host_deps)?;
-        debug("Adding host deps...");
-        debug(&String::from_utf8_lossy(data.as_bytes()));
+        if Lookup::is_debug() {
+            debug!("Adding host deps...");
+            debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+        }
         accumulated_file.write_all(data.as_bytes())?;
     }
     Ok(())

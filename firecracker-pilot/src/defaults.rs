@@ -21,8 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::env;
-
 pub const FIRECRACKER: &str =
     "firecracker";
 pub const IMAGE_ROOT: &str =
@@ -56,13 +54,3 @@ pub const RETRIES: u32 =
     60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =
     1000;
-
-pub fn is_debug() -> bool {
-    env::var("PILOT_DEBUG").is_ok()
-}
-
-pub fn debug(message: &str) {
-    if is_debug() {
-        debug!("{}", message)
-    }
-}

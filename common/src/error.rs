@@ -22,9 +22,9 @@
 // SOFTWARE.
 //
 use std::process::{ExitCode, Output, Termination};
+use crate::command::{CommandError, ProcessError};
 use thiserror::Error;
 
-use crate::command::{CommandError, ProcessError};
 
 #[derive(Debug, Error)]
 pub enum FlakeError {
@@ -32,12 +32,18 @@ pub enum FlakeError {
     #[error("Failed to run {}", .0)]
     CommandError(#[from] CommandError),
 
+    #[error("IOError: {kind:?} {message:?}")]
+    IOError {
+        kind: String,
+        message: String
+    },
+
     /// IO operation pass through
     #[error(transparent)]
     IO(#[from] std::io::Error),
-    #[cfg(feature = "json")]
 
     /// MalformedJson pass through
+    #[cfg(feature = "json")]
     #[error(transparent)]
     MalformedJson(#[from] serde_json::Error),
 
@@ -55,7 +61,6 @@ pub enum OperationError {
     #[error("Max retries for VM connection check exceeded")]
     MaxTriesExceeded
 }
-
 
 impl Termination for FlakeError {
     /// A failed sub command will forward its error code

@@ -154,7 +154,6 @@ pub fn create(
     }
 
     // create the container with configured runtime arguments
-
     let has_runtime_args = podman.as_ref().map(|p| !p.is_empty()).unwrap_or_default();
     app.args(podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')));
 
@@ -176,7 +175,6 @@ pub fn create(
         // keeps the container in running state to accept podman exec for
         // running the app multiple times with different arguments
         app.arg("sleep").arg("4294967295d");
-
     } else {
         if target_app_path != "/" {
             app.arg(target_app_path);
@@ -218,7 +216,9 @@ pub fn create(
 }
 
 fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
-
+    /*!
+    Create and provision container prior start
+    !*/
     let output = app.perform()?;
 
     let cid = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned();
@@ -262,7 +262,6 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             update_removed_files(&app_mount_point, &removed_files)?;
             sync_delta(&app_mount_point, &instance_mount_point, runas)?;
 
-            // TODO: Behaviour (continue on error) retained from previous implementation, is this correct?
             let _ = umount_container(&layer, runas, true);
         }
         if Lookup::is_debug() {
@@ -280,22 +279,17 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         sync_includes(&instance_mount_point, runas)?;
     }
     Ok(cid)
-        
 }
 
-pub fn start(
-    program_name: &str, cid: &str
-) -> Result<(), FlakeError> {
+pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     /*!
     Start container with the given container ID
     !*/
-
     let RuntimeSection { runas, resume, attach, .. } = config().runtime();
     
     let is_running = container_running(cid, runas)?;
 
     if is_running {
-
         if attach {
             // 1. Attach to running container
             call_instance("attach", cid, program_name, runas)?;
@@ -311,7 +305,6 @@ pub fn start(
         // 4. Startup container
         call_instance("start", cid, program_name, runas)?;
     };
-
     Ok(())
 }
 
@@ -323,13 +316,11 @@ pub fn get_target_app_path(program_name: &str) -> String {
     time or the configured target application from the flake
     configuration file
     !*/
-
     config().container.target_app_path.unwrap_or(program_name).to_owned()
 }
 
 pub fn call_instance(
-    action: &str, cid: &str, program_name: &str,
-    user: User
+    action: &str, cid: &str, program_name: &str, user: User
 ) -> Result<(), FlakeError> {
     /*!
     Call container ID based podman commands
@@ -476,7 +467,6 @@ pub fn sync_host(
     removed_files.seek(SeekFrom::Start(0))?;
     removed_files.read_to_string(&mut removed_files_contents)?;
 
-
     if removed_files_contents.is_empty() {
         if Lookup::is_debug() {
             debug!("There are no host dependencies to resolve");
@@ -501,6 +491,9 @@ pub fn sync_host(
 }
 
 pub fn init_cid_dir() -> Result<(), FlakeError> {
+    /*!
+    Create meta data directory structure
+    !*/
     if ! Path::new(defaults::CONTAINER_CID_DIR).is_dir() {
         chmod(defaults::CONTAINER_DIR, "755", User::ROOT)?;
         mkdir(defaults::CONTAINER_CID_DIR, "777", User::ROOT)?;
@@ -530,7 +523,6 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
             break
         }
     }
-    
     Ok(running_status)
 }
 
@@ -564,7 +556,6 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
         Ok(status) => { if Lookup::is_debug() { debug!("{:?}", status) }},
         Err(error) => { if Lookup::is_debug() { debug!("{:?}", error) }}
     }
-
     Ok(())
 }
 

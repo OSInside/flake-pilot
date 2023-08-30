@@ -55,7 +55,7 @@ pub fn handle_output(maybe_output: Result<Output, std::io::Error>, args: Command
                 output.into()
             }
         }
-        Err(err) => err.into(),
+        Err(error) => error,
     };
 
     Err(CommandError {

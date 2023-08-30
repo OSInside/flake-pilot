@@ -154,7 +154,12 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
       the VM ID file.
     !*/
     if ! Lookup::which(defaults::FIRECRACKER) {
-        panic!("{} not found in $PATH, installed ?", defaults::FIRECRACKER)
+        return Err(FlakeError::IOError {
+            kind: format!("FileNotFound"),
+            message: format!("{} not found in $PATH, installed ?",
+                defaults::FIRECRACKER
+            )
+        })
     }
     // setup VM ID file name
     let vm_id_file_path = get_meta_file_name(

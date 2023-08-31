@@ -201,9 +201,7 @@ install -m 755 %{buildroot}/usr/sbin/sci \
 %doc /usr/share/man/man8/flake-ctl-firecracker-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-remove.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-register.8.gz
-/usr/bin/firecracker-service
 /usr/bin/firecracker-pilot
-%doc /usr/share/man/man8/firecracker-service.8.gz
 %doc /usr/share/man/man8/firecracker-pilot.8.gz
 /usr/lib/flake-pilot/sci
 

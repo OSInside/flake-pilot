@@ -17,6 +17,5 @@ members = [
     "podman-pilot", 
     "firecracker-pilot", 
     "firecracker-pilot/guestvm-tools/sci", 
-    "firecracker-pilot/firecracker-service/*", 
     "common"
 ]

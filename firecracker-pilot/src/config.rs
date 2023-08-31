@@ -170,6 +170,7 @@ pub struct EngineSection<'a> {
 #[derive(Debug, Deserialize, Clone, Display)]
 pub enum CacheType {
     Writeback,
+    Unsafe
 }
 
 impl Default for CacheType {

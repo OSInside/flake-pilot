@@ -201,14 +201,14 @@ pub fn create(
     
     match run_podman_creation(app) {
         Ok(cid) => {
-            if spinner.is_some() {
-                spinner.unwrap().success("Launching flake");
+            if let Some(spinner) = spinner {
+                spinner.success("Launching flake");
             }
             Ok((cid, container_cid_file))
         },
         Err(err) => {
-            if spinner.is_some() {
-                spinner.unwrap().fail("Flake launch has failed");
+            if let Some(spinner) = spinner {
+                spinner.fail("Flake launch has failed");
             }
             Err(err)            
         },
@@ -262,7 +262,7 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             update_removed_files(&app_mount_point, &removed_files)?;
             sync_delta(&app_mount_point, &instance_mount_point, runas)?;
 
-            let _ = umount_container(&layer, runas, true);
+            let _ = umount_container(layer, runas, true);
         }
         if Lookup::is_debug() {
             debug!("Syncing host dependencies...");
@@ -613,8 +613,7 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
             return Err(FlakeError::IOError {
                 kind: format!("{:?}", error.kind()),
                 message: format!("fs::read_dir failed on {}: {}",
-                    defaults::CONTAINER_CID_DIR,
-                    error.to_string()
+                    defaults::CONTAINER_CID_DIR, error
                 )
             })
         }

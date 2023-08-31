@@ -57,23 +57,3 @@ jobs:
         run: |
           cd firecracker-pilot/guestvm-tools/sci
           cargo license
-
-      # firecracker-service
-      - name: Run SPDX firecracker-service
-        run: |
-          cd firecracker-pilot/firecracker-service/service
-          cargo bom
-      - name: Get Dependency Licenses firecracker-service
-        run: |
-          cd firecracker-pilot/firecracker-service/service
-          cargo license
-
-      # firecracker-service-communication
-      - name: Run SPDX firecracker-service-communication
-        run: |
-          cd firecracker-pilot/firecracker-service/service-communication
-          cargo bom
-      - name: Get Dependency Licenses firecracker-service-communication
-        run: |
-          cd firecracker-pilot/firecracker-service/service-communication
-          cargo license

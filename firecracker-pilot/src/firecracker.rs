@@ -154,7 +154,12 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
       the VM ID file.
     !*/
     if ! Lookup::which(defaults::FIRECRACKER) {
-        panic!("{} not found in $PATH, installed ?", defaults::FIRECRACKER)
+        return Err(FlakeError::IOError {
+            kind: "FileNotFound".to_string(),
+            message: format!("{} not found in $PATH, installed ?",
+                defaults::FIRECRACKER
+            )
+        })
     }
     // setup VM ID file name
     let vm_id_file_path = get_meta_file_name(
@@ -203,14 +208,14 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     match run_creation(&vm_id_file_path, program_name, engine_section, resume, runas, has_includes) {
         Ok(result) => {
-            if spinner.is_some() {
-                spinner.unwrap().success("Launching flake");
+            if let Some(spinner) = spinner {
+                spinner.success("Launching flake");
             }
             Ok(result)
         },
         Err(error) => {
-            if spinner.is_some() {
-                spinner.unwrap().fail("Flake launch has failed");
+            if let Some(spinner) = spinner {
+                spinner.fail("Flake launch has failed");
             }
             Err(error)
         },
@@ -226,7 +231,7 @@ fn run_creation(
     has_includes: bool
 ) -> Result<(String, String), FlakeError> {
     // Create initial vm_id_file with process ID set to 0
-    std::fs::File::create(&vm_id_file_path)?.write_all("0".as_bytes())?;
+    std::fs::File::create(vm_id_file_path)?.write_all("0".as_bytes())?;
     let result = ("0".to_owned(), vm_id_file_path.to_owned());
 
     // Setup root overlay if configured
@@ -366,12 +371,11 @@ pub fn get_exec_port() -> u32 {
     of your choice
     !*/
     let pilot_options = Lookup::get_pilot_run_options();
-    let port;
-    if pilot_options.contains_key("%port") {
-        port = pilot_options["%port"].parse::<u32>().unwrap_or_default();
+    let port: u32 = if pilot_options.contains_key("%port") {
+        pilot_options["%port"].parse::<u32>().unwrap_or_default()
     } else {
-        port = defaults::FIRECRACKER_VSOCK_PORT_START + id();
-    }
+        defaults::FIRECRACKER_VSOCK_PORT_START + id()
+    };
     port
 }
 
@@ -423,8 +427,8 @@ pub fn send_command_to_instance(
     !*/
     let mut status_code;
     let mut retry_count = 0;
-    let mut run: Vec<String> = Vec::new();
-    run.push(get_target_app_path(program_name));
+    let mut run: Vec<String> = vec![get_target_app_path(program_name)];
+
     run = Lookup::get_run_cmdline(run, false);
     let vsock_uds_path = format!(
         "/run/sci_cmd_{}.sock", get_meta_name(program_name)
@@ -552,8 +556,8 @@ pub fn create_firecracker_config(
     }
 
     // setup run commandline for the command call
-    let mut run: Vec<String> = Vec::new();
-    run.push(get_target_app_path(program_name));
+    let mut run: Vec<String> = vec![get_target_app_path(program_name)];
+
     run = Lookup::get_run_cmdline(run, true);
 
     // set boot_args
@@ -659,11 +663,10 @@ pub fn get_target_app_path(
 
 }
 
-pub fn init_meta_dirs() -> Result<(), CommandError>{
+pub fn init_meta_dirs() -> Result<(), CommandError> {
     [defaults::FIRECRACKER_OVERLAY_DIR, defaults::FIRECRACKER_VMID_DIR].iter()
         .filter(|path| !Path::new(path).is_dir())
-        .map(|path| mkdir(&path, "777", User::ROOT))
-        .collect()
+        .try_for_each(|path| mkdir(path, "777", User::ROOT))
 }
 
 pub fn vm_running(vmid: &String, user: User) -> Result<bool, FlakeError> {
@@ -751,8 +754,7 @@ pub fn gc_meta_files(
                     defaults::FIRECRACKER_OVERLAY_DIR,
                     Path::new(&vm_id_file)
                         .file_name()
-                        .map(OsStr::to_str)
-                        .flatten()
+                        .and_then(OsStr::to_str)
                         .map(|x| x.replace(".vmid", ".ext2"))
                         .unwrap()
                 );
@@ -860,8 +862,7 @@ pub fn mount_vm(
     ].iter()
         .map(|p| format!("{}/{}", sub_dir, p))
         .filter(|path| !Path::new(path).exists())
-        .map(fs::create_dir_all)
-        .collect::<std::io::Result<_>>()?;
+        .try_for_each(fs::create_dir_all)?;
 
     // 2. mount VM image
     let image_mount_point = format!(
@@ -893,8 +894,7 @@ pub fn mount_vm(
     ].iter()
         .map(|p| format!("{}/{}", sub_dir, p))
         .filter(|path| !Path::new(path).exists())
-        .map(|path| mkdir(&path, "755", User::ROOT))
-        .collect::<Result<(), CommandError>>()?;
+        .try_for_each(|path| mkdir(&path, "755", User::ROOT))?;
 
     let root_mount_point = format!("{}/{}", sub_dir, defaults::OVERLAY_ROOT);
     let mut mount_overlay = user.run("mount");

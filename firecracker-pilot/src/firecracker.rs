@@ -243,7 +243,7 @@ fn run_creation(
         if !Path::new(&vm_overlay_file).exists() || !resume {
 
             let mut vm_overlay_file_fd = File::create(&vm_overlay_file)?;
-            vm_overlay_file_fd.seek(SeekFrom::Start(overlay_size - 1))?; // Maybe new Error for No space left on device
+            vm_overlay_file_fd.seek(SeekFrom::Start(overlay_size - 1))?;
             vm_overlay_file_fd.write_all(&[0])?;
 
             // Create filesystem
@@ -258,27 +258,26 @@ fn run_creation(
     }
 
     // Provision VM
-    let vm_image_file = engine_section.rootfs_image_path;
-
-    let tmp_dir = tempdir()?;
-    if let Some(tmp_dir) = tmp_dir.path().to_str() {
-        let vm_mount_point = mount_vm(
-            tmp_dir,
-            vm_image_file,
-            &vm_overlay_file,
-            User::ROOT
-        )?;
-        if has_includes {
-            if Lookup::is_debug() {
-                debug!("Syncing includes...");
+    if engine_section.overlay_size.is_some() {
+        let vm_image_file = engine_section.rootfs_image_path;
+        let tmp_dir = tempdir()?;
+        if let Some(tmp_dir) = tmp_dir.path().to_str() {
+            let vm_mount_point = mount_vm(
+                tmp_dir,
+                vm_image_file,
+                &vm_overlay_file,
+                User::ROOT
+            )?;
+            if has_includes {
+                if Lookup::is_debug() {
+                    debug!("Syncing includes...");
+                }
+                sync_includes(&vm_mount_point, User::ROOT)?;
             }
-            sync_includes(&vm_mount_point, User::ROOT)?;
+            umount_vm(tmp_dir, User::ROOT)?;
         }
-        umount_vm(tmp_dir, User::ROOT)?;
     }
-
     Ok(result)
-
 }
 
 pub fn start(

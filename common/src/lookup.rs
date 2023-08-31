@@ -50,7 +50,7 @@ impl Lookup {
         setup run commandline for the command call
         !*/
         let args: Vec<String> = env::args().collect();
-        let mut run: Vec<String> = init.clone();
+        let mut run: Vec<String> = init;
         for arg in &args[1..] {
             FlakeLog::debug(&format!("Got Argument: {}", arg));
             if ! arg.starts_with('@') && ! arg.starts_with('%') {

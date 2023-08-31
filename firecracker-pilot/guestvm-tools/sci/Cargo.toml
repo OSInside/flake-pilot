@@ -1,6 +1,6 @@
 [package]
 name = "sci"
-version = "2.2.24"
+version = "2.2.25"
 edition = "2018"
 license = "MIT"
 

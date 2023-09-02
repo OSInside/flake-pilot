@@ -172,10 +172,14 @@ install -m 644 firecracker-pilot/dracut/etc/dracut.conf.d/extramodules.conf \
 install -m 755 %{buildroot}/usr/sbin/sci \
     %{buildroot}/usr/lib/flake-pilot/sci
 
+mkdir -p %{buildroot}/etc
+install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
+
 %files
 %defattr(-,root,root)
 %dir /usr/share/flakes
 %dir /etc/flakes
+%config /etc/flakes.yml
 /usr/bin/flake-ctl
 %doc /usr/share/man/man8/flake-ctl.8.gz
 %doc /usr/share/man/man8/flake-ctl-list.8.gz

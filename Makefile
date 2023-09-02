@@ -33,6 +33,7 @@ sourcetar:
 	rm -rf package/flake-pilot
 	mkdir package/flake-pilot
 	cp Makefile package/flake-pilot
+	cp flakes.yml package/flake-pilot
 	cp -a common package/flake-pilot/
 	cp -a podman-pilot package/flake-pilot/
 	cp -a flake-ctl package/flake-pilot/

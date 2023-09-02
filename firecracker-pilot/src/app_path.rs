@@ -30,8 +30,7 @@ use std::process::exit;
 use std::fs;
 use yaml_rust::Yaml;
 use yaml_rust::YamlLoader;
-
-use crate::defaults;
+use flakes::config::get_flakes_dir;
 
 pub fn program_abs_path() -> String {
     /*!
@@ -60,7 +59,7 @@ pub fn program_config_file(program_basename: &String) -> String {
     Provide expected config file path for the given program_basename
     !*/
     let config_file = &format!(
-        "{}/{}.yaml", defaults::FIRECRACKER_FLAKE_DIR, program_basename
+        "{}/{}.yaml", get_flakes_dir(), program_basename
     );
     config_file.to_string()
 }
@@ -70,7 +69,7 @@ pub fn program_config_dir(program_basename: &String) -> String {
     Provide expected config directory for the given program_basename
     !*/
     let config_dir = &format!(
-        "{}/{}.d", defaults::FIRECRACKER_FLAKE_DIR, program_basename
+        "{}/{}.d", get_flakes_dir(), program_basename
     );
     config_dir.to_string()
 }

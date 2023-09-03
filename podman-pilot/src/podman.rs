@@ -36,6 +36,7 @@ use std::io::{Write, Read};
 use std::fs::File;
 use std::io::Seek;
 use std::io::SeekFrom;
+use flakes::config::get_podman_ids_dir;
 
 use crate::defaults;
 
@@ -120,7 +121,7 @@ pub fn create(
     // setup container ID file name
     let suffix = name.first().map(String::as_str).unwrap_or("");
 
-    let container_cid_file = format!("{}/{}{suffix}.cid", defaults::CONTAINER_CID_DIR, program_name);
+    let container_cid_file = format!("{}/{}{suffix}.cid", get_podman_ids_dir(), program_name);
 
     // setup app command path name to call
     let target_app_path = get_target_app_path(program_name);
@@ -494,9 +495,9 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
     /*!
     Create meta data directory structure
     !*/
-    if ! Path::new(defaults::CONTAINER_CID_DIR).is_dir() {
+    if ! Path::new(&get_podman_ids_dir()).is_dir() {
         chmod(defaults::CONTAINER_DIR, "755", User::ROOT)?;
-        mkdir(defaults::CONTAINER_CID_DIR, "777", User::ROOT)?;
+        mkdir(&get_podman_ids_dir(), "777", User::ROOT)?;
     }
     Ok(())
 }
@@ -607,13 +608,13 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
     let paths;
-    match fs::read_dir(defaults::CONTAINER_CID_DIR) {
+    match fs::read_dir(get_podman_ids_dir()) {
         Ok(result) => { paths = result },
         Err(error) => {
             return Err(FlakeError::IOError {
                 kind: format!("{:?}", error.kind()),
                 message: format!("fs::read_dir failed on {}: {}",
-                    defaults::CONTAINER_CID_DIR, error
+                    get_podman_ids_dir(), error
                 )
             })
         }

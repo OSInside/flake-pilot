@@ -37,10 +37,6 @@ pub const FIRECRACKER_OVERLAY_DIR:&str =
     "/var/lib/firecracker/storage";
 pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
-pub const FIRECRACKER_FLAKE_DIR: &str =
-    "/usr/share/flakes";
-pub const FIRECRACKER_VMID_DIR: &str =
-    "/var/lib/firecracker/storage/tmp/flakes";
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
     "/run/sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;

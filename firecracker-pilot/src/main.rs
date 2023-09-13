@@ -24,6 +24,9 @@
 #[macro_use]
 extern crate log;
 
+#[cfg(test)]
+pub mod tests;
+
 use std::process::{ExitCode, Termination};
 
 use config::config;

@@ -21,52 +21,40 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use crate::app_path::program_abs_path;
-use crate::app_path::basename;
 use crate::config::config_file;
 use crate::config::config_from_str;
 
 #[test]
-fn test_program_abs_path() {
-    let program_path = program_abs_path();
-    assert!(program_path.starts_with('/'));
-}
-
-#[test]
-fn test_basename() {
-    let base_name = basename(&"/some/name".to_string());
-    assert_eq!("name", base_name);
-}
-
-#[test]
 fn simple_config() {
     let cfg = config_from_str(
-r#"container:
+            r#"vm:
  name: JoJo
  host_app_path: /myapp
 include:
  tar: ~
-"#);
-    assert_eq!(cfg.container.name, "JoJo");
+"#,
+    );
+    assert_eq!(cfg.vm.name, "JoJo");
 }
 
 #[test]
 fn combine_configs() {
     let cfg = config_from_str(
-r#"container:
+            r#"vm:
  name: JoJo
  host_app_path: /myapp
 include:
  tar: ~
-container:
+vm:
  name: Dio
  host_app_path: /other
-"#);
-    assert_eq!(cfg.container.name, "Dio");
+"#,
+    );
+    assert_eq!(cfg.vm.name, "Dio");
 }
 
 #[test]
 fn test_program_config_file() {
-    let config_file = config_file(&"app".to_string());
+    let config_file = config_file("app");
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }

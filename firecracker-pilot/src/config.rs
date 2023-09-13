@@ -76,7 +76,7 @@ fn load_config() -> Config<'static> {
     config_from_str(&full_yaml)
 }
 
-fn config_from_str(input: &str) -> Config<'static> {
+pub fn config_from_str(input: &str) -> Config<'static> {
     // Parse into a generic YAML to remove duplicate keys
 
     let yaml = yaml_rust::YamlLoader::load_from_str(input).unwrap();
@@ -92,7 +92,7 @@ fn config_from_str(input: &str) -> Config<'static> {
     serde_yaml::from_str(content).unwrap()
 }
 
-fn config_file(program: &str) -> String {
+pub fn config_file(program: &str) -> String {
     format!("{}/{}.yaml", get_flakes_dir(), program)
 }
 
@@ -197,47 +197,5 @@ pub enum CacheType {
 impl Default for CacheType {
     fn default() -> Self {
         Self::Writeback
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::config::config_file;
-
-    use super::config_from_str;
-
-    #[test]
-    fn simple_config() {
-        let cfg = config_from_str(
-            r#"vm:
- name: JoJo
- host_app_path: /myapp
-include:
- tar: ~
-"#,
-        );
-        assert_eq!(cfg.vm.name, "JoJo");
-    }
-
-    #[test]
-    fn combine_configs() {
-        let cfg = config_from_str(
-            r#"vm:
- name: JoJo
- host_app_path: /myapp
-include:
- tar: ~
-vm:
- name: Dio
- host_app_path: /other
-"#,
-        );
-        assert_eq!(cfg.vm.name, "Dio");
-    }
-
-    #[test]
-    fn test_program_config_file() {
-        let config_file = config_file("app");
-        assert_eq!("/usr/share/flakes/app.yaml", config_file);
     }
 }

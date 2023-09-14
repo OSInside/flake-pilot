@@ -95,6 +95,7 @@ pub fn create_container_config(
     base: Option<&String>,
     layers: Option<Vec<String>>,
     includes_tar: Option<Vec<String>>,
+    includes_path: Option<Vec<String>>,
     resume: bool,
     attach: bool,
     run_as: Option<&String>,
@@ -129,6 +130,7 @@ pub fn create_container_config(
         base,
         layers,
         includes_tar,
+        includes_path,
         resume,
         attach,
         run_as,
@@ -155,6 +157,7 @@ pub fn create_vm_config(
     no_net: bool,
     resume: bool,
     includes_tar: Option<Vec<String>>,
+    includes_path: Option<Vec<String>>,
 ) -> bool {
     /*!
     Create app configuration for the firecracker engine.
@@ -182,6 +185,7 @@ pub fn create_vm_config(
         no_net,
         resume,
         includes_tar,
+        includes_path,
     ) {
         Ok(_) => true,
         Err(error) => {

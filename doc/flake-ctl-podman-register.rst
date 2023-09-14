@@ -20,6 +20,7 @@ SYNOPSIS
        --base <BASE>
        --container <CONTAINER>
        --include-tar <INCLUDE_TAR>...
+       --include-path <INCLUDE_PATH>...
        --info
        --layer <LAYER>...
        --opt <OPT>...
@@ -72,6 +73,11 @@ OPTIONS
 
   Name of a tar file to be included on top of the container instance.
   This option can be specified multiple times
+
+--include-path <INCLUDE_PATH>...
+
+  Name of a file or directory to be included on top of the container
+  instance. This option can be specified multiple times
 
 --info
 

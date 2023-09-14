@@ -172,7 +172,8 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // check for includes
     let tar_includes = config().tars();
-    let has_includes = !tar_includes.is_empty();
+    let path_includes = config().paths();
+    let has_includes = !tar_includes.is_empty() || !path_includes.is_empty();
 
     // Make sure meta dirs exists
     init_meta_dirs()?;
@@ -821,7 +822,6 @@ pub fn delete_file(filename: &String, user: User) -> bool {
     true
 }
 
-// Todo: unifiy with podman
 pub fn sync_includes(
     target: &String, user: User
 ) -> Result<(), FlakeError> {
@@ -829,9 +829,11 @@ pub fn sync_includes(
     Sync custom include data to target path
     !*/
     let tar_includes = &config().tars();
+    let path_includes = &config().paths();
+
     for tar in tar_includes {
         if Lookup::is_debug() {
-            debug!("Adding tar include: [{}]", tar);
+            debug!("Provision tar archive: [{}]", tar);
         }
         let mut call = user.run("tar");
         call.arg("-C").arg(target)
@@ -844,6 +846,41 @@ pub fn sync_includes(
             debug!("{}", &String::from_utf8_lossy(&output.stdout));
             debug!("{}", &String::from_utf8_lossy(&output.stderr));
         }
+    }
+    for path in path_includes {
+        if Lookup::is_debug() {
+            debug!("Provision path: [{}]", path);
+        }
+        sync_data(
+            path, &format!("{}/{}", target, path),
+            ["--mkpath"].to_vec(), user
+        )?;
+    }
+    Ok(())
+}
+
+pub fn sync_data(
+    source: &str, target: &str, options: Vec<&str>, user: User
+) -> Result<(), FlakeError> {
+    /*!
+    Sync data from source path to target path
+    !*/
+    let mut call = user.run("rsync");
+    call.arg("-av");
+    for option in options {
+        call.arg(option);
+    }
+    call.arg(source).arg(target);
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
+    let output = call.output()?;
+    if Lookup::is_debug() {
+        debug!("{}", &String::from_utf8_lossy(&output.stdout));
+        debug!("{}", &String::from_utf8_lossy(&output.stderr));
+    }
+    if !output.status.success() {
+        return Err(FlakeError::SyncFailed)
     }
     Ok(())
 }

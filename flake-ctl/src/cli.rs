@@ -155,6 +155,12 @@ pub enum Firecracker {
         /// specified multiple times.
         #[clap(long, multiple = true, requires = "overlay-size")]
         include_tar: Option<Vec<String>>,
+
+        /// Name of a file or directory to be included on top of
+        /// the VM instance. This option can be
+        /// specified multiple times.
+        #[clap(long, multiple = true, requires = "overlay-size")]
+        include_path: Option<Vec<String>>,
     },
     /// Remove application registration or entire VM
     #[clap(group(
@@ -253,6 +259,12 @@ pub enum Podman {
         /// specified multiple times.
         #[clap(long, multiple = true)]
         include_tar: Option<Vec<String>>,
+
+        /// Name of a file or directory to be included on top of
+        /// the VM instance. This option can be
+        /// specified multiple times.
+        #[clap(long, multiple = true)]
+        include_path: Option<Vec<String>>,
 
         /// Resume the container from previous execution.
         /// If the container is still running, the app will be

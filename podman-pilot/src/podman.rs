@@ -113,6 +113,8 @@ pub fn create(
     include:
       tar:
         - tar-archive-file-name-to-include
+      path:
+        - file-or-directory-to-include
     !*/
     // Read optional @NAME pilot argument to differentiate
     // simultaneous instances of the same container application
@@ -227,13 +229,23 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     let runas = config().runtime().runas;
 
     let is_delta_container = config().container.base_container.is_some();
-    let has_includes = !config().tars().is_empty();
+    let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
 
-    let instance_mount_point = if is_delta_container || has_includes {
+    let instance_mount_point;
+
+    if is_delta_container || has_includes {
         if Lookup::is_debug() {
             debug!("Mounting instance for provisioning workload");
         }
-        mount_container(&cid, runas, false)?
+        match mount_container(&cid, runas, false) {
+            Ok(mount_point) => {
+                instance_mount_point = mount_point;
+            },
+            Err(error) => {
+                call_instance("rm", &cid, "none", runas)?;
+                return Err(error);
+            }
+        }
     } else {
         return Ok(cid);
     };
@@ -261,7 +273,12 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             }
             let app_mount_point = mount_container(layer, runas, true)?;
             update_removed_files(&app_mount_point, &removed_files)?;
-            sync_delta(&app_mount_point, &instance_mount_point, runas)?;
+            sync_data(
+                &format!("{}/", app_mount_point),
+                &format!("{}/", instance_mount_point),
+                [].to_vec(),
+                runas
+            )?;
 
             let _ = umount_container(layer, runas, true);
         }
@@ -277,7 +294,13 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         if Lookup::is_debug() {
             debug!("Syncing includes...");
         }
-        sync_includes(&instance_mount_point, runas)?;
+        match sync_includes(&instance_mount_point, runas) {
+            Ok(_) => { },
+            Err(error) => {
+                call_instance("rm", &cid, "none", runas)?;
+                return Err(error);
+            }
+        }
     }
     Ok(cid)
 }
@@ -417,10 +440,11 @@ pub fn sync_includes(
     Sync custom include data to target path
     !*/
     let tar_includes = &config().tars();
+    let path_includes = &config().paths();
     
     for tar in tar_includes {
         if Lookup::is_debug() {
-            debug!("Adding tar include: [{}]", tar);
+            debug!("Provision tar archive: [{}]", tar);
         }
         let mut call = user.run("tar");
         call.arg("-C").arg(target)
@@ -434,25 +458,41 @@ pub fn sync_includes(
             debug!("{}", &String::from_utf8_lossy(&output.stderr));
         }
     }
+    for path in path_includes {
+        if Lookup::is_debug() {
+            debug!("Provision path: [{}]", path);
+        }
+        sync_data(
+            path, &format!("{}/{}", target, path),
+            ["--mkpath"].to_vec(), user
+        )?;
+    }
     Ok(())
 }
 
-pub fn sync_delta(
-    source: &String, target: &String, user: User
-) -> Result<(), CommandError> {
+pub fn sync_data(
+    source: &str, target: &str, options: Vec<&str>, user: User
+) -> Result<(), FlakeError> {
     /*!
     Sync data from source path to target path
     !*/
     let mut call = user.run("rsync");
-    call.arg("-av")
-        .arg(format!("{}/", &source))
-        .arg(format!("{}/", &target));
+    call.arg("-av");
+    for option in options {
+        call.arg(option);
+    }
+    call.arg(source).arg(target);
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-
-    call.perform()?;
-
+    let output = call.output()?;
+    if Lookup::is_debug() {
+        debug!("{}", &String::from_utf8_lossy(&output.stdout));
+        debug!("{}", &String::from_utf8_lossy(&output.stderr));
+    }
+    if !output.status.success() {
+        return Err(FlakeError::SyncFailed)
+    }
     Ok(())
 }
 

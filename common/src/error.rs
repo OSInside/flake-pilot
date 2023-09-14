@@ -51,6 +51,9 @@ pub enum FlakeError {
     #[error("Instance in use by another instance, consider @NAME argument")]
     AlreadyRunning,
 
+    #[error("Datasync failed, for details rerun with PILOT_DEBUG=1")]
+    SyncFailed,
+
     /// OperationError pass through
     #[error("{}", .0)]
     OperationError(#[from] OperationError)

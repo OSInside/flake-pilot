@@ -121,12 +121,17 @@ impl<'a> Config<'a> {
     pub fn tars(&self) -> Vec<&'a str> {
         self.include.tar.as_ref().cloned().unwrap_or_default()
     }
+
+    pub fn paths(&self) -> Vec<&'a str> {
+        self.include.path.as_ref().cloned().unwrap_or_default()
+    }
 }
 
 #[derive(Deserialize)]
 pub struct IncludeSection<'a> {
     #[serde(borrow)]
-    tar: Option<Vec<&'a str>>
+    tar: Option<Vec<&'a str>>,
+    path: Option<Vec<&'a str>>,
 }
 
 #[derive(Deserialize)]

@@ -23,6 +23,7 @@
 //
 use flakes::user::{User, chmod, mkdir};
 use flakes::lookup::Lookup;
+use flakes::io::IO;
 use spinoff::{Spinner, spinners, Color};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -106,15 +107,15 @@ pub fn create(
           - --rm
           - -ti
 
-      Calling this method returns a vector including the
-      container ID and and the name of the container ID
-      file.
-
     include:
       tar:
         - tar-archive-file-name-to-include
       path:
         - file-or-directory-to-include
+
+    Calling this method returns a vector including the
+    container ID and and the name of the container ID
+    file.
     !*/
     // Read optional @NAME pilot argument to differentiate
     // simultaneous instances of the same container application
@@ -273,7 +274,7 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             }
             let app_mount_point = mount_container(layer, runas, true)?;
             update_removed_files(&app_mount_point, &removed_files)?;
-            sync_data(
+            IO::sync_data(
                 &format!("{}/", app_mount_point),
                 &format!("{}/", instance_mount_point),
                 [].to_vec(),
@@ -294,7 +295,9 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         if Lookup::is_debug() {
             debug!("Syncing includes...");
         }
-        match sync_includes(&instance_mount_point, runas) {
+        match IO::sync_includes(
+            &instance_mount_point, config().tars(), config().paths(), runas
+        ) {
             Ok(_) => { },
             Err(error) => {
                 call_instance("rm", &cid, "none", runas)?;
@@ -430,69 +433,6 @@ pub fn umount_container(
         debug!("{:?}", call.get_args());
     }
     call.perform()?;
-    Ok(())
-}
-
-pub fn sync_includes(
-    target: &String, user: User
-) -> Result<(), FlakeError> {
-    /*!
-    Sync custom include data to target path
-    !*/
-    let tar_includes = &config().tars();
-    let path_includes = &config().paths();
-    
-    for tar in tar_includes {
-        if Lookup::is_debug() {
-            debug!("Provision tar archive: [{}]", tar);
-        }
-        let mut call = user.run("tar");
-        call.arg("-C").arg(target)
-            .arg("-xf").arg(tar);
-        if Lookup::is_debug() {
-            debug!("{:?}", call.get_args());
-        }
-        let output = call.perform()?;
-        if Lookup::is_debug() {
-            debug!("{}", &String::from_utf8_lossy(&output.stdout));
-            debug!("{}", &String::from_utf8_lossy(&output.stderr));
-        }
-    }
-    for path in path_includes {
-        if Lookup::is_debug() {
-            debug!("Provision path: [{}]", path);
-        }
-        sync_data(
-            path, &format!("{}/{}", target, path),
-            ["--mkpath"].to_vec(), user
-        )?;
-    }
-    Ok(())
-}
-
-pub fn sync_data(
-    source: &str, target: &str, options: Vec<&str>, user: User
-) -> Result<(), FlakeError> {
-    /*!
-    Sync data from source path to target path
-    !*/
-    let mut call = user.run("rsync");
-    call.arg("-av");
-    for option in options {
-        call.arg(option);
-    }
-    call.arg(source).arg(target);
-    if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
-    }
-    let output = call.output()?;
-    if Lookup::is_debug() {
-        debug!("{}", &String::from_utf8_lossy(&output.stdout));
-        debug!("{}", &String::from_utf8_lossy(&output.stderr));
-    }
-    if !output.status.success() {
-        return Err(FlakeError::SyncFailed)
-    }
     Ok(())
 }
 

@@ -80,7 +80,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, run_as, overlay_size, no_net, resume,
-                    include_tar
+                    include_tar, include_path
                 } => {
                     if app::init(Some(app)) {
                         let mut ok = app::register(
@@ -96,7 +96,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 overlay_size.as_ref(),
                                 *no_net,
                                 *resume,
-                                include_tar.as_ref().cloned()
+                                include_tar.as_ref().cloned(),
+                                include_path.as_ref().cloned(),
                             );
                         }
                         if ! ok {
@@ -140,7 +141,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Podman::Register {
                     container, app, target, base,
-                    layer, include_tar, resume, attach, run_as, opt, info
+                    layer, include_tar, include_path, resume, attach,
+                    run_as, opt, info
                 } => {
                     if *info {
                         podman::print_container_info(container);
@@ -157,6 +159,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 base.as_ref(),
                                 layer.as_ref().cloned(),
                                 include_tar.as_ref().cloned(),
+                                include_path.as_ref().cloned(),
                                 *resume,
                                 *attach,
                                 run_as.as_ref(),

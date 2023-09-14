@@ -56,6 +56,7 @@ pub struct AppContainerRuntime {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppInclude {
     pub tar: Option<Vec<String>>,
+    pub path: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +96,7 @@ impl AppConfig {
         base: Option<&String>,
         layers: Option<Vec<String>>,
         includes_tar: Option<Vec<String>>,
+        includes_path: Option<Vec<String>>,
         resume: bool,
         attach: bool,
         run_as: Option<&String>,
@@ -142,6 +144,11 @@ impl AppConfig {
                 includes_tar.as_ref().unwrap().to_vec()
             );
         }
+        if includes_path.is_some() {
+            yaml_config.include.path = Some(
+                includes_path.as_ref().unwrap().to_vec()
+            );
+        }
         if opts.is_some() {
             let mut final_opts: Vec<String> = Vec::new();
             for opt in opts.as_ref().unwrap() {
@@ -176,6 +183,7 @@ impl AppConfig {
         no_net: bool,
         resume: bool,
         includes_tar: Option<Vec<String>>,
+        includes_path: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
         /*!
         save stores an AppConfig to the given file
@@ -202,6 +210,11 @@ impl AppConfig {
         if includes_tar.is_some() {
             yaml_config.include.tar = Some(
                 includes_tar.as_ref().unwrap().to_vec()
+            );
+        }
+        if includes_path.is_some() {
+            yaml_config.include.path = Some(
+                includes_path.as_ref().unwrap().to_vec()
             );
         }
         if let Some(overlay_size) = overlay_size {

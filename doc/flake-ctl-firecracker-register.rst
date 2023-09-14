@@ -18,6 +18,7 @@ SYNOPSIS
    OPTIONS:
        --app <APP>
        --include-tar <INCLUDE_TAR>...
+       --include-path <INCLUDE_PATH>...
        --no-net
        --resume
        --overlay-size <OVERLAY_SIZE>
@@ -53,6 +54,11 @@ OPTIONS
 --include-tar <INCLUDE_TAR>...
 
   Name of a tar file to be included on top of the VM instance.
+  This option can be specified multiple times
+
+--include-path <INCLUDE_PATH>...
+
+  Name of a file or directory to be included on top of the VM instance.
   This option can be specified multiple times
 
 --no-net

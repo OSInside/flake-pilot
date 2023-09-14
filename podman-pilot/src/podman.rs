@@ -23,6 +23,7 @@
 //
 use flakes::user::{User, chmod, mkdir};
 use flakes::lookup::Lookup;
+use flakes::io::IO;
 use spinoff::{Spinner, spinners, Color};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -106,13 +107,15 @@ pub fn create(
           - --rm
           - -ti
 
-      Calling this method returns a vector including the
-      container ID and and the name of the container ID
-      file.
-
     include:
       tar:
         - tar-archive-file-name-to-include
+      path:
+        - file-or-directory-to-include
+
+    Calling this method returns a vector including the
+    container ID and and the name of the container ID
+    file.
     !*/
     // Read optional @NAME pilot argument to differentiate
     // simultaneous instances of the same container application
@@ -227,13 +230,23 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     let runas = config().runtime().runas;
 
     let is_delta_container = config().container.base_container.is_some();
-    let has_includes = !config().tars().is_empty();
+    let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
 
-    let instance_mount_point = if is_delta_container || has_includes {
+    let instance_mount_point;
+
+    if is_delta_container || has_includes {
         if Lookup::is_debug() {
             debug!("Mounting instance for provisioning workload");
         }
-        mount_container(&cid, runas, false)?
+        match mount_container(&cid, runas, false) {
+            Ok(mount_point) => {
+                instance_mount_point = mount_point;
+            },
+            Err(error) => {
+                call_instance("rm", &cid, "none", runas)?;
+                return Err(error);
+            }
+        }
     } else {
         return Ok(cid);
     };
@@ -261,7 +274,12 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             }
             let app_mount_point = mount_container(layer, runas, true)?;
             update_removed_files(&app_mount_point, &removed_files)?;
-            sync_delta(&app_mount_point, &instance_mount_point, runas)?;
+            IO::sync_data(
+                &format!("{}/", app_mount_point),
+                &format!("{}/", instance_mount_point),
+                [].to_vec(),
+                runas
+            )?;
 
             let _ = umount_container(layer, runas, true);
         }
@@ -277,7 +295,15 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         if Lookup::is_debug() {
             debug!("Syncing includes...");
         }
-        sync_includes(&instance_mount_point, runas)?;
+        match IO::sync_includes(
+            &instance_mount_point, config().tars(), config().paths(), runas
+        ) {
+            Ok(_) => { },
+            Err(error) => {
+                call_instance("rm", &cid, "none", runas)?;
+                return Err(error);
+            }
+        }
     }
     Ok(cid)
 }
@@ -407,52 +433,6 @@ pub fn umount_container(
         debug!("{:?}", call.get_args());
     }
     call.perform()?;
-    Ok(())
-}
-
-pub fn sync_includes(
-    target: &String, user: User
-) -> Result<(), FlakeError> {
-    /*!
-    Sync custom include data to target path
-    !*/
-    let tar_includes = &config().tars();
-    
-    for tar in tar_includes {
-        if Lookup::is_debug() {
-            debug!("Adding tar include: [{}]", tar);
-        }
-        let mut call = user.run("tar");
-        call.arg("-C").arg(target)
-            .arg("-xf").arg(tar);
-        if Lookup::is_debug() {
-            debug!("{:?}", call.get_args());
-        }
-        let output = call.perform()?;
-        if Lookup::is_debug() {
-            debug!("{}", &String::from_utf8_lossy(&output.stdout));
-            debug!("{}", &String::from_utf8_lossy(&output.stderr));
-        }
-    }
-    Ok(())
-}
-
-pub fn sync_delta(
-    source: &String, target: &String, user: User
-) -> Result<(), CommandError> {
-    /*!
-    Sync data from source path to target path
-    !*/
-    let mut call = user.run("rsync");
-    call.arg("-av")
-        .arg(format!("{}/", &source))
-        .arg(format!("{}/", &target));
-    if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
-    }
-
-    call.perform()?;
-
     Ok(())
 }
 

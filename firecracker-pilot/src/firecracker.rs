@@ -23,6 +23,7 @@
 //
 use std::ffi::OsStr;
 use std::{thread, time};
+use flakes::io::IO;
 use flakes::command::{CommandError, handle_output, CommandExtTrait};
 use flakes::error::{FlakeError, OperationError};
 use flakes::user::{User, mkdir};
@@ -150,9 +151,15 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
           # Optional path to initrd image done by app registration
           initrd_path: /var/lib/firecracker/images/NAME/initrd
 
-      Calling this method returns a vector including a placeholder
-      for the later VM process ID and and the name of
-      the VM ID file.
+      include:
+        tar:
+          - tar-archive-file-name-to-include
+        path:
+          - file-or-directory-to-include
+
+    Calling this method returns a vector including a placeholder
+    for the later VM process ID and and the name of
+    the VM ID file.
     !*/
     if ! Lookup::which(defaults::FIRECRACKER) {
         return Err(FlakeError::IOError {
@@ -172,7 +179,8 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // check for includes
     let tar_includes = config().tars();
-    let has_includes = !tar_includes.is_empty();
+    let path_includes = config().paths();
+    let has_includes = !tar_includes.is_empty() || !path_includes.is_empty();
 
     // Make sure meta dirs exists
     init_meta_dirs()?;
@@ -273,7 +281,9 @@ fn run_creation(
                 if Lookup::is_debug() {
                     debug!("Syncing includes...");
                 }
-                sync_includes(&vm_mount_point, User::ROOT)?;
+                IO::sync_includes(
+                    &vm_mount_point, config().tars(), config().paths(), User::ROOT
+                )?;
             }
             umount_vm(tmp_dir, User::ROOT)?;
         }
@@ -819,33 +829,6 @@ pub fn delete_file(filename: &String, user: User) -> bool {
         }
     }
     true
-}
-
-// Todo: unifiy with podman
-pub fn sync_includes(
-    target: &String, user: User
-) -> Result<(), FlakeError> {
-    /*!
-    Sync custom include data to target path
-    !*/
-    let tar_includes = &config().tars();
-    for tar in tar_includes {
-        if Lookup::is_debug() {
-            debug!("Adding tar include: [{}]", tar);
-        }
-        let mut call = user.run("tar");
-        call.arg("-C").arg(target)
-            .arg("-xf").arg(tar);
-        if Lookup::is_debug() {
-            debug!("{:?}", call.get_args());
-        }
-        let output = call.perform()?;
-        if Lookup::is_debug() {
-            debug!("{}", &String::from_utf8_lossy(&output.stdout));
-            debug!("{}", &String::from_utf8_lossy(&output.stderr));
-        }
-    }
-    Ok(())
 }
 
 pub fn mount_vm(

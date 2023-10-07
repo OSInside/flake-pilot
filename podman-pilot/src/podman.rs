@@ -21,25 +21,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use crate::defaults;
+use crate::config::{RuntimeSection, config};
+
 use flakes::user::{User, chmod, mkdir};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
-use spinoff::{Spinner, spinners, Color};
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::env;
-use std::fs;
-use crate::config::{RuntimeSection, config};
 use flakes::error::FlakeError;
 use flakes::command::{CommandError, CommandExtTrait};
-use tempfile::tempfile;
+use flakes::config::get_podman_ids_dir;
+
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
+use std::env;
+use std::fs;
 use std::io::{Write, Read};
 use std::fs::File;
 use std::io::Seek;
 use std::io::SeekFrom;
-use flakes::config::get_podman_ids_dir;
 
-use crate::defaults;
+use spinoff::{Spinner, spinners, Color};
+use tempfile::tempfile;
+use regex::Regex;
 
 pub fn create(
     program_name: &String
@@ -143,9 +146,7 @@ pub fn create(
     if Path::new(&container_cid_file).exists() && gc_cid_file(&container_cid_file, runas)? && (resume || attach) {
         // resume or attach mode is active and container exists
         // report ID value and its ID file name
-
         let cid = fs::read_to_string(&container_cid_file)?;
-
         return Ok((cid, container_cid_file));
     }
 
@@ -165,7 +166,7 @@ pub fn create(
         if !resume {
             app.arg("--rm");
         }
-        app.arg("-ti");
+        app.arg("--tty").arg("--interactive");
     }
 
     // setup container name to use
@@ -223,11 +224,32 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     /*!
     Create and provision container prior start
     !*/
-    let output = app.perform()?;
+    let RuntimeSection { runas, resume, .. } = config().runtime();
+
+    let output: Output = match app.perform() {
+        Ok(output) => {
+            output
+        }
+        Err(error) => {
+            if resume {
+                // Cleanup potentially left over container instance from an
+                // inconsistent state, e.g powerfail
+                if Lookup::is_debug() {
+                    debug!("Force cleanup container instance...");
+                }
+                let error_pattern = Regex::new(r"in use by (.*)\.").unwrap();
+                if let Some(captures) = error_pattern.captures(&format!("{:?}", error.base)) {
+                    let cid = captures.get(1).unwrap().as_str();
+                    call_instance("rm_force", cid, "none", runas)?;
+                }
+                app.perform()?
+            } else {
+                return Err(FlakeError::CommandError(error))
+            }
+        }
+    };
 
     let cid = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned();
-
-    let runas = config().runtime().runas;
 
     let is_delta_container = config().container.base_container.is_some();
     let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
@@ -357,11 +379,15 @@ pub fn call_instance(
     let RuntimeSection { resume, .. } = config().runtime();
 
     let mut call = user.run("podman");
-    if action == "create" || action == "rm" {
+    if action == "rm" || action == "rm_force" {
         call.stderr(Stdio::null());
         call.stdout(Stdio::null());
     }
-    call.arg(action);
+    if action == "rm_force" {
+        call.arg("rm").arg("--force");
+    } else {
+        call.arg(action);
+    }
     if action == "exec" {
         call.arg("--interactive");
         call.arg("--tty");

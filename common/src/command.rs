@@ -21,14 +21,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::{fmt::{Display, Write}, process::{Command, Output, CommandArgs}, ffi::OsStr};
+use std::fmt::{Display, Write};
+use std::process::{Command, Output, CommandArgs};
+use std::ffi::OsStr;
 use thiserror::Error;
 
 pub trait CommandExtTrait {
-    /// Execute this command and return:
+    /// Execute command via output() and return:
     /// 
     /// 1. An IO Error if the command could not be run
-    /// 2. An Execution Error if the Command was not successfull
+    /// 2. An ExecutionError if the Command was not successfull
     /// 3. The [Output] of the Command if the command was executed successfully
     /// 
     /// Attaches all args to the resulting error
@@ -44,7 +46,9 @@ impl CommandExtTrait for Command {
     }
 }
 
-pub fn handle_output(maybe_output: Result<Output, std::io::Error>, args: CommandArgs) -> Result<std::process::Output, CommandError> {
+pub fn handle_output(
+    maybe_output: Result<Output, std::io::Error>, args: CommandArgs
+) -> Result<std::process::Output, CommandError> {
     let out = maybe_output.map_err(ProcessError::IO);
 
     let error: ProcessError = match out {
@@ -57,21 +61,25 @@ pub fn handle_output(maybe_output: Result<Output, std::io::Error>, args: Command
         }
         Err(error) => error,
     };
-
-    Err(CommandError {
-        base: error,
-        args: args
-            .flat_map(OsStr::to_str)
-            .map(ToOwned::to_owned)
-            .collect(),
-    })
+    // Provide caller arguments in addition to the error
+    Err(
+        CommandError {
+            base: error,
+            args: args
+                .flat_map(OsStr::to_str)
+                .map(ToOwned::to_owned)
+                .collect(),
+        }
+    )
 }
 
 #[derive(Debug, Error)]
 pub enum ProcessError {
+    // The command could not be called
     #[error(transparent)]
     IO(#[from] std::io::Error),
-    // The Command terminated correctly but with unwanted results (e.g. wrong return code)
+
+    // The Command could be called but has a non zero exit status
     #[error("The process failed with status {}", .0.status)]
     ExecutionError(std::process::Output),
 }
@@ -95,37 +103,20 @@ impl CommandError {
             base,
         }
     }
-
-    pub fn with(&mut self, arg: String) -> &mut Self {
-        self.args.push(arg);
-        self
-    }
 }
 
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_char('"')?;
         for arg in self.args.iter() {
             f.write_str(arg)?;
             f.write_char(' ')?;
         }
+        f.write_char('"')?;
+        f.write_char(':')?;
+        f.write_char(' ')?;
+        f.write_str(format!("{:?}", self.base).as_str())?;
+        f.write_char(' ')?;
         std::fmt::Display::fmt(&self.base, f)
-    }
-}
-
-impl From<std::process::Output> for CommandError {
-    fn from(value: std::process::Output) -> Self {
-        Self {
-            base: value.into(),
-            args: Default::default(),
-        }
-    }
-}
-
-impl From<ProcessError> for CommandError {
-    fn from(value: ProcessError) -> Self {
-        Self {
-            base: value,
-            args: Default::default(),
-        }
     }
 }

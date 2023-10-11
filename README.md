@@ -32,7 +32,12 @@ OCI container or a FireCracker VM. There are two main components:
 ## Installation <a name="installation"/>
 
 flake-pilot components are written in rust and available as packages
-here: https://build.opensuse.org/package/show/home:marcus.schaefer:delta_containers/flake-pilot
+for SUSE ALP as follows:
+
+```bash
+zypper addrepo https://download.opensuse.org/repositories/home:/marcus.schaefer:/EOS/ALP/
+zypper install flake-pilot flake-pilot-podman flake-pilot-firecracker
+```
 
 Manual compilation and installation can be done as follows:
 

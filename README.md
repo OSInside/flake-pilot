@@ -132,7 +132,7 @@ Start an application as virtual machine (VM) instance as follows:
 
    ```bash 
    flake-ctl firecracker pull --name leap \
-       --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images/firecracker-basesystem.x86_64.tar.xz
+       --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images_leap/firecracker-basesystem.$(uname -m).tar.xz
    ```
 
 2. Register the ```mybash``` application

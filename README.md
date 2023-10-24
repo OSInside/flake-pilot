@@ -337,7 +337,7 @@ looks like the following:
 Please consult the manual pages for detailed information 
 about the contents of the flake setup.
 
-https://github.com/Elektrobit/flake-pilot/tree/master/doc
+https://github.com/OSInside/flake-pilot/tree/master/doc
 
 ## How To Build Your Own App Images <a name="images"/>
 

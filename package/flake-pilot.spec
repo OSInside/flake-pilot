@@ -47,7 +47,6 @@ BuildRequires:  cargo
 BuildRequires:  upx
 BuildRequires:  openssl-devel
 BuildRequires:  glibc-devel-static
-BuildRequires:  kiwi-settings
 BuildRequires:  python3-Pygments
 %endif
 %if 0%{?debian} || 0%{?ubuntu}

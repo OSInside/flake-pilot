@@ -14,4 +14,5 @@ spinoff = { version = "0.7" }
 lazy_static = { version = "1.4" }
 serde = { version = "1.0", features = ["derive"]}
 serde_yaml = { version = "0.9" }
+regex = { version = "1.9" }
 flakes = { version = "3.0.1", path = "../common" }

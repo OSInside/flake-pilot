@@ -4,6 +4,7 @@ PREFIX ?= /usr
 BINDIR ?= ${PREFIX}/bin
 SBINDIR ?= ${PREFIX}/sbin
 SHAREDIR ?= ${PREFIX}/share/podman-pilot
+COMPLETIONDIR ?= ${PREFIX}/share/bash-completion/completions
 FLAKEDIR ?= ${PREFIX}/share/flakes
 TEMPLATEDIR ?= /etc/flakes
 
@@ -34,6 +35,7 @@ sourcetar:
 	mkdir package/flake-pilot
 	cp Makefile package/flake-pilot
 	cp flakes.yml package/flake-pilot
+	cp -a completion package/flake-pilot/
 	cp -a common package/flake-pilot/
 	cp -a podman-pilot package/flake-pilot/
 	cp -a flake-ctl package/flake-pilot/
@@ -95,6 +97,7 @@ install:
 	install -d -m 755 $(DESTDIR)$(BINDIR)
 	install -d -m 755 $(DESTDIR)$(SBINDIR)
 	install -d -m 755 $(DESTDIR)$(SHAREDIR)
+	install -d -m 755 $(DESTDIR)$(COMPLETIONDIR)
 	install -d -m 755 $(DESTDIR)$(TEMPLATEDIR)
 	install -d -m 755 $(DESTDIR)$(FLAKEDIR)
 	install -d -m 755 ${DESTDIR}/usr/share/man/man8
@@ -119,9 +122,8 @@ install:
 	install -m 644 doc/*.8 ${DESTDIR}/usr/share/man/man8
 	install -m 755 utils/* $(DESTDIR)$(SBINDIR)
 	# completion
-	install -d -m 755 ${buildroot}usr/share/bash-completion/completions
 	install -m 755 completion/flake-ctl \
-		${buildroot}usr/share/bash-completion/completions/flake-ctl
+		$(DESTDIR)$(COMPLETIONDIR)
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl

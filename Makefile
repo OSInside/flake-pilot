@@ -118,6 +118,10 @@ install:
 		$(DESTDIR)$(TEMPLATEDIR)/firecracker.json
 	install -m 644 doc/*.8 ${DESTDIR}/usr/share/man/man8
 	install -m 755 utils/* $(DESTDIR)$(SBINDIR)
+	# completion
+	install -d -m 755 ${buildroot}usr/share/bash-completion/completions
+	install -m 755 completion/flake-ctl \
+		${buildroot}usr/share/bash-completion/completions/flake-ctl
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl

@@ -1,0 +1,165 @@
+#!/bin/bash
+# shellcheck shell=bash
+
+__flake_ctl_firecracker_pull() {
+    __comp_reply_unused "
+        --force
+        --initrd
+        --kernel
+        --kis-image
+        --name
+        --rootfs
+        --help
+    "
+}
+
+__flake_ctl_firecracker_help() {
+    :
+}
+
+__flake_ctl_firecracker_register() {
+    __comp_reply_unused "
+        --app
+        --include-tar
+        --include-path
+        --no-net
+        --overlay-size
+        --resume
+        --run-as
+        --target
+        --vm
+        --help
+    "
+}
+
+__flake_ctl_firecracker_remove() {
+    __comp_reply_unused "--app --vm --help"
+}
+
+__flake_ctl_help() {
+    __comp_reply ""
+}
+
+__flake_ctl_list() {
+    __comp_reply_unused "--help"
+}
+
+__flake_ctl_podman_pull() {
+    __comp_reply_unused "--uri --help"
+}
+
+__flake_ctl_podman_help() {
+    __comp_reply ""
+}
+
+__flake_ctl_podman_register() {
+    __comp_reply_unused "
+        --app
+        --attach
+        --base
+        --container
+        --include-tar
+        --include-path
+        --info
+        --layer
+        --opt
+        --resume
+        --run-as
+        --target
+        --help
+    "
+}
+
+__flake_ctl_podman_remove() {
+    __comp_reply_unused "--app --container --help"
+}
+
+__flake_ctl_podman_load() {
+    __comp_reply_unused "--oci --help"
+}
+
+__flake_ctl_complete_command() {
+    local command="$1"
+    local completion_func="__flake_ctl_${command//-/_}"
+    $completion_func
+    return 0
+}    
+
+function __comp_reply_unused {
+    local available
+    local used
+    for option in $1;do
+        used=0
+        for item in ${COMP_LINE}; do
+            if [ "${item}" = "${option}" ];then
+                used=1; break
+            fi
+        done
+        if [ "${used}" = 0 ];then
+            available="${available} ${option}"
+        fi
+    done
+    __comp_reply "${available}"
+}
+        
+__comp_reply() {
+    word_list=$*
+    readarray -t COMPREPLY < <(compgen -W "$word_list" -- "${cur}")
+}       
+
+__flake_ctl_main() {
+    local cur cword
+    _init_completion || return
+    _get_comp_words_by_ref cur prev
+
+    if [ "${cword}" -gt 1 ];then
+        for comp in ${COMP_WORDS[1]}_${COMP_WORDS[2]};do
+            case "$comp" in
+            podman_load| \
+            podman_help| \
+            podman_pull| \
+            podman_register| \
+            podman_remove| \
+            firecracker_remove| \
+            firecracker_help| \
+            firecracker_pull| \
+            firecracker_register)
+                __flake_ctl_complete_command "${comp}" && return 0
+                ;;
+            firecracker_*)
+                command="firecracker" && __comp_reply "
+                    help pull register remove
+                " && return 0
+                ;;
+            podman_*)
+                command="podman" && __comp_reply "
+                    help load pull register remove
+                " && return 0
+                ;;
+            help_*)
+                command="help" && __comp_reply "" && return 0
+                ;;
+            list_*)
+                command="list" && __comp_reply "" && return 0
+                ;;
+            esac
+        done
+    fi
+
+    if (( COMP_CWORD == 1 )); then
+        __comp_reply "
+            --help
+            --version
+            firecracker
+            help
+            list
+            podman
+        "
+        return 0
+    fi
+
+    # Back to default file completion
+    COMPREPLY=()
+}
+
+complete -o bashdefault -o default -F __flake_ctl_main flake-ctl

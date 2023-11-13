@@ -181,6 +181,7 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %dir /etc/flakes
 %config /etc/flakes.yml
 /usr/bin/flake-ctl
+%{_usr}/share/bash-completion/completions/flake-ctl
 %doc /usr/share/man/man8/flake-ctl.8.gz
 %doc /usr/share/man/man8/flake-ctl-list.8.gz
 

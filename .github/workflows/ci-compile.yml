@@ -24,4 +24,4 @@ jobs:
           sudo mv /bin/sh.bash /bin/sh
       - name: Compile
         run: |
-          make cargo
+          make compile

@@ -55,7 +55,7 @@ regarding filesystems are stored in the firecracker.json
 file for the individual instance. Having this in mind, the desired values should
 ideally be set in the belonging file.
 
-.. _repository: https://github.com/Elektrobit/flake-pilot/tree/master/firecracer-pilot/template
+.. _repository: https://github.com/OSInside/flake-pilot/tree/main/firecracker-pilot/template
 
 For a working example refer to the firecracker.json template at the offical
 repository_

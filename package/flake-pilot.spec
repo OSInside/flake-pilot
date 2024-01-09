@@ -2,6 +2,7 @@
 # spec file for package flake-pilot
 #
 # Copyright (c) 2022 Elektrobit Automotive GmbH
+# Copyright (c) 2023 Marcus Schäfer
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal

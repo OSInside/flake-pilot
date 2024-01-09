@@ -37,9 +37,12 @@ use std::fs;
 use sys_mount::Mount;
 use env_logger::Env;
 use std::{thread, time};
-use vsock::{VsockListener};
+use vsock::{VsockListener, VsockStream};
 use std::io::Read;
 use std::net::Shutdown;
+use std::os::fd::AsRawFd;
+use std::io::Write;
+use pty::prelude::Fork;
 
 use crate::defaults::debug;
 
@@ -106,7 +109,8 @@ fn main() {
             let mut modprobe = Command::new(defaults::PROBE_MODULE);
             modprobe.arg("overlay");
             debug(&format!(
-                "CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
+                "SCI CALL: {} -> {:?}",
+                defaults::PROBE_MODULE, modprobe.get_args()
             ));
             match modprobe.status() {
                 Ok(_) => { },
@@ -199,7 +203,7 @@ fn main() {
                     let mut pivot = Command::new(defaults::PIVOT_ROOT);
                     pivot.arg(".").arg("mnt");
                     debug(&format!(
-                        "CALL: {} -> {:?}",
+                        "SCI CALL: {} -> {:?}",
                         defaults::PIVOT_ROOT, pivot.get_args()
                     ));
                     match pivot.status() {
@@ -240,7 +244,7 @@ fn main() {
             let mut modprobe = Command::new(defaults::PROBE_MODULE);
             modprobe.arg(defaults::VHOST_TRANSPORT);
             debug(&format!(
-                "CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
+                "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
             ));
             match modprobe.status() {
                 Ok(_) => { },
@@ -252,20 +256,8 @@ fn main() {
                 }
             }
             // start vsock listener on VM_PORT, wait for command(s) in a loop
-            // A received command turns into an socat process calling
-            // the command with an expected listener
-            // Example:
-            //
-            // sudo socat UNIX-CONNECT:/run/sci_cmd_XXX.sock -
-            // CONNECT defaults::VM_PORT(52)
-            // --> send the command to call and quit
-            //
-            // sudo socat VSOCK-CONNECT:2:exec_port EXEC:cmd
-            // --> connects to the listener instance on the host (pilot)
-            //
-            // The above procedure needs to be implemeted as
-            // part of the firecracker-pilot resume code
-            //
+            // A received command turns into a vsock stream process calling
+            // the command with an expected listener.
             debug(&format!(
                 "Binding vsock CID={} on port={}",
                 defaults::GUEST_CID, defaults::VM_PORT
@@ -302,42 +294,51 @@ fn main() {
                                     }
                                 };
                                 stream.shutdown(Shutdown::Both).unwrap();
+                                if call_str.is_empty() {
+                                    // Caused by handshake check from the
+                                    // pilot, if the vsock connection between
+                                    // guest and host can be established
+                                    continue
+                                }
                                 debug(&format!(
-                                    "CALL RAW BUF: {}", call_str
+                                    "SCI CALL RAW BUF: {:?}", call_str
                                 ));
                                 let mut call_stack: Vec<&str> =
                                     call_str.split(' ').collect();
                                 let exec_port = call_stack.pop().unwrap();
                                 let exec_cmd = call_stack.join(" ");
-                                call = Command::new(defaults::SOCAT);
-                                call
-                                    .arg(&format!(
-                                        "VSOCK-CONNECT:2:{}", exec_port
-                                    ))
-                                    .arg(&format!(
-                                        "EXEC:'{}',{},{},{},{},{},{},{}",
-                                        exec_cmd,
-                                        "pty",
-                                        "stderr",
-                                        "setsid",
-                                        "sigint",
-                                        "sane",
-                                        "ctty",
-                                        "echo=0"
-                                    ));
-                                debug(&format!(
-                                    "CALL: {} -> {:?}",
-                                    defaults::SOCAT, call.get_args()
-                                ));
-                                match call.spawn() {
-                                    Ok(_) => { },
+                                let mut exec_port_num = 0;
+                                match exec_port.parse::<u32>() {
+                                    Ok(num) => { exec_port_num = num },
                                     Err(error) => {
                                         debug(&format!(
-                                            "VSOCK-CONNECT failed with: {}",
-                                            error
+                                            "Failed to parse port: {}: {}",
+                                            exec_port, error
                                         ));
                                     }
                                 }
+                                debug(&format!(
+                                    "CALL SCI: {}", exec_cmd
+                                ));
+
+                                // Establish a VSOCK connection with the farend
+                                thread::spawn(move || {
+                                    match VsockStream::connect_with_cid_port(
+                                        2, exec_port_num
+                                    ) {
+                                        Ok(vsock_stream) => {
+                                            redirect_command(
+                                                &exec_cmd, vsock_stream
+                                            );
+                                        },
+                                        Err(error) => {
+                                            debug(&format!(
+                                                "VSOCK-CONNECT failed with: {}",
+                                                error
+                                            ));
+                                        }
+                                    }
+                                });
                             },
                             Err(error) => {
                                 debug(&format!(
@@ -365,7 +366,9 @@ fn main() {
                 call.exec();
             } else {
                 // call a command and keep control
-                debug(&format!("CALL: {} -> {:?}", &args[0], call.get_args()));
+                debug(&format!(
+                    "SCI CALL: {} -> {:?}", &args[0], call.get_args()
+                ));
                 let _ = call.status();
             }
         }
@@ -373,6 +376,213 @@ fn main() {
     
     // Close firecracker session
     do_reboot(ok)
+}
+
+fn redirect_command(command: &str, mut stream: vsock::VsockStream) {
+    // start the given command as a child process in a new PTY
+    // connect its standard channels to the stream
+    // transfer all channel data when there is data as long as the child exists
+    let fork = Fork::from_ptmx().unwrap();
+
+    if let Ok(mut master) = fork.is_parent() {
+        let stdout_fd = master.as_raw_fd();
+        let stream_fd = stream.as_raw_fd();
+
+        // main send/recv loop
+        let mut buffer = [0_u8; 100];
+        loop {
+            // prepare file descriptors to be watched for by select()
+            let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
+            let mut fdset = unsafe { raw_fdset.assume_init() };
+            let mut max_fd = -1;
+            unsafe { libc::FD_ZERO(&mut fdset) };
+            unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stdout_fd);
+            unsafe { libc::FD_SET(stream_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stream_fd);
+
+            // block this thread until something new happens
+            // on these file-descriptors
+            unsafe {
+                libc::select(
+                    max_fd + 1,
+                    &mut fdset,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                )
+            };
+            // this thread is not blocked any more,
+            // try to handle what happened on the file descriptors
+            if unsafe { libc::FD_ISSET(stdout_fd, &fdset) } {
+                // something new happened on master,
+                // try to receive some bytes an send them through the stream
+                if let Ok(sz_r) = master.read(&mut buffer) {
+                    if sz_r == 0 {
+                        debug("EOF detected on stdout");
+                        break;
+                    }
+                    if stream.write_all(&buffer[0..sz_r]).is_err() {
+                        debug("write failure on stream");
+                        break;
+                    }
+                } else {
+                    debug("read failure on process stdout");
+                    break;
+                }
+            }
+            if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
+                // something new happened on the stream
+                // try to receive some bytes an send them on stdin
+                if let Ok(sz_r) = stream.read(&mut buffer) {
+                    if sz_r == 0 {
+                        debug("EOF detected on stream");
+                        break;
+                    }
+                    if master.write_all(&buffer[0..sz_r]).is_err() {
+                        debug("write failure on stdin");
+                        break;
+                    }
+                } else {
+                    debug("read failure on stream");
+                    break;
+                }
+            }
+        }
+        let _ = fork.wait();
+    } else {
+        let mut call_args: Vec<&str> = command.split(' ').collect();
+        let program = call_args.remove(0);
+        let mut call = Command::new(program);
+        for arg in call_args {
+            call.arg(arg);
+        }
+        debug(&format!(
+            "SCI CALL: {} -> {:?}", program, call.get_args()
+        ));
+        match call.status() {
+            Ok(_) => { },
+            Err(error) => {
+                debug(&format!(
+                    "SCI guest command failed with: {}", error
+                ));
+            }
+        }
+    }
+    /* Code without PTY
+
+    let mut call_args: Vec<&str> = command.split(' ').collect();
+    let program = call_args.remove(0);
+    let mut call = Command::new(program);
+    call
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for arg in call_args {
+        call.arg(arg);
+    }
+    debug(&format!(
+        "SCI CALL: {} -> {:?}", program, call.get_args()
+    ));
+    match call.spawn() {
+        Ok(mut child) => {
+            // access useful I/O and file descriptors
+            let stdin = child.stdin.as_mut().unwrap();
+            let stdout = child.stdout.as_mut().unwrap();
+            let stderr = child.stderr.as_mut().unwrap();
+
+            let stream_fd = stream.as_raw_fd();
+            let stdout_fd = stdout.as_raw_fd();
+            let stderr_fd = stderr.as_raw_fd();
+            // main send/recv loop
+            let mut buffer = [0_u8; 100];
+            loop {
+                // prepare file descriptors to be watched for by select()
+                let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
+                let mut fdset = unsafe { raw_fdset.assume_init() };
+                let mut max_fd = -1;
+                unsafe { libc::FD_ZERO(&mut fdset) };
+                unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
+                max_fd = std::cmp::max(max_fd, stdout_fd);
+                unsafe { libc::FD_SET(stderr_fd, &mut fdset) };
+                max_fd = std::cmp::max(max_fd, stderr_fd);
+                unsafe { libc::FD_SET(stream_fd, &mut fdset) };
+                max_fd = std::cmp::max(max_fd, stream_fd);
+
+                // block this thread until something new happens
+                // on these file-descriptors
+                unsafe {
+                    libc::select(
+                        max_fd + 1,
+                        &mut fdset,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut()
+                    )
+                };
+                // this thread is not blocked any more,
+                // try to handle what happened on the file descriptors
+                if unsafe { libc::FD_ISSET(stdout_fd, &fdset) } {
+                    // something new happened on stdout,
+                    // try to receive some bytes an send them through the stream
+                    if let Ok(sz_r) = stdout.read(&mut buffer) {
+                        if sz_r == 0 {
+                            debug("EOF detected on stdout");
+                            break;
+                        }
+                        if stream.write_all(&buffer[0..sz_r]).is_err() {
+                            debug("write failure on stream");
+                            break;
+                        }
+                    } else {
+                        debug("read failure on process stdout");
+                        break;
+                    }
+                }
+                if unsafe { libc::FD_ISSET(stderr_fd, &fdset) } {
+                    // something new happened on stderr,
+                    // try to receive some bytes an send them through the stream
+                    if let Ok(sz_r) = stderr.read(&mut buffer) {
+                        if sz_r == 0 {
+                            debug("EOF detected on stderr");
+                            break;
+                        }
+                        if stream.write_all(&buffer[0..sz_r]).is_err() {
+                            debug("write failure on stream");
+                            break;
+                        }
+                    } else {
+                        debug("read failure on process stderr");
+                        break;
+                    }
+                }
+                if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
+                    // something new happened on the stream
+                    // try to receive some bytes an send them on stdin
+                    if let Ok(sz_r) = stream.read(&mut buffer) {
+                        if sz_r == 0 {
+                            debug("EOF detected on stream");
+                            break;
+                        }
+                        if stdin.write_all(&buffer[0..sz_r]).is_err() {
+                            debug("write failure on stdin");
+                            break;
+                        }
+                    } else {
+                        debug("read failure on stream");
+                        break;
+                    }
+                }
+            }
+            let _ = child.wait();
+        },
+        Err(error) => {
+            debug(&format!(
+                "SCI guest command failed with: {}", error
+            ));
+        }
+    }
+    */
 }
 
 fn do_reboot(ok: bool) {

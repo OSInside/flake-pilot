@@ -165,3 +165,4 @@ COPYRIGHT
 ---------
 
 (c) 2022, Elektrobit Automotive GmbH
+(c) 2023, Marcus Schäfer

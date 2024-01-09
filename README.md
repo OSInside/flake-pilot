@@ -1,9 +1,11 @@
 # Flake Pilot
 
+## Semi Transparent Container/VM instances
+
 1. [Introduction](#introduction)
+    1. [Use Cases](#usecases)
 2. [Installation](#installation)
 3. [Quick Start OCI containers](#oci)
-    1. [Use Cases](#usecases)
 4. [Quick Start FireCracker VMs](#fire)
     1. [Use FireCracker VM image from components](#components)
     2. [Networking](#networking)
@@ -28,6 +30,46 @@ OCI container or a FireCracker VM. There are two main components:
 
    ```flake-ctl``` is the management utility to list, register,
    remove, and-more... flake applications on your host.
+
+The main idea for flake-pilot was not only to launch isolated apps like
+native binaries but also allow to run a provision step prior calling
+the application. This concept then allows to run semi transparent
+container/VM instances which can take information from other places
+prior its execution. The following diagram visualizes this concept:
+
+![](images/transparency.png)
+
+As a result we see some interesting use cases described in the following
+section.
+
+### Use Cases <a name="usecases"/>
+
+* delta containers used together with a base container such that
+  only small delta containers gets pulled to the registry used with
+  a base that exists only once.
+
+* include arbitrary data without harming the host integrity e.g custom
+  binaries, proprietary software not following package guidelines and
+  standards, e.g automotive industry processes which we will not be
+  able to change in this live ;)
+
+* layering of several containers, e.g deltas on top of a base. Building
+  up a solution stack e.g base + python + python-app.
+
+* provisioning app dependencies from the host instead of providing them
+  in the container, e.g a delta container providing the app using a base
+  container but take the certificates or other sensitive information
+  from the host; three way dependency model.
+
+Actually all of the above use cases are immaterial if a proper packaging,
+release and maintenance of the application is possible. However, I have
+learned the world is not an ideal place and there might be a spot for
+this project to be useful, supporting users with "special" needs and
+adding an adaptive feature to the OS.
+
+For demo purposes and to showcase the mentioned use cases, some
+example images were created. See [How To Build Your Own App Images](#images)
+for further details
 
 ## Installation <a name="installation"/>
 
@@ -77,40 +119,6 @@ connected to the ```aws-cli``` container provided by Amazon on
    ```bash
    aws ec2 help
    ```
-
-### Use Cases <a name="usecases"/>
-
-Apart from this very simple example you can do a lot more. The main
-idea for flake-pilot was not only to launch container based apps but
-also allow to run a provision step prior calling the application.
-This concept then allows for use cases like:
-
-* delta containers used together with a base container such that
-  only small delta containers gets pulled to the registry used with
-  a base that exists only once.
-
-* include arbitrary data without harming the host integrity e.g custom
-  binaries, proprietary software not following package guidelines and
-  standards, e.g automotive industry processes which we will not be
-  able to change in this live ;)
-
-* layering of several containers, e.g deltas on top of a base. Building
-  up a solution stack e.g base + python + python-app.
-
-* provisioning app dependencies from the host instead of providing them
-  in the container, e.g a delta container providing the app using a base
-  container but take the certificates or other sensitive information
-  from the host; three way dependency model.
-
-Actually all of the above use cases are immaterial if a proper packaging,
-release and maintenance of the application is possible. However, I have
-learned the world is not an ideal place and there might be a spot for
-this project to be useful, supporting users with "special" needs and
-adding an adaptive feature to the OS.
-
-For demo purposes and to showcase the mentioned use cases, some
-example images were created. See [How To Build Your Own App Images](#images)
-for further details
 
 ## Quick Start FireCracker VMs <a name="fire"/>
 
@@ -346,14 +354,14 @@ One option is to use the **Open Build Service** which is able to build
 software packages and images and therefore allows to maintain the
 complete application stack. 
 
-For demo purposes and to showcase the mentioned <a name="usecases"/>
+For demo purposes and to showcase the mentioned [Use Cases](#usecases)
 some example images were created and could be considered as a simple
 ```flake store```. Please find them here:
 
 * https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers
 
 Feel free to browse through the project and have some fun testing. There
-is a short description in each application build how to use them.
+is a short description for each application how to use them.
 
 **_NOTE:_** All images are build using the
 [KIWI](https://github.com/OSInside/kiwi) appliance builder which is

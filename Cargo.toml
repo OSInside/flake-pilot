@@ -12,6 +12,7 @@ lto = false
 strip = false
 
 [workspace]
+resolver = "2"
 members = [
     "flake-ctl", 
     "podman-pilot", 

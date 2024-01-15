@@ -171,8 +171,24 @@ pub async fn pull_component_image(
                 let sci_in_image = format!(
                     "{}/{}", tmp_dir_path, "/usr/sbin/sci"
                 );
+                // required for overlay mount process
                 let overlay_root_in_image = format!(
                     "{}/{}", tmp_dir_path, "/overlayroot"
+                );
+                // required for /proc/sys/kernel/sysrq based force_reboot
+                let proc_in_image = format!(
+                    "{}/{}", tmp_dir_path, "/proc"
+                );
+                // required for pivot
+                let sys_in_image = format!(
+                    "{}/{}", tmp_dir_path, "/sys"
+                );
+                let dev_in_image = format!(
+                    "{}/{}", tmp_dir_path, "/dev"
+                );
+                // required for PTS allocation
+                let dev_pts_in_image = format!(
+                    "{}/{}", tmp_dir_path, "/dev/pts"
                 );
                 if ! Path::new(&sci_in_image).exists() {
                     info!("Copying sci to rootfs...");
@@ -184,6 +200,22 @@ pub async fn pull_component_image(
                     }
                 }
                 if ! Path::new(&overlay_root_in_image).exists() && ! mkdir(&overlay_root_in_image, "root") {
+                    umount(&tmp_dir_path, "root");
+                    return result
+                }
+                if ! Path::new(&proc_in_image).exists() && ! mkdir(&proc_in_image, "root") {
+                    umount(&tmp_dir_path, "root");
+                    return result
+                }
+                if ! Path::new(&sys_in_image).exists() && ! mkdir(&sys_in_image, "root") {
+                    umount(&tmp_dir_path, "root");
+                    return result
+                }
+                if ! Path::new(&dev_in_image).exists() && ! mkdir(&dev_in_image, "root") {
+                    umount(&tmp_dir_path, "root");
+                    return result
+                }
+                if ! Path::new(&dev_pts_in_image).exists() && ! mkdir(&dev_pts_in_image, "root") {
                     umount(&tmp_dir_path, "root");
                     return result
                 }

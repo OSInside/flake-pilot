@@ -160,7 +160,7 @@ fn main() {
                             defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
                         )
                     )
-                    .mount("overlay", "/overlayroot/rootfs")
+                    .mount("overlay", defaults::OVERLAY_ROOT)
                 {
                     Ok(_) => {
                         debug(&format!(

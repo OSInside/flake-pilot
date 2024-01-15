@@ -47,9 +47,6 @@ fn main() -> ExitCode {
 
     let result = run();
 
-    // TODO: implement cleanup function 
-    // cleanup()
-
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -60,7 +57,6 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), FlakeError> {
-
     let program_path = app_path::program_abs_path();
     let program_name = app_path::basename(&program_path);
 

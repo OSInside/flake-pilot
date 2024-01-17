@@ -379,99 +379,27 @@ fn main() {
     do_reboot(ok)
 }
 
-fn redirect_command(command: &str, mut stream: vsock::VsockStream) {
+fn redirect_command(command: &str, stream: vsock::VsockStream) {
     // start the given command as a child process in a new PTY
+    // or on raw channels if no pseudo terminal can be allocated
     // connect its standard channels to the stream
     // transfer all channel data when there is data as long as the child exists
-    let fork = Fork::from_ptmx().unwrap();
-
-    if let Ok(mut master) = fork.is_parent() {
-        let stdout_fd = master.as_raw_fd();
-        let stream_fd = stream.as_raw_fd();
-
-        // main send/recv loop
-        let mut buffer = [0_u8; 100];
-        loop {
-            // prepare file descriptors to be watched for by select()
-            let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
-            let mut fdset = unsafe { raw_fdset.assume_init() };
-            let mut max_fd = -1;
-            unsafe { libc::FD_ZERO(&mut fdset) };
-            unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
-            max_fd = std::cmp::max(max_fd, stdout_fd);
-            unsafe { libc::FD_SET(stream_fd, &mut fdset) };
-            max_fd = std::cmp::max(max_fd, stream_fd);
-
-            // block this thread until something new happens
-            // on these file-descriptors
-            unsafe {
-                libc::select(
-                    max_fd + 1,
-                    &mut fdset,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut()
-                )
-            };
-            // this thread is not blocked any more,
-            // try to handle what happened on the file descriptors
-            if unsafe { libc::FD_ISSET(stdout_fd, &fdset) } {
-                // something new happened on master,
-                // try to receive some bytes an send them through the stream
-                if let Ok(sz_r) = master.read(&mut buffer) {
-                    if sz_r == 0 {
-                        debug("EOF detected on stdout");
-                        break;
-                    }
-                    if stream.write_all(&buffer[0..sz_r]).is_err() {
-                        debug("write failure on stream");
-                        break;
-                    }
-                } else {
-                    debug("read failure on process stdout");
-                    break;
-                }
-            }
-            if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
-                // something new happened on the stream
-                // try to receive some bytes an send them on stdin
-                if let Ok(sz_r) = stream.read(&mut buffer) {
-                    if sz_r == 0 {
-                        debug("EOF detected on stream");
-                        break;
-                    }
-                    if master.write_all(&buffer[0..sz_r]).is_err() {
-                        debug("write failure on stdin");
-                        break;
-                    }
-                } else {
-                    debug("read failure on stream");
-                    break;
-                }
-            }
-        }
-        let _ = fork.wait();
-    } else {
-        let mut call_args: Vec<&str> = command.split(' ').collect();
-        let program = call_args.remove(0);
-        let mut call = Command::new(program);
-        for arg in call_args {
-            call.arg(arg);
-        }
-        debug(&format!(
-            "SCI CALL: {} -> {:?}", program, call.get_args()
-        ));
-        match call.status() {
-            Ok(_) => { },
-            Err(error) => {
-                debug(&format!(
-                    "SCI guest command failed with: {}", error
-                ));
-            }
+    match Fork::from_ptmx() {
+        Ok(fork) => {
+            redirect_command_to_pty(command, stream, fork)
+        },
+        Err(error) => {
+            debug(&format!(
+                "Terminal allocation failed, using raw channels: {:?}", error
+            ));
+            redirect_command_to_raw_channels(command, stream)
         }
     }
-    /* Code without PTY
+}
 
+fn redirect_command_to_raw_channels(
+    command: &str, mut stream: vsock::VsockStream
+) {
     let mut call_args: Vec<&str> = command.split(' ').collect();
     let program = call_args.remove(0);
     let mut call = Command::new(program);
@@ -583,7 +511,96 @@ fn redirect_command(command: &str, mut stream: vsock::VsockStream) {
             ));
         }
     }
-    */
+}
+
+fn redirect_command_to_pty(
+    command: &str, mut stream: vsock::VsockStream, pty_fork: Fork
+) {
+    if let Ok(mut master) = pty_fork.is_parent() {
+        let stdout_fd = master.as_raw_fd();
+        let stream_fd = stream.as_raw_fd();
+
+        // main send/recv loop
+        let mut buffer = [0_u8; 100];
+        loop {
+            // prepare file descriptors to be watched for by select()
+            let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
+            let mut fdset = unsafe { raw_fdset.assume_init() };
+            let mut max_fd = -1;
+            unsafe { libc::FD_ZERO(&mut fdset) };
+            unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stdout_fd);
+            unsafe { libc::FD_SET(stream_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stream_fd);
+
+            // block this thread until something new happens
+            // on these file-descriptors
+            unsafe {
+                libc::select(
+                    max_fd + 1,
+                    &mut fdset,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                )
+            };
+            // this thread is not blocked any more,
+            // try to handle what happened on the file descriptors
+            if unsafe { libc::FD_ISSET(stdout_fd, &fdset) } {
+                // something new happened on master,
+                // try to receive some bytes an send them through the stream
+                if let Ok(sz_r) = master.read(&mut buffer) {
+                    if sz_r == 0 {
+                        debug("EOF detected on stdout");
+                        break;
+                    }
+                    if stream.write_all(&buffer[0..sz_r]).is_err() {
+                        debug("write failure on stream");
+                        break;
+                    }
+                } else {
+                    debug("read failure on process stdout");
+                    break;
+                }
+            }
+            if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
+                // something new happened on the stream
+                // try to receive some bytes an send them on stdin
+                if let Ok(sz_r) = stream.read(&mut buffer) {
+                    if sz_r == 0 {
+                        debug("EOF detected on stream");
+                        break;
+                    }
+                    if master.write_all(&buffer[0..sz_r]).is_err() {
+                        debug("write failure on stdin");
+                        break;
+                    }
+                } else {
+                    debug("read failure on stream");
+                    break;
+                }
+            }
+        }
+        let _ = pty_fork.wait();
+    } else {
+        let mut call_args: Vec<&str> = command.split(' ').collect();
+        let program = call_args.remove(0);
+        let mut call = Command::new(program);
+        for arg in call_args {
+            call.arg(arg);
+        }
+        debug(&format!(
+            "SCI CALL: {} -> {:?}", program, call.get_args()
+        ));
+        match call.status() {
+            Ok(_) => { },
+            Err(error) => {
+                debug(&format!(
+                    "SCI guest command failed with: {}", error
+                ));
+            }
+        }
+    }
 }
 
 fn do_reboot(ok: bool) {

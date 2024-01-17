@@ -190,8 +190,8 @@ as follows:
 
    ```bash
    flake-ctl firecracker pull --name firecore \
-       --rootfs https://s3.amazonaws.com/spec.ccfc.min/ci-artifacts/disks/x86_64/ubuntu-18.04.ext4 \
-       --kernel https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin
+       --rootfs https://s3.amazonaws.com/spec.ccfc.min/ci-artifacts/disks/$(uname -m)/ubuntu-18.04.ext4 \
+       --kernel https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/$(uname -m)/kernels/vmlinux.bin
     ```
 
 2. Register the ```fireshell``` application

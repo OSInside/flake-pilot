@@ -190,6 +190,10 @@ pub async fn pull_component_image(
                 let dev_pts_in_image = format!(
                     "{}/{}", tmp_dir_path, "/dev/pts"
                 );
+                // required for overlay root allocation
+                let mnt_in_image = format!(
+                    "{}/{}", tmp_dir_path, "/mnt"
+                );
                 if ! Path::new(&sci_in_image).exists() {
                     info!("Copying sci to rootfs...");
                     if ! copy(
@@ -216,6 +220,10 @@ pub async fn pull_component_image(
                     return result
                 }
                 if ! Path::new(&dev_pts_in_image).exists() && ! mkdir(&dev_pts_in_image, "root") {
+                    umount(&tmp_dir_path, "root");
+                    return result
+                }
+                if ! Path::new(&mnt_in_image).exists() && ! mkdir(&mnt_in_image, "root") {
                     umount(&tmp_dir_path, "root");
                     return result
                 }

@@ -109,10 +109,6 @@ install:
 		$(DESTDIR)$(SBINDIR)/sci
 	install -m 755 target/release/flake-ctl \
 		$(DESTDIR)$(BINDIR)/flake-ctl
-	install -m 755 flake-ctl/debbuild/oci-deb \
-		$(DESTDIR)$(BINDIR)/oci-deb
-	install -m 644 flake-ctl/debbuild/container.spec.in \
-		$(DESTDIR)$(SHAREDIR)/container.spec.in
 	install -m 644 flake-ctl/template/container-flake.yaml \
 		$(DESTDIR)$(TEMPLATEDIR)/container-flake.yaml
 	install -m 644 flake-ctl/template/firecracker-flake.yaml \

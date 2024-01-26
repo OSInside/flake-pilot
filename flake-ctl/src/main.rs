@@ -32,7 +32,6 @@ pub mod cli;
 pub mod podman;
 pub mod firecracker;
 pub mod app;
-pub mod deb;
 pub mod app_config;
 pub mod defaults;
 pub mod fetch;
@@ -192,10 +191,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             defaults::PODMAN_PILOT
                         );
                     }
-                }
-                // build deb
-                cli::Podman::BuildDeb { oci, app, repo, arch } => {
-                    exit(deb::ocideb(oci, repo, app, arch.as_ref()));
                 }
             }
         },

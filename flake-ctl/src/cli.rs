@@ -298,29 +298,6 @@ pub enum Podman {
         #[clap(long)]
         info: bool,
     },
-    /// Build container package
-    BuildDeb {
-        /// OCI image to load into local podman registry
-        #[clap(long)]
-        oci: String,
-
-        /// An absolute path to the application on the host
-        /// and optional absolute path to the application in the
-        /// container. The path spec is separated by a semicolon.
-        /// This option can be specified multiple times.
-        #[clap(long, multiple = true)]
-        app: Vec<String>,
-
-        /// Output directory to store package(s) as
-        /// local debian repository
-        #[clap(long)]
-        repo: String,
-
-        /// Package BuildArch architecture
-        /// If not specified it will be taken from uname -m
-        #[clap(long)]
-        arch: Option<String>,
-    }
 }
 
 pub fn parse_args() -> Cli {

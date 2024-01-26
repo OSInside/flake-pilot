@@ -28,10 +28,6 @@ pub const PODMAN_PILOT: &str =
     "/usr/bin/podman-pilot";
 pub const FIRECRACKER_PILOT: &str =
     "/usr/bin/firecracker-pilot";
-pub const OCIDEB: &str =
-    "/usr/bin/oci-deb";
-pub const OCIDEB_PACKAGE: &str =
-    "oci-deb";
 pub const PODMAN_PATH:&str =
     "/usr/bin/podman";
 pub const FLAKE_TEMPLATE_CONTAINER:&str =

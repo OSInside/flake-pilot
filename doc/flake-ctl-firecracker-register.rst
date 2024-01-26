@@ -21,6 +21,7 @@ SYNOPSIS
        --include-path <INCLUDE_PATH>...
        --no-net
        --resume
+       --force-vsock
        --overlay-size <OVERLAY_SIZE>
        --run-as <RUN_AS>
        --target <TARGET>
@@ -74,6 +75,12 @@ OPTIONS
 
   Resume the VM from previous execution. If the VM is still running,
   the app will be executed inside of this VM instance
+
+--force-vsock
+
+  Force using a vsock to communicate between guest and
+  host if resume is set to false. In resume mode the vsock
+  setup is always required.
 
 --run-as <RUN_AS>
 

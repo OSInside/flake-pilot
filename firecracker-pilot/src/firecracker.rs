@@ -126,6 +126,13 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         # Default: false
         resume: true|false
 
+        # Force using a vsock to communicate between guest and
+        # host if resume is set to false. In resume mode the vsock
+        # setup is always required.
+        #
+        # Default: false
+        force_vsock: true|false
+
         firecracker:
           # Currently fixed settings through app registration
           boot_args:
@@ -176,7 +183,9 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     );
 
     // get flake config sections
-    let RuntimeSection { runas, resume, firecracker: engine_section, .. } = config().runtime();
+    let RuntimeSection {
+        runas, resume, force_vsock, firecracker: engine_section, ..
+    } = config().runtime();
 
     // check for includes
     let tar_includes = config().tars();
@@ -187,7 +196,9 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     init_meta_dirs()?;
 
     // Check early return condition
-    if Path::new(&vm_id_file_path).exists() && gc_meta_files(&vm_id_file_path, runas, program_name, resume)? && resume {
+    if Path::new(&vm_id_file_path).exists() && gc_meta_files(
+        &vm_id_file_path, runas, program_name, resume
+    )? && (resume || force_vsock) {
         // VM exists
         // report ID value and its ID file name
         let vmid =  fs::read_to_string(&vm_id_file_path)?;
@@ -216,7 +227,10 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         );
     }
 
-    match run_creation(&vm_id_file_path, program_name, engine_section, resume, runas, has_includes) {
+    match run_creation(
+        &vm_id_file_path, program_name, engine_section,
+        resume, runas, has_includes
+    ) {
         Ok(result) => {
             if let Some(spinner) = spinner {
                 spinner.success("Launching flake");
@@ -249,9 +263,10 @@ fn run_creation(
         program_name, defaults::FIRECRACKER_OVERLAY_DIR, "ext2"
     );
     if let Some(overlay_size) = engine_section.overlay_size {
-        let overlay_size = overlay_size.parse::<ByteUnit>().expect("could not parse overlay size").as_u64();
+        let overlay_size = overlay_size.parse::<ByteUnit>().expect(
+            "could not parse overlay size"
+        ).as_u64();
         if !Path::new(&vm_overlay_file).exists() || !resume {
-
             let mut vm_overlay_file_fd = File::create(&vm_overlay_file)?;
             vm_overlay_file_fd.seek(SeekFrom::Start(overlay_size - 1))?;
             vm_overlay_file_fd.write_all(&[0])?;
@@ -301,10 +316,9 @@ pub fn start(
     firecracker-pilot exits with the return code from firecracker
     after this function
     !*/
-    let RuntimeSection { runas, resume, .. } = config().runtime();
+    let RuntimeSection { runas, resume, force_vsock, .. } = config().runtime();
 
     let mut is_blocking: bool = true;
-
 
     if vm_running(&vm_id, runas)? {
         // 1. Execute app in running VM
@@ -314,8 +328,8 @@ pub fn start(
         create_firecracker_config(
             program_name, &firecracker_config
         )?;
-        if resume {
-            // 2. Startup resume type VM and execute app
+        if resume || force_vsock {
+            // 2. Startup VM as background job and execute app through vsock
             is_blocking = false;
             call_instance(
                 &firecracker_config, &vm_id_file, runas, is_blocking
@@ -497,7 +511,7 @@ pub fn execute_command_at_instance(
     program_name: &String, user: User
 ) -> Result<(), FlakeError> {
     /*!
-    Send command to a vsoc connected to a running instance
+    Send command to a vsock connected to a running instance
     !*/
     let mut retry_count = 0;
     let vsock_uds_path = format!(
@@ -554,9 +568,13 @@ pub fn create_firecracker_config(
     Create json config to call firecracker
     !*/
     let template = File::open(defaults::FIRECRACKER_TEMPLATE)?;
-    let mut firecracker_config: FireCrackerConfig = serde_json::from_reader(template)?;
+    let mut firecracker_config: FireCrackerConfig = serde_json::from_reader(
+        template
+    )?;
     let mut boot_args: Vec<String> = Vec::new();
-    let RuntimeSection { resume, firecracker: engine_section, .. } = config().runtime();
+    let RuntimeSection {
+        resume, force_vsock, firecracker: engine_section, ..
+    } = config().runtime();
 
     // set kernel_image_path
     firecracker_config.boot_source.kernel_image_path = engine_section.kernel_image_path.to_owned();
@@ -580,7 +598,7 @@ pub fn create_firecracker_config(
     }
     for boot_option in engine_section.boot_args
     {
-        if resume
+        if (resume || force_vsock)
             && ! Lookup::is_debug()
             && boot_option.starts_with("console=")
         {
@@ -598,7 +616,7 @@ pub fn create_firecracker_config(
     firecracker_config.boot_source.boot_args.push_str(
         &boot_args.join(" ")
     );
-    if resume {
+    if resume || force_vsock {
         firecracker_config.boot_source.boot_args.push_str(
             " run=vsock"
         )

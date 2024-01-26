@@ -167,6 +167,14 @@ pub struct RuntimeSection<'a> {
     #[serde(default)]
     pub resume: bool,
 
+    /// Force using a vsock to communicate between guest and
+    /// host if resume is set to false. In resume mode the
+    /// vsock setup is always required.
+    ///
+    /// Default: false
+    #[serde(default)]
+    pub force_vsock: bool,
+
     pub firecracker: EngineSection<'a>,
 }
 

@@ -10,6 +10,7 @@ vm:
   runtime:
     runas: root
     resume: false
+    force_vsock: false
     firecracker:
       boot_args:
         - "init=/usr/sbin/sci"

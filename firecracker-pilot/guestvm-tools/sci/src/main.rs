@@ -99,6 +99,15 @@ fn main() {
         do_exec = true;
     }
 
+    // check for resume mode
+    let resume = env::var("sci_resume").ok().is_some();
+
+    // check for console setting
+    let mut console_vsock = false;
+    if resume || env::var("sci_force_vsock").ok().is_some() {
+        console_vsock = true
+    }
+
     // mount /proc, /sys and /run, skip if already mounted
     mount_basic_fs();
 
@@ -239,139 +248,149 @@ fn main() {
     if ! ok {
         do_reboot(ok)
     }
-    match env::var("sci_resume").ok() {
-        Some(_) => {
-            // resume mode; check if vhost transport is loaded
-            let mut modprobe = Command::new(defaults::PROBE_MODULE);
-            modprobe.arg(defaults::VHOST_TRANSPORT);
-            debug(&format!(
-                "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
-            ));
-            match modprobe.status() {
-                Ok(_) => { },
-                Err(error) => {
-                    debug(&format!(
-                        "Loading {} module failed: {}",
-                        defaults::VHOST_TRANSPORT, error
-                    ));
-                }
+    if console_vsock {
+        // vsock required; check if vhost transport is loaded
+        let mut modprobe = Command::new(defaults::PROBE_MODULE);
+        modprobe.arg(defaults::VHOST_TRANSPORT);
+        debug(&format!(
+            "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
+        ));
+        match modprobe.status() {
+            Ok(_) => { },
+            Err(error) => {
+                debug(&format!(
+                    "Loading {} module failed: {}",
+                    defaults::VHOST_TRANSPORT, error
+                ));
             }
-            // start vsock listener on VM_PORT, wait for command(s) in a loop
-            // A received command turns into a vsock stream process calling
-            // the command with an expected listener.
-            debug(&format!(
-                "Binding vsock CID={} on port={}",
-                defaults::GUEST_CID, defaults::VM_PORT
-            ));
-            match VsockListener::bind_with_cid_port(
-                defaults::GUEST_CID, defaults::VM_PORT
-            ) {
-                Ok(listener) => {
-                    // Enter main loop
-                    loop {
-                        match listener.accept() {
-                            Ok((mut stream, addr)) => {
-                                // read command string from incoming connection
-                                debug(&format!(
-                                    "Accepted incoming connection from: {}:{}",
-                                    addr.cid(), addr.port()
-                                ));
-                                let mut call_str = String::new();
-                                let mut call_buf = Vec::new();
-                                match stream.read_to_end(&mut call_buf) {
-                                    Ok(_) => {
-                                        call_str = String::from_utf8(
-                                            call_buf.to_vec()
-                                        ).unwrap();
-                                        let len_to_truncate = call_str
-                                            .trim_end()
-                                            .len();
-                                        call_str.truncate(len_to_truncate);
+        }
+        // start vsock listener on VM_PORT, wait for command(s) in a loop
+        // A received command turns into a vsock stream process calling
+        // the command with an expected listener.
+        debug(&format!(
+            "Binding vsock CID={} on port={}",
+            defaults::GUEST_CID, defaults::VM_PORT
+        ));
+        match VsockListener::bind_with_cid_port(
+            defaults::GUEST_CID, defaults::VM_PORT
+        ) {
+            Ok(listener) => {
+                // Enter main loop
+                loop {
+                    ok = true;
+                    match listener.accept() {
+                        Ok((mut stream, addr)) => {
+                            // read command string from incoming connection
+                            debug(&format!(
+                                "Accepted incoming connection from: {}:{}",
+                                addr.cid(), addr.port()
+                            ));
+                            let mut call_str = String::new();
+                            let mut call_buf = Vec::new();
+                            match stream.read_to_end(&mut call_buf) {
+                                Ok(_) => {
+                                    call_str = String::from_utf8(
+                                        call_buf.to_vec()
+                                    ).unwrap();
+                                    let len_to_truncate = call_str
+                                        .trim_end()
+                                        .len();
+                                    call_str.truncate(len_to_truncate);
+                                },
+                                Err(error) => {
+                                    debug(&format!(
+                                        "Failed to read data {}", error
+                                    ));
+                                    ok = false
+                                }
+                            };
+                            stream.shutdown(Shutdown::Both).unwrap();
+                            if call_str.is_empty() {
+                                // Caused by handshake check from the
+                                // pilot, if the vsock connection between
+                                // guest and host can be established
+                                continue
+                            }
+                            debug(&format!(
+                                "SCI CALL RAW BUF: {:?}", call_str
+                            ));
+                            let mut call_stack: Vec<&str> =
+                                call_str.split(' ').collect();
+                            let exec_port = call_stack.pop().unwrap();
+                            let exec_cmd = call_stack.join(" ");
+                            let mut exec_port_num = 0;
+                            match exec_port.parse::<u32>() {
+                                Ok(num) => { exec_port_num = num },
+                                Err(error) => {
+                                    debug(&format!(
+                                        "Failed to parse port: {}: {}",
+                                        exec_port, error
+                                    ));
+                                    ok = false
+                                }
+                            }
+                            debug(&format!(
+                                "CALL SCI: {}", exec_cmd
+                            ));
+
+                            // Establish a VSOCK connection with the farend
+                            let thread_handle = thread::spawn(move || {
+                                match VsockStream::connect_with_cid_port(
+                                    2, exec_port_num
+                                ) {
+                                    Ok(vsock_stream) => {
+                                        redirect_command(
+                                            &exec_cmd, vsock_stream
+                                        );
                                     },
                                     Err(error) => {
                                         debug(&format!(
-                                            "Failed to read data {}", error
-                                        ));
-                                    }
-                                };
-                                stream.shutdown(Shutdown::Both).unwrap();
-                                if call_str.is_empty() {
-                                    // Caused by handshake check from the
-                                    // pilot, if the vsock connection between
-                                    // guest and host can be established
-                                    continue
-                                }
-                                debug(&format!(
-                                    "SCI CALL RAW BUF: {:?}", call_str
-                                ));
-                                let mut call_stack: Vec<&str> =
-                                    call_str.split(' ').collect();
-                                let exec_port = call_stack.pop().unwrap();
-                                let exec_cmd = call_stack.join(" ");
-                                let mut exec_port_num = 0;
-                                match exec_port.parse::<u32>() {
-                                    Ok(num) => { exec_port_num = num },
-                                    Err(error) => {
-                                        debug(&format!(
-                                            "Failed to parse port: {}: {}",
-                                            exec_port, error
+                                            "VSOCK-CONNECT failed with: {}",
+                                            error
                                         ));
                                     }
                                 }
-                                debug(&format!(
-                                    "CALL SCI: {}", exec_cmd
-                                ));
-
-                                // Establish a VSOCK connection with the farend
-                                thread::spawn(move || {
-                                    match VsockStream::connect_with_cid_port(
-                                        2, exec_port_num
-                                    ) {
-                                        Ok(vsock_stream) => {
-                                            redirect_command(
-                                                &exec_cmd, vsock_stream
-                                            );
-                                        },
-                                        Err(error) => {
-                                            debug(&format!(
-                                                "VSOCK-CONNECT failed with: {}",
-                                                error
-                                            ));
-                                        }
-                                    }
-                                });
-                            },
-                            Err(error) => {
-                                debug(&format!(
-                                    "Failed to accept incoming connection: {}",
-                                    error
-                                ));
+                            });
+                            if ! resume {
+                                // Wait for the thread to finish if not in resume mode
+                                let _ = thread_handle.join();
                             }
+                        },
+                        Err(error) => {
+                            debug(&format!(
+                                "Failed to accept incoming connection: {}",
+                                error
+                            ));
+                            ok = false
                         }
                     }
-                },
-                Err(error) => {
-                    debug(&format!(
-                        "Failed to bind vsock: CID: {}: {}",
-                        defaults::GUEST_CID, error
-                    ));
-                    ok = false
+
+                    // we are not in resume mode, exit after the command is done
+                    if ! resume {
+                        break
+                    }
                 }
-            }
-        },
-        None => {
-            // run regular command and close vm
-            if do_exec {
-                // replace ourselves
-                debug(&format!("EXEC: {} -> {:?}", &args[0], call.get_args()));
-                call.exec();
-            } else {
-                // call a command and keep control
+            },
+            Err(error) => {
                 debug(&format!(
-                    "SCI CALL: {} -> {:?}", &args[0], call.get_args()
+                    "Failed to bind vsock: CID: {}: {}",
+                    defaults::GUEST_CID, error
                 ));
-                let _ = call.status();
+                ok = false
             }
+        }
+    } else {
+        // run regular command and close vm
+        if do_exec {
+            // replace ourselves
+            debug(&format!("EXEC: {} -> {:?}", &args[0], call.get_args()));
+            call.exec();
+        } else {
+            // call a command and keep control
+            debug(&format!(
+                "SCI CALL: {} -> {:?}", &args[0], call.get_args()
+            ));
+            let _ = call.status();
         }
     }
     

@@ -81,7 +81,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, run_as, overlay_size, no_net, resume,
-                    include_tar, include_path
+                    force_vsock, include_tar, include_path
                 } => {
                     if app::init(Some(app)) {
                         let mut ok = app::register(
@@ -97,6 +97,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 overlay_size.as_ref(),
                                 *no_net,
                                 *resume,
+                                *force_vsock,
                                 include_tar.as_ref().cloned(),
                                 include_path.as_ref().cloned(),
                             );

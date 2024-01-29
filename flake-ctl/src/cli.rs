@@ -142,6 +142,12 @@ pub enum Firecracker {
         #[clap(long)]
         resume: bool,
 
+        /// Force using a vsock to communicate between guest and
+        /// host if resume is set to false. In resume mode the
+        /// vsock setup is always required.
+        #[clap(long)]
+        force_vsock: bool,
+
         /// Size of overlay write space in bytes.
         /// Optional suffixes: KiB/MiB/GiB/TiB (1024) or KB/MB/GB/TB (1000)
         #[clap(long)]

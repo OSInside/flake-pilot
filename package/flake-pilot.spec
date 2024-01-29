@@ -67,25 +67,6 @@ to a launcher binary which actually launches the application through
 a runtime engine like podman. Along with the launcher there is
 also a control tool to register an application as a flake application
 
-%package -n oci-deb
-Summary:        Build flake-pilot compliant debian package from OCI container image
-Group:          System/Management
-%if 0%{?debian} || 0%{?ubuntu}
-Requires:       libxml2-utils
-%else
-Requires:       libxml2-tools
-%endif
-Requires:       rsync
-Requires:       dpkg
-Requires:       dpkg-dev
-Requires:       debbuild
-
-%description -n oci-deb
-Provides oci-deb utility which uses debbuild and dpkg to create
-a debian package from a given OCI image file. The created debian
-package hooks into the flake-pilot registration mechanism to run
-containerized applications.
-
 %package -n flake-pilot-podman
 Summary:        Podman pilot
 Group:          System/Management
@@ -190,7 +171,6 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %config /etc/flakes/container-flake.yaml
 /usr/bin/podman-pilot
 /usr/sbin/flake-registry
-%doc /usr/share/man/man8/flake-ctl-podman-build-deb.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-load.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-register.8.gz
@@ -223,7 +203,3 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %dir /overlayroot
 /usr/sbin/sci
 %doc /usr/share/man/man8/sci.8.gz
-
-%files -n oci-deb
-/usr/share/podman-pilot
-/usr/bin/oci-deb

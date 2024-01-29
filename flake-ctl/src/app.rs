@@ -157,6 +157,7 @@ pub fn create_vm_config(
     overlay_size: Option<&String>,
     no_net: bool,
     resume: bool,
+    force_vsock: bool,
     includes_tar: Option<Vec<String>>,
     includes_path: Option<Vec<String>>,
 ) -> bool {
@@ -185,6 +186,7 @@ pub fn create_vm_config(
         overlay_size,
         no_net,
         resume,
+        force_vsock,
         includes_tar,
         includes_path,
     ) {

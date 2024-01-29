@@ -172,8 +172,19 @@ Start an application as virtual machine (VM) instance as follows:
    Our default setting prevents kernel messages from being printed to
    the console as much as possible but there are message that can hardly
    be prevented or requires a customized kernel build to be suppressed.
-   As all messages are fetched from the serial console there is also
-   no differentiation between **stdout** and **stderr** anymore.
+   If this is unwanted use the
+
+   ```bash
+   --force-vsock
+   ```
+
+   option when registering the application.
+
+   There are still limitations such as that there is also
+   no differentiation between **stdout** and **stderr** anymore
+   and the exit code of the VM call is not matching the exit
+   code of the application call.
+
 
 ### Use FireCracker VM image from components <a name="components"/>
 

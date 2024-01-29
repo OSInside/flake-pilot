@@ -73,6 +73,7 @@ pub struct AppFireCracker {
 pub struct AppFireCrackerRuntime {
     pub runas: Option<String>,
     pub resume: Option<bool>,
+    pub force_vsock: Option<bool>,
     pub firecracker: Option<AppFireCrackerEngine>,
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -183,6 +184,7 @@ impl AppConfig {
         overlay_size: Option<&String>,
         no_net: bool,
         resume: bool,
+        force_vsock: bool,
         includes_tar: Option<Vec<String>>,
         includes_path: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
@@ -191,9 +193,13 @@ impl AppConfig {
         !*/
         let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, vm);
         let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_FIRECRACKER)
-            .unwrap_or_else(|_| panic!("Failed to open {}", defaults::FLAKE_TEMPLATE_FIRECRACKER));
+            .unwrap_or_else(|_| panic!(
+                "Failed to open {}", defaults::FLAKE_TEMPLATE_FIRECRACKER)
+            );
         let mut yaml_config: AppConfig =
-            serde_yaml::from_reader(template).expect("Failed to import config template");
+            serde_yaml::from_reader(template).expect(
+                "Failed to import config template"
+            );
         let vm_config = yaml_config.vm.as_mut().unwrap();
 
         vm_config.name = vm.to_string();
@@ -203,6 +209,10 @@ impl AppConfig {
         if resume {
             vm_config.runtime.as_mut().unwrap()
                 .resume = Some(resume);
+        }
+        if force_vsock {
+            vm_config.runtime.as_mut().unwrap()
+                .force_vsock = Some(force_vsock);
         }
         if let Some(run_as) = run_as {
             vm_config.runtime.as_mut().unwrap()
@@ -278,11 +288,17 @@ impl AppConfig {
             firecracker_section.boot_args = Some(boot_args);
         }
 
-        if resume {
+        if resume || force_vsock {
             let firecracker_section = vm_config.runtime.as_mut().unwrap()
                 .firecracker.as_mut().unwrap();
-            firecracker_section.boot_args.as_mut().unwrap()
-                .push("sci_resume=1".to_string());
+            if resume {
+                firecracker_section.boot_args.as_mut().unwrap()
+                    .push("sci_resume=1".to_string());
+            }
+            if force_vsock {
+                firecracker_section.boot_args.as_mut().unwrap()
+                    .push("sci_force_vsock=1".to_string());
+            }
         }
 
         let config = std::fs::OpenOptions::new()

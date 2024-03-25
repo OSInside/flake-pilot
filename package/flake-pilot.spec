@@ -34,6 +34,7 @@ Group:          System/Management
 Url:            https://github.com/schaefi/pilot
 Source0:        %{name}.tar.gz
 Source1:        cargo_config
+Source2:        %{name}-rpmlintrc
 %if 0%{?debian} || 0%{?ubuntu}
 Requires:       golang-github-containers-common
 %endif
@@ -97,6 +98,7 @@ Requires:       systemd-network
 %else
 Requires:       systemd
 %endif
+BuildArch:      noarch
 
 %description -n flake-pilot-firecracker-dracut-netstart
 Start systemd network and resolver inside of the initrd such
@@ -129,16 +131,13 @@ make DESTDIR=%{buildroot}/ install_sci_static
 %else
 make DESTDIR=%{buildroot}/ install_sci
 %endif
-chmod 777 %{buildroot}/usr/share/flakes
 
 mkdir -p %{buildroot}/overlayroot
 mkdir -p %{buildroot}/usr/lib/flake-pilot
 
 mkdir -p %{buildroot}/var/lib/firecracker/images
-chmod 777 %{buildroot}/var/lib/firecracker/images
 
 mkdir -p %{buildroot}/var/lib/firecracker/storage
-chmod 777 %{buildroot}/var/lib/firecracker/storage
 
 mkdir -p %{buildroot}/etc/dracut.conf.d
 mkdir -p %{buildroot}/usr/lib/dracut/modules.d/80netstart
@@ -194,7 +193,7 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %dir /usr/lib/dracut/modules.d/80netstart
 %dir /etc/dracut.conf.d
 /usr/lib/dracut/modules.d/80netstart
-/etc/dracut.conf.d/extramodules.conf
+%config /etc/dracut.conf.d/extramodules.conf
 
 %files -n flake-pilot-firecracker-guestvm-tools
 %dir /overlayroot

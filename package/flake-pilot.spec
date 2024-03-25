@@ -31,7 +31,7 @@ License:        MIT
 Packager:       Marcus Schaefer <marcus.schaefer@elektrobit.com>
 %endif
 Group:          System/Management
-Url:            https://github.com/schaefi/pilot
+Url:            https://github.com/OSInside/flake-pilot
 Source0:        %{name}.tar.gz
 Source1:        cargo_config
 Source2:        %{name}-rpmlintrc

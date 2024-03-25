@@ -118,9 +118,17 @@ Guest VM tools to help with firecracker workloads
 mkdir -p .cargo
 cp %{SOURCE1} .cargo/config
 make build
+%ifnarch ppc64le
+make compile_sci_static
+%endif
 
 %install
 make DESTDIR=%{buildroot}/ install
+%ifnarch ppc64le
+make DESTDIR=%{buildroot}/ install_sci_static
+%else
+make DESTDIR=%{buildroot}/ install_sci
+%endif
 chmod 777 %{buildroot}/usr/share/flakes
 
 mkdir -p %{buildroot}/overlayroot

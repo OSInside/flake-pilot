@@ -67,6 +67,8 @@ build: compile man
 
 compile:
 	cargo build -v --release
+
+compile_sci_static:
 	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --profile static --target $(ARCH)-unknown-linux-gnu
 
 clean:
@@ -99,8 +101,6 @@ install:
 		$(DESTDIR)$(BINDIR)/podman-pilot
 	install -m 755 target/release/firecracker-pilot \
 		$(DESTDIR)$(BINDIR)/firecracker-pilot
-	install -m 755 target/$(ARCH)-unknown-linux-gnu/static/sci \
-		$(DESTDIR)$(SBINDIR)/sci
 	install -m 755 target/release/flake-ctl \
 		$(DESTDIR)$(BINDIR)/flake-ctl
 	install -m 644 flake-ctl/template/container-flake.yaml \
@@ -114,6 +114,14 @@ install:
 	# completion
 	install -m 755 completion/flake-ctl \
 		$(DESTDIR)$(COMPLETIONDIR)
+
+install_sci_static:
+	install -m 755 target/$(ARCH)-unknown-linux-gnu/static/sci \
+		$(DESTDIR)$(SBINDIR)/sci
+
+install_sci:
+	install -m 755 target/release/sci \
+		$(DESTDIR)$(SBINDIR)/sci
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl

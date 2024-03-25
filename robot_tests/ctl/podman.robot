@@ -28,11 +28,11 @@ Register a Container
     [Teardown]  Run Process    sudo  rm  -r  /usr/bin/podman-test
 
 Register a Container with Base
-    Pull Podman Container    registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_suse/joe
+    Pull Podman Container    registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe
     And Register Podman Container
     ...    joe
     ...    joe
-    ...    base=registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_suse/basesystem
+    ...    base=registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem
     [Teardown]  Run Process    sudo  rm  -r  /usr/bin/joe
 
 *** Keywords ***

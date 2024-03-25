@@ -127,7 +127,11 @@ against the ```basesystem``` container.
 1. Register the ```joe``` application
 
    ```bash
-   flake-ctl podman register --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe --target /usr/bin/joe --app /usr/bin/joe --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem
+   flake-ctl podman register \
+       --app /usr/bin/joe \
+       --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
+       --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
+       --target /usr/bin/joe
    ```
 
 2. Launch the application

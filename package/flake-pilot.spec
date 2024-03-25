@@ -200,3 +200,5 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %dir /overlayroot
 /usr/sbin/sci
 %doc /usr/share/man/man8/sci.8.gz
+
+%changelog

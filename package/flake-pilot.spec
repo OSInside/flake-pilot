@@ -34,11 +34,9 @@ Group:          System/Management
 Url:            https://github.com/schaefi/pilot
 Source0:        %{name}.tar.gz
 Source1:        cargo_config
-Source2:        gcc_fix_static.sh
 %if 0%{?debian} || 0%{?ubuntu}
 Requires:       golang-github-containers-common
 %endif
-Requires:       sudo
 Requires:       rsync
 Requires:       tar
 BuildRequires:  python3-docutils
@@ -48,7 +46,6 @@ BuildRequires:  cargo
 BuildRequires:  upx
 BuildRequires:  openssl-devel
 BuildRequires:  glibc-devel-static
-BuildRequires:  kiwi-settings
 BuildRequires:  python3-Pygments
 %endif
 %if 0%{?debian} || 0%{?ubuntu}
@@ -120,12 +117,6 @@ Guest VM tools to help with firecracker workloads
 %setup -q -n flake-pilot
 
 %build
-# This is a hack and related to the issue explained here:
-# https://github.com/rust-lang/rust/issues/99382
-%if 0%{?suse_version} && 0%{?suse_version} < 1650
-sudo bash %{SOURCE2}
-%endif
-
 mkdir -p .cargo
 cp %{SOURCE1} .cargo/config
 make build

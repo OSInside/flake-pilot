@@ -63,16 +63,11 @@ sourcetar:
 	rm -rf package/flake-pilot
 
 .PHONY:build
-build: compress man
+build: compile man
 
 compile:
 	cargo build -v --release
 	cd firecracker-pilot/guestvm-tools/sci && RUSTFLAGS='-C target-feature=+crt-static' cargo build -v --profile static --target $(ARCH)-unknown-linux-gnu
-
-compress: compile
-	upx --best --lzma target/release/podman-pilot
-	upx --best --lzma target/release/flake-ctl
-	upx --best --lzma target/release/firecracker-pilot
 
 clean:
 	cd common && cargo -v clean

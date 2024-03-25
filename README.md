@@ -120,6 +120,28 @@ connected to the ```aws-cli``` container provided by Amazon on
    aws ec2 help
    ```
 
+Let's register an editor application next. The following example uses
+the ```joe``` editor flake which was produced as a delta container
+against the ```basesystem``` container.
+
+1. Register the ```joe``` application
+
+   ```bash
+   flake-ctl podman register --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe --target /usr/bin/joe --app /usr/bin/joe --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem
+   ```
+
+2. Launch the application
+
+   To run the ```joe``` editor just call:
+
+   ```bash
+   joe
+   ```
+
+This example also shows that it's not required to explicitly pull the
+required containers. At launch time missing containers will be pulled
+automatically.
+
 ## Quick Start FireCracker VMs <a name="fire"/>
 
 Using containers to isolate applications from the host system is a common

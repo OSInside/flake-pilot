@@ -187,6 +187,8 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         runas, resume, force_vsock, firecracker: engine_section, ..
     } = config().runtime();
 
+    let user = User::from(runas);
+
     // check for includes
     let tar_includes = config().tars();
     let path_includes = config().paths();
@@ -197,7 +199,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // Check early return condition
     if Path::new(&vm_id_file_path).exists() && gc_meta_files(
-        &vm_id_file_path, runas, program_name, resume
+        &vm_id_file_path, user, program_name, resume
     )? && (resume || force_vsock) {
         // VM exists
         // report ID value and its ID file name
@@ -206,7 +208,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     }
 
     // Garbage collect occasionally
-    gc(runas, program_name).ok();
+    gc(user, program_name).ok();
 
     // Sanity check
     if Path::new(&vm_id_file_path).exists() {
@@ -229,7 +231,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     match run_creation(
         &vm_id_file_path, program_name, engine_section,
-        resume, runas, has_includes
+        resume, user, has_includes
     ) {
         Ok(result) => {
             if let Some(spinner) = spinner {
@@ -251,7 +253,7 @@ fn run_creation(
     program_name: &String,
     engine_section: EngineSection,
     resume: bool,
-    runas: User,
+    user: User,
     has_includes: bool
 ) -> Result<(String, String), FlakeError> {
     // Create initial vm_id_file with process ID set to 0
@@ -272,7 +274,7 @@ fn run_creation(
             vm_overlay_file_fd.write_all(&[0])?;
 
             // Create filesystem
-            let mut mkfs = runas.run("mkfs.ext2");
+            let mut mkfs = user.run("mkfs.ext2");
             mkfs.arg("-F")
                 .arg(&vm_overlay_file);
             if Lookup::is_debug() {
@@ -318,11 +320,13 @@ pub fn start(
     !*/
     let RuntimeSection { runas, resume, force_vsock, .. } = config().runtime();
 
+    let user = User::from(runas);
+
     let mut is_blocking: bool = true;
 
-    if vm_running(&vm_id, runas)? {
+    if vm_running(&vm_id, user)? {
         // 1. Execute app in running VM
-        execute_command_at_instance(program_name, runas)?;
+        execute_command_at_instance(program_name, user)?;
     } else {
         let firecracker_config = NamedTempFile::new()?;
         create_firecracker_config(
@@ -332,13 +336,13 @@ pub fn start(
             // 2. Startup VM as background job and execute app through vsock
             is_blocking = false;
             call_instance(
-                &firecracker_config, &vm_id_file, runas, is_blocking
+                &firecracker_config, &vm_id_file, user, is_blocking
             )?;
-            execute_command_at_instance(program_name, runas)?;
+            execute_command_at_instance(program_name, user)?;
         } else {
             // 3. Startup VM and execute app
             call_instance(
-                &firecracker_config, &vm_id_file, runas, is_blocking
+                &firecracker_config, &vm_id_file, user, is_blocking
             )?;
         }
     }

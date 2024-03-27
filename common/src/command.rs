@@ -28,7 +28,7 @@ use std::ffi::OsStr;
 use thiserror::Error;
 
 pub trait CommandExtTrait {
-    /// Execute command via output() and return:
+    /// Execute command via output() using sudo and return:
     /// 
     /// 1. An IO Error if the command could not be run
     /// 2. An ExecutionError if the Command was not successfull
@@ -109,6 +109,7 @@ impl CommandError {
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_char('"')?;
+        f.write_str("sudo ")?;
         for arg in self.args.iter() {
             f.write_str(arg)?;
             f.write_char(' ')?;

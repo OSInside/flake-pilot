@@ -21,7 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use flakes::user::User;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{env, path::PathBuf, fs};
@@ -176,8 +175,7 @@ pub struct RuntimeSection<'a> {
     /// of the container engine is performed by sudo.
     /// The behavior of sudo can be controlled via the
     /// file /etc/sudoers
-    #[serde(borrow, flatten)]
-    pub runas: User<'a>,
+    pub runas: &'a str,
 
     /// Resume the container from previous execution.
     ///

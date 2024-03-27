@@ -136,7 +136,9 @@ pub fn create(
     // get runtime section
     let RuntimeSection { runas, resume, attach, podman } = config().runtime();
 
-    let mut app = runas.run("podman");
+    let user = User::from(runas);
+
+    let mut app = user.run("podman");
     app.arg("create")
         .arg("--cidfile").arg(&container_cid_file);
 
@@ -144,7 +146,7 @@ pub fn create(
     init_cid_dir()?;
 
     // Check early return condition in resume mode
-    if Path::new(&container_cid_file).exists() && gc_cid_file(&container_cid_file, runas)? && (resume || attach) {
+    if Path::new(&container_cid_file).exists() && gc_cid_file(&container_cid_file, user)? && (resume || attach) {
         // resume or attach mode is active and container exists
         // report ID value and its ID file name
         let cid = fs::read_to_string(&container_cid_file)?;
@@ -152,7 +154,7 @@ pub fn create(
     }
 
     // Garbage collect occasionally
-    gc(runas)?;
+    gc(user)?;
 
     // Sanity check
     if Path::new(&container_cid_file).exists() {
@@ -227,6 +229,8 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     !*/
     let RuntimeSection { runas, resume, .. } = config().runtime();
 
+    let user = User::from(runas);
+
     let output: Output = match app.perform() {
         Ok(output) => {
             output
@@ -241,7 +245,7 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
                 let error_pattern = Regex::new(r"in use by (.*)\.").unwrap();
                 if let Some(captures) = error_pattern.captures(&format!("{:?}", error.base)) {
                     let cid = captures.get(1).unwrap().as_str();
-                    call_instance("rm_force", cid, "none", runas)?;
+                    call_instance("rm_force", cid, "none", user)?;
                 }
                 app.perform()?
             } else {
@@ -261,12 +265,12 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         if Lookup::is_debug() {
             debug!("Mounting instance for provisioning workload");
         }
-        match mount_container(&cid, runas, false) {
+        match mount_container(&cid, user, false) {
             Ok(mount_point) => {
                 instance_mount_point = mount_point;
             },
             Err(error) => {
-                call_instance("rm", &cid, "none", runas)?;
+                call_instance("rm", &cid, "none", user)?;
                 return Err(error);
             }
         }
@@ -295,23 +299,23 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             if Lookup::is_debug() {
                 debug!("Syncing delta dependencies [{layer}]...");
             }
-            let app_mount_point = mount_container(layer, runas, true)?;
+            let app_mount_point = mount_container(layer, user, true)?;
             update_removed_files(&app_mount_point, &removed_files)?;
             IO::sync_data(
                 &format!("{}/", app_mount_point),
                 &format!("{}/", instance_mount_point),
                 [].to_vec(),
-                runas
+                user
             )?;
 
-            let _ = umount_container(layer, runas, true);
+            let _ = umount_container(layer, user, true);
         }
         if Lookup::is_debug() {
             debug!("Syncing host dependencies...");
         }
-        sync_host(&instance_mount_point, &removed_files, runas)?;
+        sync_host(&instance_mount_point, &removed_files, user)?;
 
-        let _ = umount_container(&cid, runas, false);
+        let _ = umount_container(&cid, user, false);
     }
 
     if has_includes {
@@ -319,11 +323,11 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             debug!("Syncing includes...");
         }
         match IO::sync_includes(
-            &instance_mount_point, config().tars(), config().paths(), runas
+            &instance_mount_point, config().tars(), config().paths(), user
         ) {
             Ok(_) => { },
             Err(error) => {
-                call_instance("rm", &cid, "none", runas)?;
+                call_instance("rm", &cid, "none", user)?;
                 return Err(error);
             }
         }
@@ -337,23 +341,25 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     !*/
     let RuntimeSection { runas, resume, attach, .. } = config().runtime();
     
-    let is_running = container_running(cid, runas)?;
+    let user = User::from(runas);
+
+    let is_running = container_running(cid, user)?;
 
     if is_running {
         if attach {
             // 1. Attach to running container
-            call_instance("attach", cid, program_name, runas)?;
+            call_instance("attach", cid, program_name, user)?;
         } else {
             // 2. Execute app in running container
-            call_instance("exec", cid, program_name, runas)?;
+            call_instance("exec", cid, program_name, user)?;
         }
     } else if resume {
         // 3. Startup resume type container and execute app
-        call_instance("start", cid, program_name, runas)?;
-        call_instance("exec", cid, program_name, runas)?;
+        call_instance("start", cid, program_name, user)?;
+        call_instance("exec", cid, program_name, user)?;
     } else {
         // 4. Startup container
-        call_instance("start", cid, program_name, runas)?;
+        call_instance("start", cid, program_name, user)?;
     };
     Ok(())
 }

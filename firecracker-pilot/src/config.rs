@@ -21,7 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use flakes::user::User;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use strum::Display;
@@ -156,8 +155,7 @@ pub struct RuntimeSection<'a> {
     /// of the VM engine is performed by sudo.
     /// The behavior of sudo can be controlled via the
     /// file /etc/sudoers
-    #[serde(borrow, flatten)]
-    pub runas: User<'a>,
+    pub runas: &'a str,
 
     /// Resume the VM from previous execution.
     /// If the VM is still running, the app will be

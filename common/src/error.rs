@@ -72,10 +72,12 @@ impl Termination for FlakeError {
     /// All other errors are represented as Failure
     fn report(self) -> std::process::ExitCode {
         match self {
-            FlakeError::CommandError(CommandError {
-                base: ProcessError::ExecutionError(Output { status, ..}),
-                ..
-            }) => match status.code() {
+            FlakeError::CommandError(
+                CommandError {
+                    base: ProcessError::ExecutionError(Output { status, .. }),
+                    ..
+                }
+            ) => match status.code() {
                 Some(code) => (code as u8).into(),
                 None => ExitCode::FAILURE,
             },

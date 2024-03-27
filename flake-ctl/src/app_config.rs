@@ -168,6 +168,7 @@ impl AppConfig {
         let config = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(config_file)
             .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
         serde_yaml::to_writer(config, &yaml_config).unwrap();
@@ -304,6 +305,7 @@ impl AppConfig {
         let config = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(config_file)
             .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
         serde_yaml::to_writer(config, &yaml_config).unwrap();

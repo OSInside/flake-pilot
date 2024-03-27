@@ -201,7 +201,7 @@ pub fn create_vm_config(
     }
 }
 
-pub fn remove(app: &str, engine: &str, silent: bool) {
+pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
     /*!
     Delete application link and config files
     !*/
@@ -211,8 +211,8 @@ pub fn remove(app: &str, engine: &str, silent: bool) {
                 "Application {:?} must be specified with an absolute path",
                 app
             );
-        }
-        return;
+        };
+        return false
     }
     if !silent {
         info!("Removing application: {}", app);
@@ -226,22 +226,22 @@ pub fn remove(app: &str, engine: &str, silent: bool) {
                     Err(error) => {
                         if !silent {
                             error!("Error removing pilot link: {}: {:?}", app, error);
-                        }
-                        return;
+                        };
+                        return false
                     }
                 }
             } else {
                 if !silent {
                     error!("Symlink not pointing to {}: {}", engine, app);
-                }
-                return;
+                };
+                return false
             }
         }
         Err(error) => {
             if !silent {
                 error!("Failed to read as symlink: {}: {:?}", app, error);
-            }
-            return;
+            };
+            return false
         }
     }
     // remove config file and config directory
@@ -254,7 +254,8 @@ pub fn remove(app: &str, engine: &str, silent: bool) {
             Err(error) => {
                 if !silent {
                     error!("Error removing config file: {}: {:?}", config_file, error)
-                }
+                };
+                return false
             }
         }
     }
@@ -266,11 +267,13 @@ pub fn remove(app: &str, engine: &str, silent: bool) {
                     error!(
                         "Error removing config directory: {}: {:?}",
                         app_config_dir, error
-                    )
+                    );
+                    return false
                 }
             }
         }
     }
+    true
 }
 
 pub fn basename(program_path: &String) -> String {

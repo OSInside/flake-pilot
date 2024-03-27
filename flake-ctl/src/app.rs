@@ -273,7 +273,7 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
             }
         }
     }
-    return true
+    true
 }
 
 pub fn basename(program_path: &String) -> String {

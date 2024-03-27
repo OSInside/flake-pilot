@@ -114,10 +114,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // remove
                 cli::Firecracker::Remove { vm, app } => {
                     if ! app.is_none() {
-                        app::remove(
+                        if ! app::remove(
                             app.as_ref().map(String::as_str).unwrap(),
                             defaults::FIRECRACKER_PILOT, false
-                        );
+                        ) {
+                            return Ok(ExitCode::FAILURE)
+                        }
                     }
                     if ! vm.is_none() {
                         app::purge(
@@ -181,10 +183,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // remove
                 cli::Podman::Remove { container, app } => {
                     if ! app.is_none() {
-                        app::remove(
+                        if ! app::remove(
                             app.as_ref().map(String::as_str).unwrap(),
                             defaults::PODMAN_PILOT, false
-                        );
+                        ) {
+                            return Ok(ExitCode::FAILURE)
+                        }
                     }
                     if ! container.is_none() {
                         app::purge(

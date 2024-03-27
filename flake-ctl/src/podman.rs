@@ -94,7 +94,7 @@ pub fn rm(container: &String){
     Call podman image rm with force option to remove all running containers
     !*/
     info!("Removing image and all running containers...");
-    info!("podman rm -f  {}", container);
+    info!("podman rm -f {}", container);
     let status = Command::new(defaults::PODMAN_PATH)
         .arg("image")
         .arg("rm")

@@ -27,7 +27,7 @@ use std::{thread, time};
 use flakes::io::IO;
 use flakes::command::{CommandError, handle_output, CommandExtTrait};
 use flakes::error::{FlakeError, OperationError};
-use flakes::user::{User, mkdir};
+use flakes::user::{User, mkdir, chmod};
 use flakes::lookup::Lookup;
 use spinoff::{Spinner, spinners, Color};
 use ubyte::ByteUnit;
@@ -37,11 +37,15 @@ use std::env;
 use std::fs;
 use crate::config::{config, RuntimeSection, EngineSection};
 use tempfile::{NamedTempFile, tempdir};
-use std::io::{Write, SeekFrom, Seek};
+use std::io::{self, Write, SeekFrom, Seek};
 use std::fs::File;
+use std::os::unix::net::{UnixStream, UnixListener};
+use std::io::prelude::*;
+use std::net::Shutdown;
 use serde::{Serialize, Deserialize};
 use serde_json::{self};
 use flakes::config::get_firecracker_ids_dir;
+use std::os::fd::AsRawFd;
 
 use crate::defaults;
 
@@ -300,7 +304,8 @@ fn run_creation(
                     debug!("Syncing includes...");
                 }
                 IO::sync_includes(
-                    &vm_mount_point, config().tars(), config().paths(), User::ROOT
+                    &vm_mount_point, config().tars(),
+                    config().paths(), User::ROOT
                 )?;
             }
             umount_vm(tmp_dir, User::ROOT)?;
@@ -326,7 +331,7 @@ pub fn start(
 
     if vm_running(&vm_id, user)? {
         // 1. Execute app in running VM
-        execute_command_at_instance(program_name, user)?;
+        execute_command_at_instance(program_name)?;
     } else {
         let firecracker_config = NamedTempFile::new()?;
         create_firecracker_config(
@@ -338,7 +343,7 @@ pub fn start(
             call_instance(
                 &firecracker_config, &vm_id_file, user, is_blocking
             )?;
-            execute_command_at_instance(program_name, user)?;
+            execute_command_at_instance(program_name)?;
         } else {
             // 3. Startup VM and execute app
             call_instance(
@@ -408,7 +413,7 @@ pub fn get_exec_port() -> u32 {
     port
 }
 
-pub fn check_connected(program_name: &String, user: User) -> Result<(), FlakeError> {
+pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
     /*!
     Check if instance connection is OK
     !*/
@@ -416,30 +421,30 @@ pub fn check_connected(program_name: &String, user: User) -> Result<(), FlakeErr
     let vsock_uds_path = format!(
         "/run/sci_cmd_{}.sock", get_meta_name(program_name)
     );
+    chmod(&vsock_uds_path, "777", User::ROOT)?;
     loop {
         if retry_count == defaults::RETRIES {
             if Lookup::is_debug() {
                 debug!("Max retries for VM connection check exceeded")
             }
-            return Err(FlakeError::OperationError(OperationError::MaxTriesExceeded))
+            return Err(
+                FlakeError::OperationError(OperationError::MaxTriesExceeded)
+            )
         }
-        let mut vm_command = user.run("bash");
-        vm_command.arg("-c")
-            .arg(&format!(
-                "echo -e 'CONNECT {}'|{} UNIX-CONNECT:{} -",
-                defaults::VM_PORT,
-                defaults::SOCAT,
-                vsock_uds_path
-            ));
-        if Lookup::is_debug() {
-            debug!("sudo {:?}", vm_command.get_args());
+        let mut buffer = [0; 14];
+        if let Ok(mut stream) = UnixStream::connect(&vsock_uds_path) {
+            stream.write_all(
+                format!("CONNECT {}\n", defaults::VM_PORT
+            ).as_bytes())?;
+            if stream.read_exact(&mut buffer).is_ok() {
+                let output = String::from_utf8(buffer.to_vec()).unwrap();
+                if output.starts_with("OK") {
+                    return Ok(())
+                }
+            }
+            stream.shutdown(Shutdown::Both).unwrap();
         }
-        let output = vm_command.output()?;
-        if String::from_utf8_lossy(&output.stdout).starts_with("OK") {
-            return Ok(())
-        }
-
-        // VM not ready for connections
+        // VM not yet ready for connections
         let some_time = time::Duration::from_millis(
             defaults::VM_WAIT_TIMEOUT_MSEC
         );
@@ -448,9 +453,7 @@ pub fn check_connected(program_name: &String, user: User) -> Result<(), FlakeErr
     }
 }
 
-pub fn send_command_to_instance(
-    program_name: &String, user: User, exec_port: u32
-) -> i32 {
+pub fn send_command_to_instance(program_name: &String, exec_port: u32) -> i32 {
     /*!
     Send command to the VM via a vsock
     !*/
@@ -463,48 +466,51 @@ pub fn send_command_to_instance(
         "/run/sci_cmd_{}.sock", get_meta_name(program_name)
     );
     loop {
+        status_code = 1;
         if retry_count == defaults::RETRIES {
             if Lookup::is_debug() {
                 debug!("Max retries for VM command transfer exceeded");
             }
-            status_code = 1;
             return status_code
         }
-        let mut vm_command = user.run("bash");
-        vm_command.arg("-c")
-            .arg(&format!(
-                "echo -e 'CONNECT {}\n{} {}\n'|{} UNIX-CONNECT:{} -",
-                defaults::VM_PORT,
-                run.join(" "),
-                exec_port,
-                defaults::SOCAT,
-                vsock_uds_path
-            ));
-        if Lookup::is_debug() {
-            debug!("sudo {:?}", vm_command.get_args());
-        }
-        match vm_command.output() {
-            Ok(output) => {
-                if String::from_utf8_lossy(&output.stdout).starts_with("OK") {
-                    status_code = 0
-                } else {
-                    status_code = 1
+        match UnixStream::connect(&vsock_uds_path) {
+            Ok(mut stream) => {
+                stream.write_all(
+                    format!("CONNECT {}\n", defaults::VM_PORT).as_bytes()
+                ).unwrap();
+                let mut buffer = [0; 14];
+                match stream.read_exact(&mut buffer) {
+                    Ok(_) => {
+                        let output = String::from_utf8(
+                            buffer.to_vec()
+                        ).unwrap();
+                        if output.starts_with("OK") {
+                            stream.write_all(
+                                format!(
+                                    "{} {}\n", run.join(" "), exec_port
+                                ).as_bytes()
+                            ).unwrap();
+                            status_code = 0
+                        }
+                    },
+                    Err(_) => {
+                        status_code = 1
+                    }
                 }
+                stream.shutdown(Shutdown::Both).unwrap();
             },
-            Err(error) => {
-                error!("UNIX-CONNECT failed with: {:?}", error);
+            Err(_) => {
                 status_code = 1
             }
         }
-        if status_code == 0 {
-            // command transfered
-            break
-        } else {
-            // VM not ready for connections
+        if status_code == 1 {
+            // VM not yet ready for connections
             let some_time = time::Duration::from_millis(
                 defaults::VM_WAIT_TIMEOUT_MSEC
             );
             thread::sleep(some_time);
+        } else {
+            break
         }
         retry_count += 1
     }
@@ -512,7 +518,7 @@ pub fn send_command_to_instance(
 }
 
 pub fn execute_command_at_instance(
-    program_name: &String, user: User
+    program_name: &String
 ) -> Result<(), FlakeError> {
     /*!
     Send command to a vsock connected to a running instance
@@ -540,27 +546,16 @@ pub fn execute_command_at_instance(
     }
 
     // make sure instance can be contacted
-    check_connected(program_name, user)?;
+    check_connected(program_name)?;
 
     // spawn the listener and wait for sci to run the command
-    let mut vm_exec = user.run(defaults::SOCAT);
     let exec_port = get_exec_port();
-    vm_exec
-        .arg("-t")
-        .arg("0")
-        .arg("-")
-        .arg(
-            &format!("UNIX-LISTEN:{}_{}",
-            vsock_uds_path, exec_port
-        ));
-    if Lookup::is_debug() {
-        debug!("sudo {:?}", vm_exec.get_args());
-    }
-    let child = vm_exec.spawn()?;
-    send_command_to_instance(
-        program_name, user, exec_port
-    );
-    handle_output(child.wait_with_output(), vm_exec.get_args())?;
+    let command_socket = &format!("{}_{}", vsock_uds_path, exec_port);
+    let thread_handle = stream_listener(command_socket);
+
+    send_command_to_instance(program_name, exec_port);
+
+    let _ = thread_handle.join();
     Ok(())
 }
 
@@ -581,7 +576,8 @@ pub fn create_firecracker_config(
     } = config().runtime();
 
     // set kernel_image_path
-    firecracker_config.boot_source.kernel_image_path = engine_section.kernel_image_path.to_owned();
+    firecracker_config.boot_source.kernel_image_path =
+        engine_section.kernel_image_path.to_owned();
 
     // set initrd_path
     if let Some(initrd_path) = engine_section.initrd_path {
@@ -631,7 +627,8 @@ pub fn create_firecracker_config(
     }
 
     // set path_on_host for rootfs
-    firecracker_config.drives[0].path_on_host = engine_section.rootfs_image_path.to_owned();
+    firecracker_config.drives[0].path_on_host =
+        engine_section.rootfs_image_path.to_owned();
 
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {
@@ -641,7 +638,8 @@ pub fn create_firecracker_config(
             "ext2"
         );
 
-        let cache_type = engine_section.cache_type.unwrap_or_default().to_string();
+        let cache_type =
+            engine_section.cache_type.unwrap_or_default().to_string();
 
         let drive = FireCrackerDrive {
             drive_id: "overlay".to_string(),
@@ -941,4 +939,116 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
     }).collect();
 
     x.into_iter().collect()
+}
+
+pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
+    let mut socket = String::new();
+    socket.push_str(socket_path);
+    let handle = move |socket: String| {
+        match UnixListener::bind(socket) {
+            Ok(listener) => {
+                if let Some(stream) = listener.incoming().next() {
+                    match stream {
+                        Ok(stream) => {
+                            stream_io(stream);
+                        }
+                        Err(error) => {
+                            error!("VM Connection failed: {}", error);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                error!("VM sockket listener failed: {}", error)
+            }
+        }
+    };
+    thread::spawn(move || {handle(socket)})
+}
+
+pub fn stream_io(mut stream: UnixStream) {
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    let stream_fd = stream.as_raw_fd();
+    let stdin_fd = stdin.as_raw_fd();
+    let stdout_fd = stdout.as_raw_fd();
+    // main send/recv loop
+    let mut buffer = [0_u8; 100];
+    loop {
+        // prepare file descriptors to be watched for by select()
+        let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
+        let mut fdset = unsafe { raw_fdset.assume_init() };
+        let mut max_fd = -1;
+        unsafe { libc::FD_ZERO(&mut fdset) };
+
+        unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
+        max_fd = std::cmp::max(max_fd, stdout_fd);
+
+        unsafe { libc::FD_SET(stdin_fd, &mut fdset) };
+        max_fd = std::cmp::max(max_fd, stdout_fd);
+
+        unsafe { libc::FD_SET(stream_fd, &mut fdset) };
+        max_fd = std::cmp::max(max_fd, stream_fd);
+
+        // block this thread until something new happens
+        // on these file-descriptors
+        unsafe {
+            libc::select(
+                max_fd + 1,
+                &mut fdset,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            )
+        };
+        // this thread is not blocked any more,
+        // try to handle what happened on the file descriptors
+        if unsafe { libc::FD_ISSET(stdin_fd, &fdset) } {
+            // something new happened on stdin,
+            // try to receive some bytes and send them through the stream
+            if let Ok(sz_r) = stdin.read(&mut buffer) {
+                if sz_r == 0 {
+                    if Lookup::is_debug() {
+                        debug!("EOF detected on stdin");
+                    }
+                    break;
+                }
+                if stream.write_all(&buffer[0..sz_r]).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stream");
+                    }
+                    break;
+                }
+            } else {
+                if Lookup::is_debug() {
+                    debug!("read failure on stdin");
+                }
+                break;
+            }
+        }
+        if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
+            // something new happened on the stream
+            // try to receive some bytes an send them to stdout
+            if let Ok(sz_r) = stream.read(&mut buffer) {
+                if sz_r == 0 {
+                    if Lookup::is_debug() {
+                        debug!("EOF detected on stream");
+                    }
+                    break;
+                }
+                if stdout.write_all(&buffer[0..sz_r]).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stdout");
+                    }
+                    break;
+                }
+            } else {
+                if Lookup::is_debug() {
+                    debug!("read failure on stream");
+                }
+                break;
+            }
+        }
+    }
 }

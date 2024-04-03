@@ -86,7 +86,6 @@ Requires:       rsync
 Requires:       firecracker
 Requires:       xz
 Requires:       e2fsprogs
-Requires:       socat
 Requires:       sudo
 
 %description -n flake-pilot-firecracker

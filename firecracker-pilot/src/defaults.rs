@@ -45,8 +45,6 @@ pub const GC_THRESHOLD: usize = 20;
 pub const VM_CID: u32 = 3;
 pub const VM_PORT: u32 =
     52;
-pub const SOCAT: &str =
-    "/usr/bin/socat";
 pub const RETRIES: u32 =
     60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =

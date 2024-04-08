@@ -18,3 +18,4 @@ lazy_static = { version = "1.4" }
 serde_yaml = { version = "0.9" }
 strum = { version = "0.25", features = ["derive"] }
 flakes = { version = "3.0.10 ", path = "../common", features = ["json"] }
+libc = { version = "0.2" }

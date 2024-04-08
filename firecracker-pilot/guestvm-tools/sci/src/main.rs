@@ -306,9 +306,9 @@ fn main() {
                             };
                             stream.shutdown(Shutdown::Both).unwrap();
                             if call_str.is_empty() {
-                                // Caused by handshake check from the
-                                // pilot, if the vsock connection between
-                                // guest and host can be established
+                                // Caused by handshake checks that connects
+                                // without sending data
+                                debug("No data received until connection end");
                                 continue
                             }
                             debug(&format!(
@@ -330,25 +330,38 @@ fn main() {
                                 }
                             }
                             debug(&format!(
-                                "CALL SCI: {}", exec_cmd
+                                "CALL SCI: string:'{}' u32:{}",
+                                exec_cmd, exec_port_num
                             ));
 
                             // Establish a VSOCK connection with the farend
                             let thread_handle = thread::spawn(move || {
-                                match VsockStream::connect_with_cid_port(
-                                    2, exec_port_num
-                                ) {
-                                    Ok(vsock_stream) => {
-                                        redirect_command(
-                                            &exec_cmd, vsock_stream
-                                        );
-                                    },
-                                    Err(error) => {
-                                        debug(&format!(
-                                            "VSOCK-CONNECT failed with: {}",
-                                            error
-                                        ));
+                                let mut retry_count = 0;
+                                loop {
+                                    if retry_count == defaults::RETRIES {
+                                        break
                                     }
+                                    match VsockStream::connect_with_cid_port(
+                                        2, exec_port_num
+                                    ) {
+                                        Ok(vsock_stream) => {
+                                            redirect_command(
+                                                &exec_cmd, vsock_stream
+                                            );
+                                            break
+                                        },
+                                        Err(error) => {
+                                            debug(&format!(
+                                                "[{}] VSOCK-CONNECT failed with: {}",
+                                                retry_count, error
+                                            ));
+                                            let some_time = time::Duration::from_millis(
+                                                defaults::VM_WAIT_TIMEOUT_MSEC
+                                            );
+                                            thread::sleep(some_time);
+                                        }
+                                    }
+                                    retry_count += 1
                                 }
                             });
                             if ! resume {

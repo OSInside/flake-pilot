@@ -66,6 +66,8 @@ fn main() {
     let mut do_exec = false;
     let mut ok = true;
 
+    env::set_var("PS1", "\\[\\]\\u@\\h: >\n");
+
     // print user space env
     for (key, value) in env::vars() {
         debug(&format!("{}: {}", key, value));

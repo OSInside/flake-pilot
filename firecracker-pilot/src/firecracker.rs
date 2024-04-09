@@ -448,6 +448,12 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
         let some_time = time::Duration::from_millis(
             defaults::VM_WAIT_TIMEOUT_MSEC
         );
+        if Lookup::is_debug() {
+            debug!(
+                "Sleeping(check_connected): {}ms",
+                defaults::VM_WAIT_TIMEOUT_MSEC
+            );
+        }
         thread::sleep(some_time);
         retry_count += 1
     }
@@ -508,6 +514,12 @@ pub fn send_command_to_instance(program_name: &String, exec_port: u32) -> i32 {
             let some_time = time::Duration::from_millis(
                 defaults::VM_WAIT_TIMEOUT_MSEC
             );
+            if Lookup::is_debug() {
+                debug!(
+                    "Sleeping(send_command_to_instance): {}ms",
+                    defaults::VM_WAIT_TIMEOUT_MSEC
+                );
+            }
             thread::sleep(some_time);
         } else {
             break
@@ -541,6 +553,9 @@ pub fn execute_command_at_instance(
             break
         }
         let some_time = time::Duration::from_millis(100);
+        if Lookup::is_debug() {
+            debug!("Sleeping(execute_command_at_instance): 100ms");
+        }
         thread::sleep(some_time);
         retry_count += 1
     }

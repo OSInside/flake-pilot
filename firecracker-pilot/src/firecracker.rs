@@ -188,7 +188,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // get flake config sections
     let RuntimeSection {
-        runas, resume, force_vsock, firecracker: engine_section, ..
+        runas, resume, firecracker: engine_section, ..
     } = config().runtime();
 
     let user = User::from(runas);
@@ -204,7 +204,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     // Check early return condition
     if Path::new(&vm_id_file_path).exists() && gc_meta_files(
         &vm_id_file_path, user, program_name, resume
-    )? && (resume || force_vsock) {
+    )? && resume {
         // VM exists
         // report ID value and its ID file name
         let vmid =  fs::read_to_string(&vm_id_file_path)?;
@@ -535,7 +535,9 @@ pub fn execute_command_at_instance(
             if Lookup::is_debug() {
                 debug!("Max retries for UDS socket lookup exceeded");
             }
-            Err(OperationError::MaxTriesExceeded)?
+            return Err(
+                FlakeError::OperationError(OperationError::MaxTriesExceeded)
+            )
         }
         if Path::new(&vsock_uds_path).exists() {
             break

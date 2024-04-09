@@ -52,7 +52,7 @@ pub enum FlakeError {
     #[error("Instance in use by another instance, consider @NAME argument")]
     AlreadyRunning,
 
-    #[error("Datasync failed, for details rerun with PILOT_DEBUG=1")]
+    #[error("Datasync failed, for details recall with PILOT_DEBUG=1")]
     SyncFailed,
 
     /// OperationError pass through
@@ -62,7 +62,7 @@ pub enum FlakeError {
 
 #[derive(Debug, Error)]
 pub enum OperationError {
-    #[error("Max retries for VM connection check exceeded")]
+    #[error("Max retries exceeded, for details recall with PILOT_DEBUG=1")]
     MaxTriesExceeded
 }
 

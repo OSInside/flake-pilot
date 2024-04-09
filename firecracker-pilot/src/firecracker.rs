@@ -433,6 +433,12 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
         }
         let mut buffer = [0; 14];
         if let Ok(mut stream) = UnixStream::connect(&vsock_uds_path) {
+            let _ = stream.set_write_timeout(
+                Some(time::Duration::from_millis(200))
+            );
+            let _ = stream.set_read_timeout(
+                Some(time::Duration::from_millis(200))
+            );
             stream.write_all(
                 format!("CONNECT {}\n", defaults::VM_PORT
             ).as_bytes())?;

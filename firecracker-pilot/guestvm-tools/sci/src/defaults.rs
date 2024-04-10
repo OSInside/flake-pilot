@@ -36,9 +36,9 @@ pub const VHOST_TRANSPORT: &str = "vmw_vsock_virtio_transport";
 pub const VM_PORT: u32 = 52;
 pub const GUEST_CID: u32 = 3;
 pub const RETRIES: u32 =
-    5;
+    60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =
-    100;
+    1000;
 
 pub fn debug(message: &str) {
     if env::var("PILOT_DEBUG").is_ok() {

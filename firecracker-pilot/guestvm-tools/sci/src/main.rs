@@ -44,6 +44,7 @@ use std::net::Shutdown;
 use std::os::fd::AsRawFd;
 use std::io::Write;
 use pty::prelude::Fork;
+use termios::*;
 
 use crate::defaults::debug;
 
@@ -64,6 +65,8 @@ fn main() {
     let mut call: Command;
     let mut do_exec = false;
     let mut ok = true;
+
+    env::set_var("PS1", "\\[\\]\\u@\\h: >\n");
 
     // print user space env
     for (key, value) in env::vars() {
@@ -455,6 +458,12 @@ fn redirect_command_to_raw_channels(
             let stream_fd = stream.as_raw_fd();
             let stdout_fd = stdout.as_raw_fd();
             let stderr_fd = stderr.as_raw_fd();
+
+            // Disable echo and canonical mode on stdout
+            let mut termios = Termios::from_fd(stdout_fd).unwrap();
+            termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+            tcsetattr(stdout_fd, TCSANOW, &termios).unwrap();
+
             // main send/recv loop
             let mut buffer = [0_u8; 100];
             loop {
@@ -552,6 +561,11 @@ fn redirect_command_to_pty(
         let stdout_fd = master.as_raw_fd();
         let stream_fd = stream.as_raw_fd();
 
+        // Disable echo and canonical mode on stdout
+        let mut termios = Termios::from_fd(stdout_fd).unwrap();
+        termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+        tcsetattr(stdout_fd, TCSANOW, &termios).unwrap();
+
         // main send/recv loop
         let mut buffer = [0_u8; 100];
         loop {
@@ -597,7 +611,7 @@ fn redirect_command_to_pty(
             }
             if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
                 // something new happened on the stream
-                // try to receive some bytes an send them on stdin
+                // try to receive some bytes and send them to stdout
                 if let Ok(sz_r) = stream.read(&mut buffer) {
                     if sz_r == 0 {
                         debug("EOF detected on stream");

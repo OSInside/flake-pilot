@@ -432,6 +432,26 @@ fn redirect_command(command: &str, stream: vsock::VsockStream) {
     }
 }
 
+fn set_output_terminal_flags(fd: i32) {
+    // Disable echo and canonical mode on stdout
+    match Termios::from_fd(fd) {
+        Ok(mut termios) => {
+            termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+            match tcsetattr(fd, TCSANOW, &termios) {
+                Ok(_) => {}
+                Err(error) => {
+                    debug(&format!("tcsetattr failed with: {}", error));
+                }
+            }
+        },
+        Err(error) => {
+            debug(&format!(
+                "Term I/O failed with: {}", error
+            ));
+        }
+    }
+}
+
 fn redirect_command_to_raw_channels(
     command: &str, mut stream: vsock::VsockStream
 ) {
@@ -459,10 +479,7 @@ fn redirect_command_to_raw_channels(
             let stdout_fd = stdout.as_raw_fd();
             let stderr_fd = stderr.as_raw_fd();
 
-            // Disable echo and canonical mode on stdout
-            let mut termios = Termios::from_fd(stdout_fd).unwrap();
-            termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-            tcsetattr(stdout_fd, TCSANOW, &termios).unwrap();
+            set_output_terminal_flags(stdout_fd);
 
             // main send/recv loop
             let mut buffer = [0_u8; 100];
@@ -561,10 +578,7 @@ fn redirect_command_to_pty(
         let stdout_fd = master.as_raw_fd();
         let stream_fd = stream.as_raw_fd();
 
-        // Disable echo and canonical mode on stdout
-        let mut termios = Termios::from_fd(stdout_fd).unwrap();
-        termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-        tcsetattr(stdout_fd, TCSANOW, &termios).unwrap();
+        set_output_terminal_flags(stdout_fd);
 
         // main send/recv loop
         let mut buffer = [0_u8; 100];

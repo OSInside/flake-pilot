@@ -599,12 +599,13 @@ pub fn create_firecracker_config(
     } = config().runtime();
 
     // set kernel_image_path
-    firecracker_config.boot_source.kernel_image_path =
-        engine_section.kernel_image_path.to_owned();
+    engine_section.kernel_image_path.clone_into(
+        &mut firecracker_config.boot_source.kernel_image_path
+    );
 
     // set initrd_path
     if let Some(initrd_path) = engine_section.initrd_path {
-        firecracker_config.boot_source.initrd_path = initrd_path.to_owned();
+        initrd_path.clone_into(&mut firecracker_config.boot_source.initrd_path);
     }
 
     // setup run commandline for the command call
@@ -650,8 +651,9 @@ pub fn create_firecracker_config(
     }
 
     // set path_on_host for rootfs
-    firecracker_config.drives[0].path_on_host =
-        engine_section.rootfs_image_path.to_owned();
+    engine_section.rootfs_image_path.clone_into(
+        &mut firecracker_config.drives[0].path_on_host
+    );
 
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {

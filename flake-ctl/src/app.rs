@@ -27,6 +27,7 @@ use glob::glob;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
+use flakes::config::get_flakes_dir;
 
 pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> bool {
     /*!
@@ -77,7 +78,7 @@ pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> 
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_dir = format!("{}/{}.d", defaults::FLAKE_DIR, &app_basename);
+    let app_config_dir = format!("{}/{}.d", get_flakes_dir(), &app_basename);
     match fs::create_dir_all(&app_config_dir) {
         Ok(dir) => dir,
         Err(error) => {
@@ -122,7 +123,7 @@ pub fn create_container_config(
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_file = format!("{}/{}.yaml", defaults::FLAKE_DIR, &app_basename);
+    let app_config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
     match app_config::AppConfig::save_container(
         Path::new(&app_config_file),
         container,
@@ -176,7 +177,7 @@ pub fn create_vm_config(
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_file = format!("{}/{}.yaml", defaults::FLAKE_DIR, &app_basename);
+    let app_config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
     match app_config::AppConfig::save_vm(
         Path::new(&app_config_file),
         vm,
@@ -246,8 +247,8 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
     }
     // remove config file and config directory
     let app_basename = basename(&app.to_string());
-    let config_file = format!("{}/{}.yaml", defaults::FLAKE_DIR, &app_basename);
-    let app_config_dir = format!("{}/{}.d", defaults::FLAKE_DIR, &app_basename);
+    let config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
+    let app_config_dir = format!("{}/{}.d", get_flakes_dir(), &app_basename);
     if Path::new(&config_file).exists() {
         match fs::remove_file(&config_file) {
             Ok(_) => {}
@@ -296,7 +297,7 @@ pub fn app_names() -> Vec<String> {
     Read all flake config files
     !*/
     let mut flakes: Vec<String> = Vec::new();
-    let glob_pattern = format!("{}/*.yaml", defaults::FLAKE_DIR);
+    let glob_pattern = format!("{}/*.yaml", get_flakes_dir());
     for config_file in glob(&glob_pattern).unwrap() {
         match config_file {
             Ok(filepath) => {
@@ -333,7 +334,7 @@ pub fn init(app: Option<&String>) -> bool {
     /*!
     Create required directory structure.
 
-    Symlink references to apps will be stored in defaults::FLAKE_DIR
+    Symlink references to apps will be stored in get_flakes_dir()
     The init method makes sure to create this directory unless it
     already exists.
     !*/
@@ -343,16 +344,16 @@ pub fn init(app: Option<&String>) -> bool {
         return false;
     }
     let mut flake_dir = String::new();
-    match fs::read_link(defaults::FLAKE_DIR) {
+    match fs::read_link(get_flakes_dir()) {
         Ok(target) => {
             flake_dir.push_str(&target.into_os_string().into_string().unwrap());
         }
         Err(_) => {
-            flake_dir.push_str(defaults::FLAKE_DIR);
+            flake_dir.push_str(&get_flakes_dir());
         }
     }
     fs::create_dir_all(flake_dir).unwrap_or_else(|why| {
-        error!("Failed creating {}: {:?}", defaults::FLAKE_DIR, why.kind());
+        error!("Failed creating {}: {:?}", get_flakes_dir(), why.kind());
         status = false
     });
     status

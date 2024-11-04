@@ -30,6 +30,7 @@ use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
 use flakes::command::{CommandError, CommandExtTrait};
+use flakes::container::Container;
 use flakes::config::get_podman_ids_dir;
 
 use std::path::Path;
@@ -44,6 +45,8 @@ use std::io::SeekFrom;
 use spinoff::{Spinner, spinners, Color};
 use tempfile::tempfile;
 use regex::Regex;
+
+use tempfile::NamedTempFile;
 
 pub fn create(
     program_name: &String
@@ -135,6 +138,12 @@ pub fn create(
 
     // get runtime section
     let RuntimeSection { runas, resume, attach, podman } = config().runtime();
+
+    // provisioning needs root permissions for mount
+    // make sure we have them for this session
+    let root_user = User::from("root");
+    let mut root = root_user.run("true");
+    root.status()?;
 
     let user = User::from(runas);
 
@@ -259,33 +268,36 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     let is_delta_container = config().container.base_container.is_some();
     let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
 
-    let instance_mount_point;
+    let mut provisioning_failed = None;
 
-    if is_delta_container || has_includes {
-        if Lookup::is_debug() {
-            debug!("Mounting instance for provisioning workload");
+    if Lookup::is_debug() {
+        debug!("Mounting instance for provisioning workload");
+    }
+    let instance_mount_point = match mount_container(&cid, user, false) {
+        Ok(mount_point) => {
+            mount_point
+        },
+        Err(error) => {
+            call_instance("rm", &cid, "none", user)?;
+            return Err(error);
         }
-        match mount_container(&cid, user, false) {
-            Ok(mount_point) => {
-                instance_mount_point = mount_point;
-            },
-            Err(error) => {
-                call_instance("rm", &cid, "none", user)?;
-                return Err(error);
-            }
-        }
-    } else {
-        return Ok(cid);
     };
 
+    if has_host_dependencies(&instance_mount_point) {
+        let removed_files = tempfile()?;
+        if Lookup::is_debug() {
+            debug!("Syncing host dependencies...");
+        }
+        update_removed_files(&instance_mount_point, &removed_files)?;
+        sync_host(&instance_mount_point, &removed_files, user)?;
+    }
+
     if is_delta_container {
-        // Create tmpfile to hold accumulated removed data
+        // Create tmpfile to hold accumulated removed data from layers
         let removed_files = tempfile()?;
         if Lookup::is_debug() {
             debug!("Provisioning delta container...");
         }
-        update_removed_files(&instance_mount_point, &removed_files)?;
-
         let layers = config().layers();
         let layers = layers.iter()
             .inspect(|layer| if Lookup::is_debug() { debug!("Adding layer: [{layer}]") })
@@ -311,11 +323,9 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             let _ = umount_container(layer, user, true);
         }
         if Lookup::is_debug() {
-            debug!("Syncing host dependencies...");
+            debug!("Syncing layer host dependencies...");
         }
         sync_host(&instance_mount_point, &removed_files, user)?;
-
-        let _ = umount_container(&cid, user, false);
     }
 
     if has_includes {
@@ -327,11 +337,18 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         ) {
             Ok(_) => { },
             Err(error) => {
-                call_instance("rm", &cid, "none", user)?;
-                return Err(error);
+                provisioning_failed = Some(error);
             }
         }
     }
+
+    let _ = umount_container(&cid, user, false);
+
+    if let Some(provisioning_failed) = provisioning_failed {
+        call_instance("rm", &cid, "none", user)?;
+        return Err(provisioning_failed);
+    }
+
     Ok(cid)
 }
 
@@ -430,21 +447,48 @@ pub fn mount_container(
     /*!
     Mount container and return mount point
     !*/
-    let mut call = user.run("podman");
-    if as_image {
-        if ! container_image_exists(container_name, user)? {
-            pull(container_name, user)?;
+    if as_image && ! container_image_exists(container_name, user)? {
+        pull(container_name, user)?;
+    }
+    let storage_conf = NamedTempFile::new().unwrap();
+    let user_name = user.get_name();
+    let mut call;
+    if user_name != "root" {
+        let root_user = User::from("root");
+        call = root_user.run("bash");
+        let _ = Container::podman_write_custom_storage_config(&storage_conf);
+        if as_image {
+            call.arg("-c").arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} image mount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    container_name
+                )
+            );
+        } else {
+            call.arg("-c").arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} mount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    container_name
+                )
+            );
         }
-        call.arg("image").arg("mount").arg(container_name);
     } else {
-        call.arg("mount").arg(container_name);
+        call = user.run("podman");
+        if as_image {
+            call.arg("image").arg("mount").arg(container_name);
+        } else {
+            call.arg("mount").arg(container_name);
+        }
     }
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-
     let output = call.perform()?;
-
+    if user_name != "root" {
+        Container::podman_fix_storage_permissions(&user_name)?;
+    }
     Ok(String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned())
 }
 
@@ -454,18 +498,49 @@ pub fn umount_container(
     /*!
     Umount container image
     !*/
-    let mut call = user.run("podman");
-    call.stderr(Stdio::null());
-    call.stdout(Stdio::null());
-    if as_image {
-        call.arg("image").arg("umount").arg(mount_point);
+    let storage_conf = NamedTempFile::new().unwrap();
+    let user_name = user.get_name();
+    let mut call;
+    if user_name != "root" {
+        let root_user = User::from("root");
+        call = root_user.run("bash");
+        call.stderr(Stdio::null());
+        call.stdout(Stdio::null());
+        let _ = Container::podman_write_custom_storage_config(&storage_conf);
+        if as_image {
+            call.arg("-c").arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} image umount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    mount_point
+                )
+            );
+        } else {
+            call.arg("-c").arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} umount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    mount_point
+                )
+            );
+        }
     } else {
-        call.arg("umount").arg(mount_point);
+        call = user.run("podman");
+        call.stderr(Stdio::null());
+        call.stdout(Stdio::null());
+        if as_image {
+            call.arg("image").arg("umount").arg(mount_point);
+        } else {
+            call.arg("umount").arg(mount_point);
+        }
     }
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
     call.perform()?;
+    if user_name != "root" {
+        Container::podman_fix_storage_permissions(&user_name)?;
+    }
     Ok(())
 }
 
@@ -571,6 +646,18 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
         Err(error) => { if Lookup::is_debug() { debug!("{:?}", error) }}
     }
     Ok(())
+}
+
+pub fn has_host_dependencies(target: &String) -> bool {
+    /*!
+    Check if container provides a /removed file which indicates
+    there are files that needs to be provisioned from the host
+    !*/
+    let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
+    if Path::new(&host_deps).exists() {
+        return true
+    }
+    false
 }
 
 pub fn update_removed_files(

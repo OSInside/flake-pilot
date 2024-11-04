@@ -27,6 +27,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use crate::defaults;
 use crate::{app, app_config};
+use nix::unistd::{Uid, User};
+use tempfile::NamedTempFile;
+use flakes::container::Container;
 
 pub fn pull(uri: &String) -> i32 {
     /*!
@@ -60,7 +63,6 @@ pub fn pull(uri: &String) -> i32 {
 
     status_code
 }
-
 
 pub fn load(oci: &String) -> i32 {
     /*!
@@ -117,14 +119,37 @@ pub fn mount_container(container_name: &str) -> String {
     Mount container and return mount point,
     or an empty string in the error case
     !*/
-    match Command::new(defaults::PODMAN_PATH)
-        .arg("image")
-        .arg("mount")
-        .arg(container_name)
-        .output()
-    {
+    let mut runs_as_root = false;
+    let storage_conf = NamedTempFile::new().unwrap();
+    let uid = Uid::effective();
+    if uid.is_root() {
+        runs_as_root = true
+    }
+    let mut call = Command::new("sudo");
+    if !runs_as_root {
+        let _ = Container::podman_write_custom_storage_config(&storage_conf);
+        call.arg("bash").arg("-c")
+            .arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} image mount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    container_name
+                )
+            );
+    } else {
+        call.arg(defaults::PODMAN_PATH)
+            .arg("image")
+            .arg("mount")
+            .arg(container_name);
+    }
+    match call.output() {
         Ok(output) => {
             if output.status.success() {
+                if !runs_as_root {
+                    let _ = Container::podman_fix_storage_permissions(
+                        &User::from_uid(uid).unwrap().unwrap().name
+                    );
+                }
                 return String::from_utf8_lossy(&output.stdout)
                     .strip_suffix('\n').unwrap().to_string()
             }
@@ -144,16 +169,38 @@ pub fn umount_container(container_name: &str) -> i32 {
     /*!
     Umount container image
     !*/
+    let mut runs_as_root = false;
     let mut status_code = 255;
-    match Command::new(defaults::PODMAN_PATH)
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .arg("image")
-        .arg("umount")
-        .arg(container_name)
-        .status()
-    {
+    let storage_conf = NamedTempFile::new().unwrap();
+    let uid = Uid::effective();
+    if uid.is_root() {
+        runs_as_root = true
+    }
+    let mut call = Command::new("sudo");
+    if !runs_as_root {
+        let _ = Container::podman_write_custom_storage_config(&storage_conf);
+        call.stderr(Stdio::null()).stdout(Stdio::null())
+            .arg("bash").arg("-c")
+            .arg(format!(
+                "export CONTAINERS_STORAGE_CONF={}; {} image umount {}",
+                    storage_conf.path().display(),
+                    defaults::PODMAN_PATH,
+                    container_name
+                )
+            );
+    } else {
+        call.arg(defaults::PODMAN_PATH)
+            .arg("image")
+            .arg("umount")
+            .arg(container_name);
+    }
+    match call.status() {
         Ok(status) => {
+            if !runs_as_root {
+                let _ = Container::podman_fix_storage_permissions(
+                    &User::from_uid(uid).unwrap().unwrap().name
+                );
+            }
             status_code = status.code().unwrap();
         },
         Err(error) => {

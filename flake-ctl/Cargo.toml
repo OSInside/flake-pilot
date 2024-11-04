@@ -17,3 +17,4 @@ futures-util = { version = "0.3" }
 indicatif = { version = "0.15" }
 tokio = { version = "1.32", features = ["full"] }
 tempfile = { version = "3.4" }
+flakes = { version = "3.0.13", path = "../common" }

@@ -701,7 +701,7 @@ fn move_mounts(new_root: &str) {
     !*/
     // /run
     let mut call = Command::new("mount");
-    call.arg("--bind").arg("/run").arg(&format!("{}/run", new_root));
+    call.arg("--bind").arg("/run").arg(format!("{}/run", new_root));
     debug(&format!("EXEC: mount -> {:?}", call.get_args()));
     match call.status() {
         Ok(_) => debug("Bind mounted /run"),

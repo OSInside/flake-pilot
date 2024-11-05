@@ -120,7 +120,7 @@ Guest VM tools to help with firecracker workloads
 
 %build
 mkdir -p .cargo
-cp %{SOURCE1} .cargo/config
+cp %{SOURCE1} .cargo/config.toml
 make build
 %ifnarch ppc64le
 %if 0%{?suse_version} && 0%{?suse_version} >= 1600

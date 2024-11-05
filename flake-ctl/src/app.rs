@@ -106,7 +106,7 @@ pub fn create_container_config(
     /*!
     Create app configuration for the container engine.
 
-    Create an app configuration file as FLAKE_DIR/app.yaml
+    Create an app configuration file as get_flakes_dir()/app.yaml
     containing the required information to launch the
     application inside of the container engine.
     !*/
@@ -165,7 +165,7 @@ pub fn create_vm_config(
     /*!
     Create app configuration for the firecracker engine.
 
-    Create an app configuration file as FLAKE_DIR/app.yaml
+    Create an app configuration file as get_flakes_dir()/app.yaml
     containing the required information to launch the
     application inside of the firecracker engine.
     !*/

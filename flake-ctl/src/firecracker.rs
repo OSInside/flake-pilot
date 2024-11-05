@@ -22,6 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use flakes::config::get_flakes_dir;
 use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
@@ -486,7 +487,7 @@ pub fn purge_vm(vm: &str) {
     !*/
     for app_name in app::app_names() {
         let config_file = format!(
-            "{}/{}.yaml", defaults::FLAKE_DIR, app_name
+            "{}/{}.yaml", get_flakes_dir(), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
             Ok(mut app_conf) => {

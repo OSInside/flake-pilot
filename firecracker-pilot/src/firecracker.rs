@@ -181,6 +181,12 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
             )
         })
     }
+    // provisioning needs root permissions for mount
+    // make sure we have them for this session
+    let root_user = User::from("root");
+    let mut root = root_user.run("true");
+    root.status()?;
+
     // setup VM ID file name
     let vm_id_file_path = get_meta_file_name(
         program_name, &get_firecracker_ids_dir(), "vmid"

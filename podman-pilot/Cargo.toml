@@ -1,6 +1,6 @@
 [package]
 name = "podman-pilot"
-version = "3.0.14"
+version = "3.0.15"
 edition = "2018"
 license = "MIT"
 
@@ -15,5 +15,5 @@ lazy_static = { version = "1.4" }
 serde = { version = "1.0", features = ["derive"]}
 serde_yaml = { version = "0.9" }
 regex = { version = "1.9" }
-flakes = { version = "3.0.14", path = "../common" }
+flakes = { version = "3.0.15", path = "../common" }
 rust-ini = { version = "0.21" }

@@ -25,3 +25,4 @@
 pub const CONTAINER_DIR: &str = "/var/lib/containers";
 pub const GC_THRESHOLD: i32 = 20;
 pub const HOST_DEPENDENCIES: &str = "removed";
+pub const PODMAN_PATH:&str = "/usr/bin/podman";

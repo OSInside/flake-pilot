@@ -74,7 +74,7 @@ fn run() -> Result<(), FlakeError> {
 
 fn setup_logger() {
     let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "trace")
+        .filter_or("MY_LOG_LEVEL", "debug")
         .write_style_or("MY_LOG_STYLE", "always");
 
     env_logger::init_from_env(env);

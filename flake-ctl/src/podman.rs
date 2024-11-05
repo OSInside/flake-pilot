@@ -30,6 +30,7 @@ use crate::{app, app_config};
 use nix::unistd::{Uid, User};
 use tempfile::NamedTempFile;
 use flakes::container::Container;
+use flakes::config::get_flakes_dir;
 
 pub fn pull(uri: &String) -> i32 {
     /*!
@@ -219,7 +220,7 @@ pub fn purge_container(container: &str) {
     !*/
     for app_name in app::app_names() {
         let config_file = format!(
-            "{}/{}.yaml", defaults::FLAKE_DIR, app_name
+            "{}/{}.yaml", get_flakes_dir(), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
             Ok(mut app_conf) => {

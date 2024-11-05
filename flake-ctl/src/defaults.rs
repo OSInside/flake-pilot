@@ -22,8 +22,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-pub const FLAKE_DIR: &str =
-    "/usr/share/flakes";
 pub const PODMAN_PILOT: &str =
     "/usr/bin/podman-pilot";
 pub const FIRECRACKER_PILOT: &str =

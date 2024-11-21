@@ -45,6 +45,7 @@ fn simple_config() {
 r#"container:
  name: JoJo
  host_app_path: /myapp
+ check_host_dependencies: false
 include:
  tar: ~
 "#);
@@ -57,11 +58,13 @@ fn combine_configs() {
 r#"container:
  name: JoJo
  host_app_path: /myapp
+ check_host_dependencies: false
 include:
  tar: ~
 container:
  name: Dio
  host_app_path: /other
+ check_host_dependencies: false
 "#);
     assert_eq!(cfg.container.name, "Dio");
 }

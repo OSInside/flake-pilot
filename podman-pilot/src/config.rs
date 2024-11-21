@@ -155,6 +155,9 @@ pub struct ContainerSection<'a> {
     /// Default: not_specified
     pub base_container: Option<&'a str>,
 
+    /// Optional check if the container has dependencies to the host
+    pub check_host_dependencies: bool,
+
     /// Optional additional container layers on top of the
     /// specified base container
     #[serde(default)]

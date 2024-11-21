@@ -36,11 +36,16 @@ pub mod app_config;
 pub mod defaults;
 pub mod fetch;
 
+use flakes::config::get_flakes_dir;
+use flakes::user::{User, mkdir};
+
 #[tokio::main]
 async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
     setup_logger();
 
     let args = cli::parse_args();
+
+    mkdir(&get_flakes_dir(), "777", User::ROOT)?;
 
     match &args.command {
         // list
@@ -141,9 +146,9 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 },
                 // register
                 cli::Podman::Register {
-                    container, app, target, base,
+                    container, app, target, base, check_host_dependencies,
                     layer, include_tar, include_path, resume, attach,
-                    run_as, opt, info
+                    opt, info
                 } => {
                     if *info {
                         podman::print_container_info(container);
@@ -158,12 +163,13 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 app.as_ref(),
                                 target.as_ref(),
                                 base.as_ref(),
+                                *check_host_dependencies,
                                 layer.as_ref().cloned(),
                                 include_tar.as_ref().cloned(),
                                 include_path.as_ref().cloned(),
                                 *resume,
                                 *attach,
-                                run_as.as_ref(),
+                                Some(&"any".to_string()),
                                 opt.as_ref().cloned()
                             );
                         }

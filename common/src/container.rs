@@ -23,97 +23,51 @@
 //
 extern crate ini;
 
+use crate::defaults;
 use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
 use crate::user::User;
 use crate::command::CommandExtTrait;
-use tempfile::NamedTempFile;
-use std::path::Path;
-use std::fs;
-use std::os::unix::fs::MetadataExt;
-use std::env;
-use ini::Ini;
+use users::{get_current_uid, get_current_gid};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Container {
 }
 
 impl Container {
-    pub fn podman_write_custom_storage_config(
-        mut storage_conf: &NamedTempFile
-    ) -> Result<(), FlakeError> {
-        /*!
-        Create storage conf to point root to the user
-        storage data such that mounting becomes possible
-        !*/
-        let mut storage = Ini::new();
-        storage.with_section(Some("storage"))
-            .set("driver", "\"overlay\"")
-            .set(
-                "graphroot",
-                format!("\"{}/.local/share/containers/storage\"",
-                    env::var("HOME").unwrap()
-                )
-            );
-        storage.write_to(&mut storage_conf)?;
+    pub fn podman_setup_permissions() -> Result<(), FlakeError> {
+        let root = User::from("root");
+        let user_id = get_current_uid();
+        let user_gid = get_current_gid();
+        let chown_param = format!("{}:{}", user_id, user_gid);
+
+        // This is an expensive operation
+        let mut fix_storage = root.run("chown");
+        fix_storage.arg("-R")
+            .arg(chown_param.clone())
+            .arg(defaults::FLAKES_REGISTRY);
+        FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
+        fix_storage.perform()?;
+
+        let _ = Self::podman_setup_run_permissions();
+
         Ok(())
     }
 
-    pub fn podman_fix_storage_permissions(
-        runas: &str
-    ) -> Result<(), FlakeError> {
-        /*!
-        Fix user storage permissions
-        !*/
-        let user = User::from(runas);
-        let user_name = user.get_name();
-        let user_id = user.get_user_id();
-        let user_group = user.get_group_name();
+    pub fn podman_setup_run_permissions() -> Result<(), FlakeError> {
         let root = User::from("root");
-        let mut fix_run = root.run("chown");
-        fix_run.arg("-R")
-            .arg(format!("{}:{}", user_name, user_group))
-            .arg(format!("/run/user/{}/containers", user_id));
-        FlakeLog::debug(&format!("{:?}", fix_run.get_args()));
-        fix_run.perform()?;
+        let user_id = get_current_uid();
+        let user_gid = get_current_gid();
+        let chown_param = format!("{}:{}", user_id, user_gid);
 
-        let paths;
-        let storage_dir = format!(
-            "/home/{}/.local/share/containers/storage/overlay", user_name
-        );
-        match fs::read_dir(storage_dir.clone()) {
-            Ok(result) => { paths = result },
-            Err(error) => {
-                return Err(FlakeError::IOError {
-                    kind: format!("{:?}", error.kind()),
-                    message: format!("fs::read_dir failed on {}: {}",
-                        storage_dir, error
-                    )
-                })
-            }
-        };
-        for path in paths {
-            let file_path = path.unwrap().path();
-            let work_path = format!("{}/work/work", file_path.display());
-            let meta = fs::metadata(&file_path)?;
-            if Path::new(&work_path).exists() {
-                let work_meta = fs::metadata(&work_path)?;
-                if work_meta.uid() == 0 {
-                    let mut fix_storage = root.run("chown");
-                    fix_storage.arg("-R")
-                        .arg(format!("{}:{}", user_name, user_group))
-                        .arg(&file_path);
-                    FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
-                    fix_storage.perform()?;
-                }
-            } else if meta.uid() == 0 {
-                let mut fix_storage = root.run("chown");
-                fix_storage.arg(format!("{}:{}", user_name, user_group))
-                    .arg(&file_path);
-                FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
-                fix_storage.perform()?;
-            }
-        }
+        let mut fix_run_storage = root.run("chown");
+        fix_run_storage.arg("-R")
+            .arg(chown_param)
+            .arg("/run/libpod")
+            .arg("/run/flakes");
+        FlakeLog::debug(&format!("{:?}", fix_run_storage.get_args()));
+        fix_run_storage.perform()?;
+
         Ok(())
     }
 }

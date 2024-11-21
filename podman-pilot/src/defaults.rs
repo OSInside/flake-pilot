@@ -25,4 +25,7 @@
 pub const CONTAINER_DIR: &str = "/var/lib/containers";
 pub const GC_THRESHOLD: i32 = 20;
 pub const HOST_DEPENDENCIES: &str = "removed";
-pub const PODMAN_PATH:&str = "/usr/bin/podman";
+pub const PODMAN_PATH: &str = "/usr/bin/podman";
+pub const FLAKES_STORAGE: &str = "/etc/flakes/storage.conf";
+pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";
+pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";

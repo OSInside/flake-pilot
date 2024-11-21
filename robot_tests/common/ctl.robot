@@ -44,10 +44,3 @@ Pull Podman Container
     Should Be Equal As Integers    ${result.rc}    0
     # Directory Should Not Be Empty    ${HELLO_WORLD_CONTAINER_DIR}
     RETURN    ${result}
-
-
-Container Should Exist
-    [Arguments]    ${name}
-    ${result} =    Run Process    podman    mount
-
-    Should Contain    ${result.stdout}    ${name}

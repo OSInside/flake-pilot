@@ -46,7 +46,7 @@ use spinoff::{Spinner, spinners, Color};
 use tempfile::tempfile;
 use regex::Regex;
 
-use tempfile::NamedTempFile;
+use users::{get_current_username};
 
 pub fn create(
     program_name: &String
@@ -86,15 +86,6 @@ pub fn create(
         - name_B
 
       runtime:
-        # Run the container engine as a user other than the
-        # default target user root. The user may be either
-        # a user name or a numeric user-ID (UID) prefixed
-        # with the ‘#’ character (e.g. #0 for UID 0). The call
-        # of the container engine is performed by sudo.
-        # The behavior of sudo can be controlled via the
-        # file /etc/sudoers
-        runas: root
-
         # Resume the container from previous execution.
         # If the container is still running, the app will be
         # executed inside of this container instance.
@@ -131,13 +122,11 @@ pub fn create(
     // setup container ID file name
     let suffix = name.first().map(String::as_str).unwrap_or("");
 
-    let container_cid_file = format!("{}/{}{suffix}.cid", get_podman_ids_dir(), program_name);
-
     // setup app command path name to call
     let target_app_path = get_target_app_path(program_name);
 
     // get runtime section
-    let RuntimeSection { runas, resume, attach, podman } = config().runtime();
+    let RuntimeSection { resume, attach, podman, .. } = config().runtime();
 
     // provisioning needs root permissions for mount
     // make sure we have them for this session
@@ -145,7 +134,22 @@ pub fn create(
     let mut root = root_user.run("true");
     root.status()?;
 
-    let user = User::from(runas);
+    mkdir(defaults::FLAKES_REGISTRY, "777", User::ROOT)?;
+
+    let current_user = get_current_username().unwrap();
+    let user = User::from(current_user.to_str().unwrap());
+
+    let container_cid_file = format!(
+        "{}/{}{suffix}_{}.cid",
+        get_podman_ids_dir(), program_name, current_user.to_str().unwrap()
+    );
+
+    let container_runroot = format!(
+        "{}/{}",
+        defaults::FLAKES_REGISTRY_RUNROOT, current_user.to_str().unwrap()
+    );
+
+    mkdir(&container_runroot, "777", User::ROOT)?;
 
     let mut app = user.run("podman");
     app.arg("create")
@@ -153,6 +157,11 @@ pub fn create(
 
     // Make sure CID dir exists
     init_cid_dir()?;
+
+    env::set_var("CONTAINERS_STORAGE_CONF", defaults::FLAKES_STORAGE);
+    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
+
+    let _ = Container::podman_setup_run_permissions();
 
     // Check early return condition in resume mode
     if Path::new(&container_cid_file).exists() && gc_cid_file(&container_cid_file, user)? && (resume || attach) {
@@ -181,6 +190,14 @@ pub fn create(
         app.arg("--tty").arg("--interactive");
     }
 
+    if target_app_path != "/" {
+        if resume {
+            app.arg("--entrypoint").arg("sleep");
+        } else {
+            app.arg("--entrypoint").arg(target_app_path.clone());
+        }
+    }
+
     // setup container name to use
     app.arg(config().container.base_container.unwrap_or(config().container.name));
 
@@ -191,11 +208,14 @@ pub fn create(
         // sleep "forever" ... I will be dead by the time this sleep ends ;)
         // keeps the container in running state to accept podman exec for
         // running the app multiple times with different arguments
-        app.arg("sleep").arg("4294967295d");
-    } else {
+        // Note: This requires the sleep program to be found in the container
         if target_app_path != "/" {
-            app.arg(target_app_path);
+            app.arg("4294967295d");
+        } else {
+// FIXME this will not work when an entrypoint is availabe that was not overwritten by a target_path and should end in an error message
+            app.arg("sleep").arg("4294967295d");
         }
+    } else {
         for arg in Lookup::get_run_cmdline(Vec::new(), false) {
             app.arg(arg);
         }
@@ -215,7 +235,7 @@ pub fn create(
             )
         );
     }
-    
+
     match run_podman_creation(app) {
         Ok(cid) => {
             if let Some(spinner) = spinner {
@@ -236,16 +256,22 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     /*!
     Create and provision container prior start
     !*/
-    let RuntimeSection { runas, resume, .. } = config().runtime();
+    let RuntimeSection { resume, .. } = config().runtime();
 
-    let user = User::from(runas);
+    let root_user = User::from("root");
 
     let output: Output = match app.perform() {
         Ok(output) => {
             output
         }
         Err(error) => {
-            if resume {
+            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+                // On permission error, fix permissions and try again
+                // This is an expensive operation depending on the storage size
+                let _ = Container::podman_setup_permissions();
+                app.perform()?
+            } else if resume {
                 // Cleanup potentially left over container instance from an
                 // inconsistent state, e.g powerfail
                 if Lookup::is_debug() {
@@ -254,7 +280,7 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
                 let error_pattern = Regex::new(r"in use by (.*)\.").unwrap();
                 if let Some(captures) = error_pattern.captures(&format!("{:?}", error.base)) {
                     let cid = captures.get(1).unwrap().as_str();
-                    call_instance("rm_force", cid, "none", user)?;
+                    call_instance("rm_force", cid, "none", root_user)?;
                 }
                 app.perform()?
             } else {
@@ -266,86 +292,89 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
     let cid = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned();
 
     let is_delta_container = config().container.base_container.is_some();
+    let check_host_dependencies = config().container.check_host_dependencies;
     let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
 
     let mut provisioning_failed = None;
 
-    if Lookup::is_debug() {
-        debug!("Mounting instance for provisioning workload");
-    }
-    let instance_mount_point = match mount_container(&cid, user, false) {
-        Ok(mount_point) => {
-            mount_point
-        },
-        Err(error) => {
-            call_instance("rm", &cid, "none", user)?;
-            return Err(error);
-        }
-    };
-
-    if has_host_dependencies(&instance_mount_point) {
-        let removed_files = tempfile()?;
+    if is_delta_container || check_host_dependencies {
         if Lookup::is_debug() {
-            debug!("Syncing host dependencies...");
+            debug!("Mounting instance for provisioning workload");
         }
-        update_removed_files(&instance_mount_point, &removed_files)?;
-        sync_host(&instance_mount_point, &removed_files, user)?;
-    }
-
-    if is_delta_container {
-        // Create tmpfile to hold accumulated removed data from layers
-        let removed_files = tempfile()?;
-        if Lookup::is_debug() {
-            debug!("Provisioning delta container...");
-        }
-        let layers = config().layers();
-        let layers = layers.iter()
-            .inspect(|layer| if Lookup::is_debug() { debug!("Adding layer: [{layer}]") })
-            .chain(Some(&config().container.name));
-
-        if Lookup::is_debug() {
-            debug!("Adding main app [{}] to layer list", config().container.name);
-        }
-
-        for layer in layers {
-            if Lookup::is_debug() {
-                debug!("Syncing delta dependencies [{layer}]...");
-            }
-            let app_mount_point = mount_container(layer, user, true)?;
-            update_removed_files(&app_mount_point, &removed_files)?;
-            IO::sync_data(
-                &format!("{}/", app_mount_point),
-                &format!("{}/", instance_mount_point),
-                [].to_vec(),
-                user
-            )?;
-
-            let _ = umount_container(layer, user, true);
-        }
-        if Lookup::is_debug() {
-            debug!("Syncing layer host dependencies...");
-        }
-        sync_host(&instance_mount_point, &removed_files, user)?;
-    }
-
-    if has_includes {
-        if Lookup::is_debug() {
-            debug!("Syncing includes...");
-        }
-        match IO::sync_includes(
-            &instance_mount_point, config().tars(), config().paths(), user
-        ) {
-            Ok(_) => { },
+        let instance_mount_point = match mount_container(&cid, false) {
+            Ok(mount_point) => {
+                mount_point
+            },
             Err(error) => {
-                provisioning_failed = Some(error);
+                call_instance("rm", &cid, "none", root_user)?;
+                return Err(error);
+            }
+        };
+
+        if has_host_dependencies(&instance_mount_point) {
+            let removed_files = tempfile()?;
+            if Lookup::is_debug() {
+                debug!("Syncing host dependencies...");
+            }
+            update_removed_files(&instance_mount_point, &removed_files)?;
+            sync_host(&instance_mount_point, &removed_files, root_user)?;
+        }
+
+        if is_delta_container {
+            // Create tmpfile to hold accumulated removed data from layers
+            let removed_files = tempfile()?;
+            if Lookup::is_debug() {
+                debug!("Provisioning delta container...");
+            }
+            let layers = config().layers();
+            let layers = layers.iter()
+                .inspect(|layer| if Lookup::is_debug() { debug!("Adding layer: [{layer}]") })
+                .chain(Some(&config().container.name));
+
+            if Lookup::is_debug() {
+                debug!("Adding main app [{}] to layer list", config().container.name);
+            }
+
+            for layer in layers {
+                if Lookup::is_debug() {
+                    debug!("Syncing delta dependencies [{layer}]...");
+                }
+                let app_mount_point = mount_container(layer, true)?;
+                update_removed_files(&app_mount_point, &removed_files)?;
+                IO::sync_data(
+                    &format!("{}/", app_mount_point),
+                    &format!("{}/", instance_mount_point),
+                    [].to_vec(),
+                    root_user
+                )?;
+
+                let _ = umount_container(layer, true);
+            }
+            if Lookup::is_debug() {
+                debug!("Syncing layer host dependencies...");
+            }
+            sync_host(&instance_mount_point, &removed_files, root_user)?;
+        }
+
+        if has_includes {
+            if Lookup::is_debug() {
+                debug!("Syncing includes...");
+            }
+            match IO::sync_includes(
+                &instance_mount_point, config().tars(), config().paths(), root_user
+            ) {
+                Ok(_) => { },
+                Err(error) => {
+                    provisioning_failed = Some(error);
+                }
             }
         }
-    }
 
-    let _ = umount_container(&cid, user, false);
+        let _ = umount_container(&cid, false);
+    }
 
     if let Some(provisioning_failed) = provisioning_failed {
-        call_instance("rm", &cid, "none", user)?;
+        call_instance("rm", &cid, "none", root_user)?;
         return Err(provisioning_failed);
     }
 
@@ -356,9 +385,10 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     /*!
     Start container with the given container ID
     !*/
-    let RuntimeSection { runas, resume, attach, .. } = config().runtime();
+    let RuntimeSection { resume, attach, .. } = config().runtime();
     
-    let user = User::from(runas);
+    let current_user = get_current_username().unwrap();
+    let user = User::from(current_user.to_str().unwrap());
 
     let is_running = container_running(cid, user)?;
 
@@ -437,110 +467,60 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
+    match call.status() {
+        Ok(_) => {
+            return Ok(())
+        }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+        }
+    }
     call.status()?;
     Ok(())
 }
 
 pub fn mount_container(
-    container_name: &str, user: User, as_image: bool
+    container_name: &str, as_image: bool
 ) -> Result<String, FlakeError> {
     /*!
     Mount container and return mount point
     !*/
-    if as_image && ! container_image_exists(container_name, user)? {
-        pull(container_name, user)?;
+    let root_user = User::from("root");
+    if as_image && ! container_image_exists(container_name, root_user)? {
+        pull(container_name, root_user)?;
     }
-    let storage_conf = NamedTempFile::new().unwrap();
-    let user_name = user.get_name();
-    let mut call;
-    if user_name != "root" {
-        let root_user = User::from("root");
-        call = root_user.run("bash");
-        let _ = Container::podman_write_custom_storage_config(&storage_conf);
-        if as_image {
-            call.arg("-c").arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} image mount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    container_name
-                )
-            );
-        } else {
-            call.arg("-c").arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} mount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    container_name
-                )
-            );
-        }
+    let mut call = root_user.run("podman");
+    if as_image {
+        call.arg("image").arg("mount").arg(container_name);
     } else {
-        call = user.run("podman");
-        if as_image {
-            call.arg("image").arg("mount").arg(container_name);
-        } else {
-            call.arg("mount").arg(container_name);
-        }
+        call.arg("mount").arg(container_name);
     }
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
     let output = call.perform()?;
-    if user_name != "root" {
-        Container::podman_fix_storage_permissions(&user_name)?;
-    }
     Ok(String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned())
 }
 
 pub fn umount_container(
-    mount_point: &str, user: User, as_image: bool
+    mount_point: &str, as_image: bool
 ) -> Result<(), FlakeError> {
     /*!
     Umount container image
     !*/
-    let storage_conf = NamedTempFile::new().unwrap();
-    let user_name = user.get_name();
-    let mut call;
-    if user_name != "root" {
-        let root_user = User::from("root");
-        call = root_user.run("bash");
-        call.stderr(Stdio::null());
-        call.stdout(Stdio::null());
-        let _ = Container::podman_write_custom_storage_config(&storage_conf);
-        if as_image {
-            call.arg("-c").arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} image umount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    mount_point
-                )
-            );
-        } else {
-            call.arg("-c").arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} umount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    mount_point
-                )
-            );
-        }
+    let root_user = User::from("root");
+    let mut call = root_user.run("podman");
+    call.stderr(Stdio::null());
+    call.stdout(Stdio::null());
+    if as_image {
+        call.arg("image").arg("umount").arg(mount_point);
     } else {
-        call = user.run("podman");
-        call.stderr(Stdio::null());
-        call.stdout(Stdio::null());
-        if as_image {
-            call.arg("image").arg("umount").arg(mount_point);
-        } else {
-            call.arg("umount").arg(mount_point);
-        }
+        call.arg("umount").arg(mount_point);
     }
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
     call.perform()?;
-    if user_name != "root" {
-        Container::podman_fix_storage_permissions(&user_name)?;
-    }
     Ok(())
 }
 
@@ -600,8 +580,15 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     if Lookup::is_debug() {
         debug!("{:?}", running.get_args());
     }
-
-    let output = running.perform()?;
+    let output: Output = match running.perform() {
+        Ok(output) => {
+            output
+        }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            running.perform()?
+        }
+    };
     let mut running_cids = String::new();
     running_cids.push_str(
         &String::from_utf8_lossy(&output.stdout)
@@ -624,6 +611,14 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, std::io::E
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
+    match exists.status() {
+        Ok(status) => {
+            return Ok(status.success())
+        }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+        }
+    }
     Ok(exists.status()?.success())
 }
 
@@ -636,9 +631,13 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     if Lookup::is_debug() {
         debug!("{:?}", pull.get_args());
     }
-
-    pull.perform()?;
-
+    match pull.perform() {
+        Ok(_) => { }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            let _ = pull.perform()?;
+        }
+    };
     let mut prune = user.run("podman");
     prune.arg("image").arg("prune").arg("--force");
     match prune.status() {
@@ -682,7 +681,9 @@ pub fn update_removed_files(
     Ok(())
 }
 
-pub fn gc_cid_file(container_cid_file: &String, user: User) -> Result<bool, FlakeError> {
+pub fn gc_cid_file(
+    container_cid_file: &String, user: User
+) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified
     container_cid_file. Garbage cleanup the container_cid_file
@@ -690,14 +691,33 @@ pub fn gc_cid_file(container_cid_file: &String, user: User) -> Result<bool, Flak
     exists, in any other case return false.
     !*/
     let cid = fs::read_to_string(container_cid_file)?;
-    let mut exists = user.run("podman");
-        exists.arg("container").arg("exists").arg(&cid);
 
-    if !exists.status()?.success() {
+    let mut exists = user.run("podman");
+    exists.arg("container")
+        .arg("exists")
+        .arg(&cid);
+    if Lookup::is_debug() {
+        debug!("{:?}", exists.get_args());
+    }
+    let status = match exists.status() {
+        Ok(status) => {
+            if status.success() {
+                status
+            } else {
+                let _ = Container::podman_setup_permissions();
+                exists.status()?
+            }
+        }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            exists.status()?
+        }
+    };
+    if status.success() {
+        Ok(true)
+    } else {
         fs::remove_file(container_cid_file)?;
         Ok(false)
-    } else {
-        Ok(true)
     }
 }
 

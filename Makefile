@@ -5,7 +5,6 @@ BINDIR ?= ${PREFIX}/bin
 SBINDIR ?= ${PREFIX}/sbin
 SHAREDIR ?= ${PREFIX}/share/podman-pilot
 COMPLETIONDIR ?= ${PREFIX}/share/bash-completion/completions
-FLAKEDIR ?= ${PREFIX}/share/flakes
 TEMPLATEDIR ?= /etc/flakes
 
 ARCH = $(shell uname -m)
@@ -82,7 +81,6 @@ install:
 	install -d -m 755 $(DESTDIR)$(SHAREDIR)
 	install -d -m 755 $(DESTDIR)$(COMPLETIONDIR)
 	install -d -m 755 $(DESTDIR)$(TEMPLATEDIR)
-	install -d -m 755 $(DESTDIR)$(FLAKEDIR)
 	install -d -m 755 ${DESTDIR}/usr/share/man/man8
 	install -m 755 target/release/podman-pilot \
 		$(DESTDIR)$(BINDIR)/podman-pilot
@@ -116,7 +114,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl
 	rm -f $(DESTDIR)$(BINDIR)/podman-pilot
 	rm -f $(DESTDIR)$(BINDIR)/firecracker-pilot
-	rm -rf $(DESTDIR)$(FLAKEDIR) $(DESTDIR)$(SHAREDIR) $(DESTDIR)$(TEMPLATEDIR)
+	rm -rf $(DESTDIR)$(SHAREDIR) $(DESTDIR)$(TEMPLATEDIR)
 
 man:
 	${MAKE} -C doc man

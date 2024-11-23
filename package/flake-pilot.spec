@@ -157,7 +157,6 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 
 %files
 %defattr(-,root,root)
-%dir /usr/share/flakes
 %dir /etc/flakes
 %config /etc/flakes.yml
 /usr/bin/flake-ctl

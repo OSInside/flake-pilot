@@ -25,3 +25,5 @@ pub const FLAKES_CONFIG: &str = "/etc/flakes.yml";
 pub const FLAKES_DIR: &str = "/usr/share/flakes";
 pub const PODMAN_IDS_DIR: &str = "/tmp/flakes";
 pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
+pub const FLAKES_STORAGE: &str = "/etc/flakes/storage.conf";
+pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";

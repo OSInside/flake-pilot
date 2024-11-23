@@ -96,6 +96,8 @@ install:
 		$(DESTDIR)$(TEMPLATEDIR)/firecracker-flake.yaml
 	install -m 644 firecracker-pilot/template/firecracker.json \
 		$(DESTDIR)$(TEMPLATEDIR)/firecracker.json
+	install -m 644 podman-pilot/registry/storage.conf \
+		$(DESTDIR)$(TEMPLATEDIR)/storage.conf
 	install -m 644 doc/*.8 ${DESTDIR}/usr/share/man/man8
 	install -m 755 utils/* $(DESTDIR)$(SBINDIR)
 	# completion

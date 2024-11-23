@@ -702,18 +702,18 @@ pub fn gc_cid_file(
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
-    let status = match exists.status() {
-        Ok(status) => {
-            if status.success() {
-                status
+    let status = match exists.output() {
+        Ok(output) => {
+            if output.status.success() {
+                output.status
             } else {
                 let _ = Container::podman_setup_permissions();
-                exists.status()?
+                exists.output()?.status
             }
         }
         Err(_) => {
             let _ = Container::podman_setup_permissions();
-            exists.status()?
+            exists.output()?.status
         }
     };
     if status.success() {

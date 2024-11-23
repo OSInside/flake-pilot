@@ -48,6 +48,10 @@ pub enum FlakeError {
     #[error(transparent)]
     MalformedJson(#[from] serde_json::Error),
 
+    /// Unknown command for resume mode
+    #[error("Unknown command for resume mode, specify a target_app_path")]
+    UnknownCommand,
+
     /// This flake is already running
     #[error("Instance in use by another instance, consider @NAME argument")]
     AlreadyRunning,

@@ -212,8 +212,11 @@ pub fn create(
         if target_app_path != "/" {
             app.arg("4294967295d");
         } else {
-// FIXME this will not work when an entrypoint is availabe that was not overwritten by a target_path and should end in an error message
-            app.arg("sleep").arg("4294967295d");
+            // If the target_app_path is set to / this means the
+            // container configured entry point is called. Such a
+            // setup cannot be used as resume flake because we
+            // don't know the entry point command to exec
+            return Err(FlakeError::UnknownCommand)
         }
     } else {
         for arg in Lookup::get_run_cmdline(Vec::new(), false) {

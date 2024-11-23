@@ -17,3 +17,4 @@ serde_yaml = { version = "0.9" }
 regex = { version = "1.9" }
 flakes = { version = "3.0.15", path = "../common" }
 rust-ini = { version = "0.21" }
+users = { version = "0.11" }

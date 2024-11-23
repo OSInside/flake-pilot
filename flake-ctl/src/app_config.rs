@@ -44,6 +44,7 @@ pub struct AppContainer {
     pub target_app_path: String,
     pub host_app_path: String,
     pub base_container: Option<String>,
+    pub check_host_dependencies: bool,
     pub layers: Option<Vec<String>>,
     pub runtime: Option<AppContainerRuntime>,
 }
@@ -96,6 +97,7 @@ impl AppConfig {
         target_app_path: &str,
         host_app_path: &str,
         base: Option<&String>,
+        check_host_dependencies: bool,
         layers: Option<Vec<String>>,
         includes_tar: Option<Vec<String>>,
         includes_path: Option<Vec<String>>,
@@ -120,6 +122,9 @@ impl AppConfig {
             container_config.base_container = Some(
                 base.to_string()
             );
+        }
+        if check_host_dependencies {
+            container_config.check_host_dependencies = check_host_dependencies
         }
         if layers.is_some() {
             container_config.layers = Some(

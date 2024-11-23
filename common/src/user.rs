@@ -22,6 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use std::path::Path;
 use std::{process::Command, ffi::OsStr};
 use serde::{Serialize, Deserialize};
 use crate::command::{CommandExtTrait, CommandError};
@@ -59,6 +60,7 @@ impl<'a> User<'a> {
 
     pub fn run<S: AsRef<OsStr>>(&self, command: S) -> Command {
         let mut c = Command::new("sudo");
+        c.arg("--preserve-env");
         if let Some(name) = self.name {
             c.arg("--user").arg(name);
         }
@@ -79,6 +81,9 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), CommandError> 
     /*!
     Make directory via sudo
     !*/
-    user.run("mkdir").arg("-p").arg("-m").arg(mode).arg(dirname).perform()?;
+    if ! Path::new(&dirname).exists() {
+        user.run("mkdir").arg("-p").arg("-m").arg(mode).arg(dirname).perform()?;
+        user.run("chmod").arg(mode).arg(dirname).perform()?;
+    }
     Ok(())
 }

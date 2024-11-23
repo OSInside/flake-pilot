@@ -23,45 +23,50 @@
 // SOFTWARE.
 //
 use std::fs;
+use std::env;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use crate::defaults;
 use crate::{app, app_config};
-use nix::unistd::{Uid, User};
-use tempfile::NamedTempFile;
 use flakes::container::Container;
 use flakes::config::get_flakes_dir;
+use users::{get_current_username};
 
 pub fn pull(uri: &String) -> i32 {
     /*!
     Call podman pull and prune with the provided uri
     !*/
-    let mut status_code = 255;
-
     info!("Fetching from registry...");
     info!("podman pull {}", uri);
-    let status = Command::new(defaults::PODMAN_PATH)
-        .arg("pull")
-        .arg(uri)
-        .status();
 
-    match status {
+    let mut call = setup_podman_call("any");
+    call.arg("pull")
+        .arg(uri);
+    let status = match call.status() {
         Ok(status) => {
-            status_code = status.code().unwrap();
-            if ! status.success() {
-                error!("Failed, error message(s) reported");
+            if status.success() {
+                status
             } else {
-                info!("podman prune");
-                let _ = Command::new(defaults::PODMAN_PATH)
-                    .arg("image")
-                    .arg("prune")
-                    .arg("--force")
-                    .status();
+                let _ = Container::podman_setup_permissions();
+                call.status().unwrap()
             }
         }
-        Err(status) => { error!("Process terminated by signal: {}", status) }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.status().unwrap()
+        }
+    };
+    let status_code = status.code().unwrap();
+    if ! status.success() {
+        error!("Failed, error message(s) reported");
+    } else {
+        info!("podman prune");
+        let mut prune = setup_podman_call("any");
+        let _ = prune.arg("image")
+            .arg("prune")
+            .arg("--force")
+            .status();
     }
-
     status_code
 }
 
@@ -69,49 +74,63 @@ pub fn load(oci: &String) -> i32 {
     /*!
     Call podman load with the provided oci tar file
     !*/
-    let mut status_code = 255;
-
     info!("Loading OCI image...");
     info!("podman load -i {}", oci);
-    let status = Command::new(defaults::PODMAN_PATH)
-        .arg("load")
-        .arg("-i")
-        .arg(oci)
-        .status();
 
-    match status {
+    let mut call = setup_podman_call("any");
+    call.arg("load")
+        .arg("-i")
+        .arg(oci);
+    let status = match call.status() {
         Ok(status) => {
-            status_code = status.code().unwrap();
-            if ! status.success() {
-                error!("Failed, error message(s) reported");
+            if status.success() {
+                status
+            } else {
+                let _ = Container::podman_setup_permissions();
+                call.status().unwrap()
             }
         }
-        Err(status) => { error!("Process terminated by signal: {}", status) }
-    }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.status().unwrap()
+        }
+    };
 
+    let status_code = status.code().unwrap();
+    if ! status.success() {
+        error!("Failed, error message(s) reported");
+    }
     status_code
 }
 
-pub fn rm(container: &String){
+pub fn rm(container: &String) {
     /*!
     Call podman image rm with force option to remove all running containers
     !*/
     info!("Removing image and all running containers...");
     info!("podman rm -f {}", container);
-    let status = Command::new(defaults::PODMAN_PATH)
-        .arg("image")
+
+    let mut call = setup_podman_call("any");
+    call.arg("image")
         .arg("rm")
         .arg("-f")
-        .arg(container)
-        .status();
-
-    match status {
+        .arg(container);
+    let status = match call.status() {
         Ok(status) => {
             if ! status.success() {
-                error!("Failed, error message(s) reported");
+                status
+            } else {
+                let _ = Container::podman_setup_permissions();
+                call.status().unwrap()
             }
         }
-        Err(status) => { error!("Process terminated by signal: {}", status) }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.status().unwrap()
+        }
+    };
+    if ! status.success() {
+        error!("Failed, error message(s) reported");
     }
 }
 
@@ -120,49 +139,27 @@ pub fn mount_container(container_name: &str) -> String {
     Mount container and return mount point,
     or an empty string in the error case
     !*/
-    let mut runs_as_root = false;
-    let storage_conf = NamedTempFile::new().unwrap();
-    let uid = Uid::effective();
-    if uid.is_root() {
-        runs_as_root = true
-    }
-    let mut call = Command::new("sudo");
-    if !runs_as_root {
-        let _ = Container::podman_write_custom_storage_config(&storage_conf);
-        call.arg("bash").arg("-c")
-            .arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} image mount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    container_name
-                )
-            );
-    } else {
-        call.arg(defaults::PODMAN_PATH)
-            .arg("image")
-            .arg("mount")
-            .arg(container_name);
-    }
-    match call.output() {
+    let mut call = setup_podman_call("root");
+    call.arg("image")
+        .arg("mount")
+        .arg(container_name);
+    let output = match call.output() {
         Ok(output) => {
-            if output.status.success() {
-                if !runs_as_root {
-                    let _ = Container::podman_fix_storage_permissions(
-                        &User::from_uid(uid).unwrap().unwrap().name
-                    );
-                }
-                return String::from_utf8_lossy(&output.stdout)
-                    .strip_suffix('\n').unwrap().to_string()
-            }
-            error!(
-                "Failed to mount container image: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        },
-        Err(error) => {
-            error!("Failed to execute podman image mount: {:?}", error)
+            output
         }
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.output().unwrap()
+        }
+    };
+    if output.status.success() {
+        return String::from_utf8_lossy(&output.stdout)
+            .strip_suffix('\n').unwrap().to_string()
     }
+    error!(
+        "Failed to mount container image: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     "".to_string()
 }
 
@@ -170,45 +167,20 @@ pub fn umount_container(container_name: &str) -> i32 {
     /*!
     Umount container image
     !*/
-    let mut runs_as_root = false;
-    let mut status_code = 255;
-    let storage_conf = NamedTempFile::new().unwrap();
-    let uid = Uid::effective();
-    if uid.is_root() {
-        runs_as_root = true
-    }
-    let mut call = Command::new("sudo");
-    if !runs_as_root {
-        let _ = Container::podman_write_custom_storage_config(&storage_conf);
-        call.stderr(Stdio::null()).stdout(Stdio::null())
-            .arg("bash").arg("-c")
-            .arg(format!(
-                "export CONTAINERS_STORAGE_CONF={}; {} image umount {}",
-                    storage_conf.path().display(),
-                    defaults::PODMAN_PATH,
-                    container_name
-                )
-            );
-    } else {
-        call.arg(defaults::PODMAN_PATH)
-            .arg("image")
-            .arg("umount")
-            .arg(container_name);
-    }
-    match call.status() {
-        Ok(status) => {
-            if !runs_as_root {
-                let _ = Container::podman_fix_storage_permissions(
-                    &User::from_uid(uid).unwrap().unwrap().name
-                );
-            }
-            status_code = status.code().unwrap();
-        },
-        Err(error) => {
-            error!("Failed to execute podman image umount: {:?}", error)
+    let mut call = setup_podman_call("root");
+    call.arg("image")
+        .arg("umount")
+        .arg(container_name);
+    let output = match call.output() {
+        Ok(output) => {
+            output
         }
-    }
-    status_code
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.output().unwrap()
+        }
+    };
+    output.status.code().unwrap()
 }
 
 pub fn purge_container(container: &str) {
@@ -279,4 +251,23 @@ pub fn print_container_info(container: &str) {
         );
     }
     umount_container(container);
+}
+
+pub fn setup_podman_call(user: &str) -> Command {
+    let mut current_user = String::new();
+    if user == "any" {
+        let username = get_current_username().unwrap();
+        current_user.push_str(username.to_str().unwrap())
+    } else {
+        current_user.push_str(user)
+    }
+    let container_runroot = format!(
+        "{}/{}", defaults::FLAKES_REGISTRY_RUNROOT, current_user
+    );
+    env::set_var("CONTAINERS_STORAGE_CONF", defaults::FLAKES_STORAGE);
+    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
+    let mut call = Command::new("sudo");
+    call.arg("--preserve-env")
+        .arg(defaults::PODMAN_PATH);
+    call
 }

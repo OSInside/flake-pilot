@@ -6,9 +6,10 @@ container:
   target_app_path: path/to/program/in/container
   host_app_path: path/to/program/on/host
   base_container: ~
+  check_host_dependencies: false
   layers: ~
   runtime:
-    runas: root
+    runas: any
     resume: false
     attach: false
     podman:

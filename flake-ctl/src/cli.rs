@@ -41,6 +41,7 @@ pub enum Commands {
         #[clap(subcommand)]
         command: Podman,
     },
+    /// Load and register FireCracker VM applications
     Firecracker {
         #[clap(subcommand)]
         command: Firecracker,
@@ -253,6 +254,12 @@ pub enum Podman {
         #[clap(long)]
         base: Option<String>,
 
+        /// Check if the container has dependencies to the host
+        /// When using a base container this check is enabled
+        /// by default
+        #[clap(long)]
+        check_host_dependencies: bool,
+
         /// Name of an additional container layer on top of
         /// the specified base container. This option can be
         /// specified multiple times. The resulting layer list
@@ -284,15 +291,6 @@ pub enum Podman {
         /// sessions like a shell application.
         #[clap(long)]
         attach: bool,
-
-        /// Name of the user to run podman. Note: This requires
-        /// rootless podman to be configured on the host. It's also
-        /// important to understand that the user's HOME registry
-        /// will be used to lookup the containers. It is not possible
-        /// to provision base- or layers of containers across multiple
-        /// container registries.
-        #[clap(long)]
-        run_as: Option<String>,
 
         /// Container runtime option, and optional value, used to
         /// create the container. This option can be

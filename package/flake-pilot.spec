@@ -168,6 +168,7 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 
 %files -n flake-pilot-podman
 %config /etc/flakes/container-flake.yaml
+%config /etc/flakes/storage.conf
 /usr/bin/podman-pilot
 /usr/sbin/flake-registry
 %doc /usr/share/man/man8/flake-ctl-podman-load.8.gz

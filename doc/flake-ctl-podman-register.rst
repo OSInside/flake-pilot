@@ -18,6 +18,7 @@ SYNOPSIS
        --app <APP>
        --attach
        --base <BASE>
+       --check_host_dependencies
        --container <CONTAINER>
        --include-tar <INCLUDE_TAR>...
        --include-path <INCLUDE_PATH>...
@@ -25,7 +26,6 @@ SYNOPSIS
        --layer <LAYER>...
        --opt <OPT>...
        --resume
-       --run-as <RUN_AS>
        --target <TARGET>
 
 DESCRIPTION
@@ -69,6 +69,11 @@ OPTIONS
   against the specified base container. Such delta containers
   can be created with KIWI.
 
+--check_host_dependencies
+
+  Check if the container has dependencies to the host When using
+  a base container this check is enabled by default.
+
 --include-tar <INCLUDE_TAR>...
 
   Name of a tar file to be included on top of the container instance.
@@ -106,15 +111,6 @@ OPTIONS
   Resume the container from previous execution. If the container is
   still running, the app will be executed inside of this container
   instance
-
---run-as <RUN_AS>
-
-  Name of the user to run podman. Note: This requires rootless
-  podman to be configured on the host. It's also important to
-  understand that the user's HOME registry will be used to
-  lookup the containers. It is not possible to provision
-  base- or layers of containers across multiple container
-  registries
 
 --container <CONTAINER>
 

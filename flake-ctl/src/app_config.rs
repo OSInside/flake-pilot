@@ -137,10 +137,6 @@ impl AppConfig {
         } else if attach {
             container_config.runtime.as_mut().unwrap()
                 .attach = Some(attach);
-        } else {
-            // default: remove the container if no resume/attach is set
-            container_config.runtime.as_mut().unwrap()
-                .podman.as_mut().unwrap().push("--rm".to_string());
         }
         if let Some(run_as) = run_as {
             container_config.runtime.as_mut().unwrap()

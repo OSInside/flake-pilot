@@ -102,7 +102,6 @@ pub fn create(
 
         podman:
           - --storage-opt size=10G
-          - --rm
           - -ti
 
     include:
@@ -184,9 +183,6 @@ pub fn create(
     app.args(podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')));
 
     if !has_runtime_args {
-        if !resume {
-            app.arg("--rm");
-        }
         app.arg("--tty").arg("--interactive");
     }
 

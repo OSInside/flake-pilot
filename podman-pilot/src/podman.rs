@@ -410,6 +410,7 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     } else {
         // 4. Startup container
         call_instance("start", cid, program_name, user)?;
+        call_instance("rm_force", cid, program_name, user)?;
     };
     Ok(())
 }
@@ -436,10 +437,6 @@ pub fn call_instance(
     let RuntimeSection { resume, .. } = config().runtime();
 
     let mut call = user.run("podman");
-    if action == "rm" || action == "rm_force" {
-        call.stderr(Stdio::null());
-        call.stdout(Stdio::null());
-    }
     if action == "rm_force" {
         call.arg("rm").arg("--force");
     } else {
@@ -470,15 +467,19 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-    match call.status() {
-        Ok(_) => {
-            return Ok(())
-        }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-        }
+    if action == "rm" || action == "rm_force" {
+        match call.perform() {
+            Ok(output) => {
+                output
+            }
+            Err(_) => {
+                let _ = Container::podman_setup_permissions();
+                call.perform()?
+            }
+        };
+    } else {
+        call.status()?;
     }
-    call.status()?;
     Ok(())
 }
 
@@ -579,7 +580,8 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     !*/
     let mut running_status = false;
     let mut running = user.run("podman");
-    running.arg("ps").arg("--format").arg("{{.ID}}");
+    running.arg("ps")
+        .arg("--format").arg("{{.ID}}");
     if Lookup::is_debug() {
         debug!("{:?}", running.get_args());
     }
@@ -587,9 +589,16 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
         Ok(output) => {
             output
         }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-            running.perform()?
+        Err(error) => {
+            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+                // On permission error, fix permissions and try again
+                // This is an expensive operation depending on the storage size
+                let _ = Container::podman_setup_permissions();
+                running.perform()?
+            } else {
+                return Err(error)
+            }
         }
     };
     let mut running_cids = String::new();
@@ -616,10 +625,15 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, std::io::E
     }
     match exists.status() {
         Ok(status) => {
-            return Ok(status.success())
+            if status.success() {
+                return Ok(status.success())
+            } else {
+                let _ = Container::podman_setup_permissions();
+                exists.status()?;
+            }
         }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
+        Err(error) => {
+            return Err(error)
         }
     }
     Ok(exists.status()?.success())
@@ -635,10 +649,17 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
         debug!("{:?}", pull.get_args());
     }
     match pull.perform() {
-        Ok(_) => { }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-            let _ = pull.perform()?;
+        Ok(output) => {
+            output
+        }
+        Err(error) => {
+            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+                let _ = Container::podman_setup_permissions();
+                pull.perform()?
+            } else {
+                return Err(FlakeError::CommandError(error))
+            }
         }
     };
     let mut prune = user.run("podman");

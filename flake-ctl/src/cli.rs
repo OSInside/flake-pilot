@@ -198,6 +198,9 @@ pub enum Podman {
     /// Load container
     Load {
         /// OCI image to load into local podman registry
+        /// used as the base of a glob if the given image path
+        /// is not found. Load the highest, in alpha numerical order
+        /// image if there is a match
         #[clap(long)]
         oci: String,
     },

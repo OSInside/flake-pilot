@@ -21,7 +21,10 @@ SYNOPSIS
 DESCRIPTION
 -----------
 
-Load the given OCI image into the local registry.
+Load the given OCI image into the local registry. If the provided
+file path cannot be found and attempt is made to match the image using
+the provided path as the base for a glob. If multiple images match the
+glob the highest image in alpha numerical order will be loaded.
 The command is based on **podman load**. After completion
 the container can be listed via:
 

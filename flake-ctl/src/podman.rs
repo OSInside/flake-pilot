@@ -83,11 +83,8 @@ pub fn load(oci: &String) -> i32 {
         // glob puts things in alpha sorted order which is expected to give
         // us the highest version of the archive
         for entry in glob(&container_archives)
-            .expect("Failed to read glob pattern") {
-                match entry {
-                    Ok(path) => container_archive = path.display().to_string(),
-                    Err(_) => {},
-                }
+            .expect("Failed to read glob pattern").flatten() {
+                    container_archive = entry.display().to_string()
             }
         }
     info!("podman load -i {}", container_archive);

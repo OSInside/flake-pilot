@@ -25,7 +25,7 @@
 use crate::defaults;
 use crate::config::{RuntimeSection, config};
 
-use flakes::user::{User, chmod, mkdir};
+use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
@@ -564,7 +564,6 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
     Create meta data directory structure
     !*/
     if ! Path::new(&get_podman_ids_dir()).is_dir() {
-        chmod(defaults::CONTAINER_DIR, "755", User::ROOT)?;
         mkdir(&get_podman_ids_dir(), "777", User::ROOT)?;
     }
     Ok(())

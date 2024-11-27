@@ -1,6 +1,6 @@
 [package]
 name = "flake-ctl"
-version = "3.1.4"
+version = "3.1.5"
 edition = "2018"
 license = "MIT"
 
@@ -17,5 +17,5 @@ futures-util = { version = "0.3" }
 indicatif = { version = "0.15" }
 tokio = { version = "1.32", features = ["full"] }
 tempfile = { version = "3.4" }
-flakes = { version = "3.1.4", path = "../common" }
+flakes = { version = "3.1.5", path = "../common" }
 users = { version = "0.11" }

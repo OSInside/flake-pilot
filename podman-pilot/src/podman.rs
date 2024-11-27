@@ -310,13 +310,17 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             }
         };
 
-        if has_host_dependencies(&instance_mount_point) {
-            let removed_files = tempfile()?;
-            if Lookup::is_debug() {
-                debug!("Syncing host dependencies...");
+        // lookup and sync host dependencies from systemfiles data
+        let system_files = tempfile()?;
+        if let Ok(systemfiles) = has_system_dependencies(
+            &instance_mount_point, &system_files
+        ) {
+            if systemfiles {
+                if Lookup::is_debug() {
+                    debug!("Syncing system dependencies...");
+                }
+                sync_host(&instance_mount_point, &system_files, root_user)?;
             }
-            update_removed_files(&instance_mount_point, &removed_files)?;
-            sync_host(&instance_mount_point, &removed_files, root_user)?;
         }
 
         if is_delta_container {
@@ -666,16 +670,26 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn has_host_dependencies(target: &String) -> bool {
+pub fn has_system_dependencies(
+    target: &String, mut file: &File
+) -> Result<bool, std::io::Error> {
     /*!
-    Check if container provides a /removed file which indicates
+    Check if container provides a /systemfiles file which indicates
     there are files that needs to be provisioned from the host
     !*/
-    let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
+    let host_deps = format!(
+        "{}/{}", &target, defaults::SYSTEM_HOST_DEPENDENCIES
+    );
     if Path::new(&host_deps).exists() {
-        return true
+        let data = fs::read_to_string(&host_deps)?;
+        if Lookup::is_debug() {
+            debug!("Adding system deps...");
+            debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+        }
+        file.write_all(data.as_bytes())?;
+        return Ok(true);
     }
-    false
+    Ok(false)
 }
 
 pub fn update_removed_files(

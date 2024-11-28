@@ -44,6 +44,13 @@ like a normal application on this host.
 For further details about the flake configuration please refer to
 the **podman-pilot** manual page.
 
+NOTE
+----
+
+References made to the name of a container or container name imply the
+path of the container as it is known in the local registry. The value shown
+in the **REPOSITORY** column shown by the **podman images** command.
+
 OPTIONS
 -------
 

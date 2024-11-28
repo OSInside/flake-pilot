@@ -140,6 +140,14 @@ OPTIONS
 
   This stops the progress spinner to be displayed
 
+%ignore_sync_error
+
+  When provisioning a container with systemfiles, the default action is
+  to stop with an error when not all of the system files could be transfered
+  from the host to the container instance. This option allows to continue
+  even if there are files missing. This can lead to a non functional
+  instance of course, you have been warned.
+
 DEBUGGING
 ---------
 

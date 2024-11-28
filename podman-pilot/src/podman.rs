@@ -235,7 +235,12 @@ pub fn create(
         );
     }
 
-    match run_podman_creation(app) {
+    let mut ignore_sync_error = false;
+    if pilot_options.contains_key("%ignore_sync_error") {
+        ignore_sync_error = true
+    }
+
+    match run_podman_creation(app, ignore_sync_error) {
         Ok(cid) => {
             if let Some(spinner) = spinner {
                 spinner.success("Launching flake");
@@ -251,7 +256,9 @@ pub fn create(
     }
 }
 
-fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
+fn run_podman_creation(
+    mut app: Command, ignore_sync_error: bool
+) -> Result<String, FlakeError> {
     /*!
     Create and provision container prior start
     !*/
@@ -311,6 +318,7 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
         };
 
         // lookup and sync host dependencies from systemfiles data
+        let mut ignore_missing = false;
         let system_files = tempfile()?;
         if let Ok(systemfiles) = has_system_dependencies(
             &instance_mount_point, &system_files
@@ -319,11 +327,32 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
                 if Lookup::is_debug() {
                     debug!("Syncing system dependencies...");
                 }
-                sync_host(&instance_mount_point, &system_files, root_user)?;
+                match sync_host(
+                    &instance_mount_point, &system_files,
+                    root_user, ignore_missing, defaults::SYSTEM_HOST_DEPENDENCIES
+                ) {
+                    Ok(_) => { },
+                    Err(error) => {
+                        if ! ignore_sync_error {
+                            provisioning_failed = Some(error)
+                        }
+                    }
+                }
             }
         }
 
-        if is_delta_container {
+        // lookup and sync host dependencies from removed data
+        if provisioning_failed.is_none() {
+            ignore_missing = true;
+            let removed_files = tempfile()?;
+            update_removed_files(&instance_mount_point, &removed_files)?;
+            sync_host(
+                &instance_mount_point, &removed_files,
+                root_user, ignore_missing, defaults::HOST_DEPENDENCIES
+            )?;
+        }
+
+        if is_delta_container && provisioning_failed.is_none() {
             // Create tmpfile to hold accumulated removed data from layers
             let removed_files = tempfile()?;
             if Lookup::is_debug() {
@@ -335,7 +364,10 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
                 .chain(Some(&config().container.name));
 
             if Lookup::is_debug() {
-                debug!("Adding main app [{}] to layer list", config().container.name);
+                debug!(
+                    "Adding main app [{}] to layer list",
+                    config().container.name
+                );
             }
 
             for layer in layers {
@@ -356,15 +388,19 @@ fn run_podman_creation(mut app: Command) -> Result<String, FlakeError> {
             if Lookup::is_debug() {
                 debug!("Syncing layer host dependencies...");
             }
-            sync_host(&instance_mount_point, &removed_files, root_user)?;
+            sync_host(
+                &instance_mount_point, &removed_files,
+                root_user, ignore_missing, defaults::HOST_DEPENDENCIES
+            )?;
         }
 
-        if has_includes {
+        if has_includes && provisioning_failed.is_none() {
             if Lookup::is_debug() {
                 debug!("Syncing includes...");
             }
             match IO::sync_includes(
-                &instance_mount_point, config().tars(), config().paths(), root_user
+                &instance_mount_point, config().tars(),
+                config().paths(), root_user
             ) {
                 Ok(_) => { },
                 Err(error) => {
@@ -529,14 +565,15 @@ pub fn umount_container(
 }
 
 pub fn sync_host(
-    target: &String, mut removed_files: &File, user: User
+    target: &String, mut removed_files: &File, user: User,
+    ignore_missing: bool, from: &str
 ) -> Result<(), FlakeError> {
     /*!
-    Sync files/dirs specified in target/defaults::HOST_DEPENDENCIES
-    from the running host to the target path
+    Sync files/dirs specified in target/from, from the running
+    host to the target path
     !*/
     let mut removed_files_contents = String::new();
-    let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
+    let files_from = format!("{}/{}", &target, from);
     removed_files.seek(SeekFrom::Start(0))?;
     removed_files.read_to_string(&mut removed_files_contents)?;
 
@@ -547,19 +584,38 @@ pub fn sync_host(
         return Ok(())
     }
 
-    File::create(&host_deps)?.write_all(removed_files_contents.as_bytes())?;
+    File::create(&files_from)?.write_all(removed_files_contents.as_bytes())?;
 
     let mut call = user.run("rsync");
-    call.arg("-av")
-        .arg("--ignore-missing-args")
-        .arg("--files-from").arg(&host_deps)
+    call.arg("-av");
+    if ignore_missing {
+        call.arg("--ignore-missing-args");
+    }
+    call.arg("--files-from").arg(&files_from)
         .arg("/")
         .arg(format!("{}/", &target));
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-
-    call.perform()?;
+    match call.output() {
+        Ok(output) => {
+            if Lookup::is_debug() {
+                debug!("{}", String::from_utf8_lossy(&output.stdout));
+                debug!("{}", String::from_utf8_lossy(&output.stderr));
+            }
+            if ! output.status.success() && ! ignore_missing {
+                return Err(
+                    FlakeError::IOError {
+                        kind: "rsync transfer incomplete".to_string(),
+                        message: "Please run with PILOT_DEBUG=1 for details".to_string()
+                    }
+                );
+            }
+        }
+        Err(error) => {
+            return Err(flakes::error::FlakeError::IO(error))
+        }
+    }
     Ok(())
 }
 
@@ -677,15 +733,19 @@ pub fn has_system_dependencies(
     Check if container provides a /systemfiles file which indicates
     there are files that needs to be provisioned from the host
     !*/
-    let host_deps = format!(
+    let system_deps = format!(
         "{}/{}", &target, defaults::SYSTEM_HOST_DEPENDENCIES
     );
-    if Path::new(&host_deps).exists() {
-        let data = fs::read_to_string(&host_deps)?;
+    if Path::new(&system_deps).exists() {
         if Lookup::is_debug() {
-            debug!("Adding system deps...");
-            debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+            debug!("Adding system deps from {}", system_deps);
         }
+        let data = fs::read_to_string(&system_deps)?;
+        // The subsequent rsync call logs enough information
+        // Let's keep this for convenience debugging
+        //if Lookup::is_debug() {
+        //    debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+        //}
         file.write_all(data.as_bytes())?;
         return Ok(true);
     }
@@ -700,15 +760,17 @@ pub fn update_removed_files(
     to the accumulated_file
     !*/
     let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
-    if Lookup::is_debug() {
-        debug!("Looking up host deps from {}", host_deps);
-    }
     if Path::new(&host_deps).exists() {
-        let data = fs::read_to_string(&host_deps)?;
         if Lookup::is_debug() {
-            debug!("Adding host deps...");
-            debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+            debug!("Adding host deps from {}", host_deps);
         }
+        let data = fs::read_to_string(&host_deps)?;
+        // The subsequent rsync call logs enough information
+        // Let's keep this for convenience debugging
+        // if Lookup::is_debug() {
+        //     debug!("Adding host deps...");
+        //     debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
+        // }
         accumulated_file.write_all(data.as_bytes())?;
     }
     Ok(())

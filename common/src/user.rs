@@ -81,9 +81,19 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), CommandError> 
     /*!
     Make directory via sudo
     !*/
-    if ! Path::new(&dirname).exists() {
-        user.run("mkdir").arg("-p").arg("-m").arg(mode).arg(dirname).perform()?;
-        user.run("chmod").arg(mode).arg(dirname).perform()?;
+    let mut targetdir = dirname;
+
+    let workdir;
+    let origin = Path::new(&dirname);
+    if origin.is_symlink() {
+        workdir = origin.read_link().unwrap();
+        targetdir = workdir.to_str().unwrap();
+    }
+    if ! Path::new(&targetdir).exists() {
+        user.run("mkdir")
+            .arg("-p").arg("-m").arg(mode).arg(targetdir).perform()?;
+        user.run("chmod")
+            .arg(mode).arg(targetdir).perform()?;
     }
     Ok(())
 }

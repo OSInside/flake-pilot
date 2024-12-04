@@ -39,7 +39,7 @@ impl<'a> From<&'a str> for User<'a> {
     }
 }
 
-impl<'a> User<'a> {
+impl User<'_> {
     pub const ROOT: User<'static> = User { name: Some("root")};
 
     pub fn get_user_id(&self) -> String {

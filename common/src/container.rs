@@ -28,7 +28,7 @@ use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
 use crate::user::User;
 use crate::command::CommandExtTrait;
-use users::{get_current_uid, get_current_gid, get_current_username};
+use users::{get_current_uid, get_current_gid};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Container {
@@ -58,14 +58,13 @@ impl Container {
         let root = User::from("root");
         let user_id = get_current_uid();
         let user_gid = get_current_gid();
-        let current_user = get_current_username().unwrap();
         let chown_param = format!("{}:{}", user_id, user_gid);
 
         let mut fix_run_storage = root.run("chown");
         fix_run_storage.arg("-R")
             .arg(chown_param)
             .arg("/run/libpod")
-            .arg(format!("/run/flakes/{}", current_user.to_str().unwrap()));
+            .arg(defaults::FLAKES_REGISTRY_RUNROOT);
         FlakeLog::debug(&format!("{:?}", fix_run_storage.get_args()));
         fix_run_storage.perform()?;
 

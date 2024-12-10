@@ -319,6 +319,7 @@ fn run_podman_creation(
 
         // lookup and sync host dependencies from systemfiles data
         let mut ignore_missing = false;
+        let mut copy_links = true;
         let system_files = tempfile()?;
         if let Ok(systemfiles) = has_system_dependencies(
             &instance_mount_point, &system_files
@@ -329,7 +330,8 @@ fn run_podman_creation(
                 }
                 match sync_host(
                     &instance_mount_point, &system_files,
-                    root_user, ignore_missing, defaults::SYSTEM_HOST_DEPENDENCIES
+                    root_user, ignore_missing, copy_links,
+                    defaults::SYSTEM_HOST_DEPENDENCIES
                 ) {
                     Ok(_) => { },
                     Err(error) => {
@@ -344,11 +346,13 @@ fn run_podman_creation(
         // lookup and sync host dependencies from removed data
         if provisioning_failed.is_none() {
             ignore_missing = true;
+            copy_links = false;
             let removed_files = tempfile()?;
             update_removed_files(&instance_mount_point, &removed_files)?;
             sync_host(
                 &instance_mount_point, &removed_files,
-                root_user, ignore_missing, defaults::HOST_DEPENDENCIES
+                root_user, ignore_missing, copy_links,
+                defaults::HOST_DEPENDENCIES
             )?;
         }
 
@@ -390,7 +394,8 @@ fn run_podman_creation(
             }
             sync_host(
                 &instance_mount_point, &removed_files,
-                root_user, ignore_missing, defaults::HOST_DEPENDENCIES
+                root_user, ignore_missing, copy_links,
+                defaults::HOST_DEPENDENCIES
             )?;
         }
 
@@ -566,7 +571,7 @@ pub fn umount_container(
 
 pub fn sync_host(
     target: &String, mut removed_files: &File, user: User,
-    ignore_missing: bool, from: &str
+    ignore_missing: bool, copy_links: bool, from: &str
 ) -> Result<(), FlakeError> {
     /*!
     Sync files/dirs specified in target/from, from the running
@@ -588,6 +593,9 @@ pub fn sync_host(
 
     let mut call = user.run("rsync");
     call.arg("-av");
+    if copy_links {
+        call.arg("--copy-links");
+    }
     if ignore_missing {
         call.arg("--ignore-missing-args");
     }

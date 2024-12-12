@@ -148,6 +148,10 @@ OPTIONS
   even if there are files missing. This can lead to a non functional
   instance of course, you have been warned.
 
+%interactive
+
+  Use when running interactive processes like a shell
+
 DEBUGGING
 ---------
 

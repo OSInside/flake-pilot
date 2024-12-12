@@ -478,6 +478,12 @@ pub fn call_instance(
 
     let RuntimeSection { resume, .. } = config().runtime();
 
+    let pilot_options = Lookup::get_pilot_run_options();
+    let mut interactive = false;
+    if pilot_options.contains_key("%interactive") {
+        interactive = true;
+    }
+
     let mut call = user.run("podman");
     if action == "rm" || action == "rm_force" {
         call.stdout(Stdio::null());
@@ -510,16 +516,20 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-    match call.output() {
-        Ok(output) => {
-            let _ = io::stdout().write_all(&output.stdout);
-            let _ = io::stderr().write_all(&output.stderr);
-        },
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-            call.output()?;
-        }
-    };
+    if interactive {
+        call.status()?;
+    } else {
+        match call.output() {
+            Ok(output) => {
+                let _ = io::stdout().write_all(&output.stdout);
+                let _ = io::stderr().write_all(&output.stderr);
+            },
+            Err(_) => {
+                let _ = Container::podman_setup_permissions();
+                call.output()?;
+            }
+        };
+    }
     Ok(())
 }
 

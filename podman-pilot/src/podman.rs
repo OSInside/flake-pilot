@@ -33,6 +33,7 @@ use flakes::command::{CommandError, CommandExtTrait};
 use flakes::container::Container;
 use flakes::config::get_podman_ids_dir;
 
+use std::io;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::env;
@@ -478,7 +479,8 @@ pub fn call_instance(
     let RuntimeSection { resume, .. } = config().runtime();
 
     let mut call = user.run("podman");
-    if action == "rm_force" {
+    if action == "rm" || action == "rm_force" {
+        call.stdout(Stdio::null());
         call.arg("rm").arg("--force");
     } else {
         call.arg(action);
@@ -508,19 +510,16 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-    if action == "rm" || action == "rm_force" {
-        match call.perform() {
-            Ok(output) => {
-                output
-            }
-            Err(_) => {
-                let _ = Container::podman_setup_permissions();
-                call.perform()?
-            }
-        };
-    } else {
-        call.status()?;
-    }
+    match call.output() {
+        Ok(output) => {
+            let _ = io::stdout().write_all(&output.stdout);
+            let _ = io::stderr().write_all(&output.stderr);
+        },
+        Err(_) => {
+            let _ = Container::podman_setup_permissions();
+            call.output()?;
+        }
+    };
     Ok(())
 }
 

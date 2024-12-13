@@ -318,12 +318,38 @@ fn run_podman_creation(
             }
         };
 
-        // lookup and sync host dependencies from systemfiles data
+        // lookup and sync host library dependencies from systemfiles data
         let mut ignore_missing = false;
         let mut copy_links = true;
+        let system_files_libs = tempfile()?;
+        if let Ok(systemfiles) = has_system_dependencies(
+            &instance_mount_point, defaults::SYSTEM_HOST_DEPENDENCIES_LIBS,
+            &system_files_libs
+        ) {
+            if systemfiles {
+                if Lookup::is_debug() {
+                    debug!("Syncing system library dependencies...");
+                }
+                match sync_host(
+                    &instance_mount_point, &system_files_libs,
+                    root_user, ignore_missing, copy_links,
+                    defaults::SYSTEM_HOST_DEPENDENCIES_LIBS
+                ) {
+                    Ok(_) => { },
+                    Err(error) => {
+                        if ! ignore_sync_error {
+                            provisioning_failed = Some(error)
+                        }
+                    }
+                }
+            }
+        }
+        // lookup and sync host dependencies from systemfiles data
+        copy_links = false;
         let system_files = tempfile()?;
         if let Ok(systemfiles) = has_system_dependencies(
-            &instance_mount_point, &system_files
+            &instance_mount_point, defaults::SYSTEM_HOST_DEPENDENCIES,
+            &system_files
         ) {
             if systemfiles {
                 if Lookup::is_debug() {
@@ -347,7 +373,6 @@ fn run_podman_creation(
         // lookup and sync host dependencies from removed data
         if provisioning_failed.is_none() {
             ignore_missing = true;
-            copy_links = false;
             let removed_files = tempfile()?;
             update_removed_files(&instance_mount_point, &removed_files)?;
             sync_host(
@@ -744,15 +769,13 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
 }
 
 pub fn has_system_dependencies(
-    target: &String, mut file: &File
+    target: &String, dependency_file: &str, mut file: &File
 ) -> Result<bool, std::io::Error> {
     /*!
     Check if container provides a /systemfiles file which indicates
     there are files that needs to be provisioned from the host
     !*/
-    let system_deps = format!(
-        "{}/{}", &target, defaults::SYSTEM_HOST_DEPENDENCIES
-    );
+    let system_deps = format!("{}/{}", &target, dependency_file);
     if Path::new(&system_deps).exists() {
         if Lookup::is_debug() {
             debug!("Adding system deps from {}", system_deps);

@@ -25,6 +25,8 @@
 use crate::defaults;
 use crate::config::{RuntimeSection, config};
 
+use atty::Stream;
+
 use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
@@ -520,7 +522,7 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("{:?}", call.get_args());
     }
-    if interactive {
+    if interactive || atty::is(Stream::Stdout) {
         call.status()?;
     } else {
         match call.output() {

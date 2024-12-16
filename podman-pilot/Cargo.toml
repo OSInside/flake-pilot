@@ -18,3 +18,4 @@ regex = { version = "1.9" }
 flakes = { version = "3.1.11", path = "../common" }
 rust-ini = { version = "0.21" }
 users = { version = "0.11" }
+atty = { version = "0.2" }

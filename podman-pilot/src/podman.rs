@@ -318,46 +318,20 @@ fn run_podman_creation(
             }
         };
 
-        // lookup and sync host library dependencies from systemfiles data
+        // lookup and sync host dependencies from systemfiles script
         let mut ignore_missing = false;
-        let mut copy_links = true;
-        let system_files_libs = tempfile()?;
-        if let Ok(systemfiles) = has_system_dependencies(
-            &instance_mount_point, defaults::SYSTEM_HOST_DEPENDENCIES_LIBS,
-            &system_files_libs
-        ) {
-            if systemfiles {
-                if Lookup::is_debug() {
-                    debug!("Syncing system library dependencies...");
-                }
-                match sync_host(
-                    &instance_mount_point, &system_files_libs,
-                    root_user, ignore_missing, copy_links,
-                    defaults::SYSTEM_HOST_DEPENDENCIES_LIBS
-                ) {
-                    Ok(_) => { },
-                    Err(error) => {
-                        if ! ignore_sync_error {
-                            provisioning_failed = Some(error)
-                        }
-                    }
-                }
-            }
-        }
-        // lookup and sync host dependencies from systemfiles data
-        copy_links = false;
         let system_files = tempfile()?;
-        if let Ok(systemfiles) = has_system_dependencies(
+        match build_system_dependencies(
             &instance_mount_point, defaults::SYSTEM_HOST_DEPENDENCIES,
-            &system_files
+            &system_files, root_user
         ) {
-            if systemfiles {
+            Ok(_) => {
                 if Lookup::is_debug() {
                     debug!("Syncing system dependencies...");
                 }
                 match sync_host(
                     &instance_mount_point, &system_files,
-                    root_user, ignore_missing, copy_links,
+                    root_user, ignore_missing,
                     defaults::SYSTEM_HOST_DEPENDENCIES
                 ) {
                     Ok(_) => { },
@@ -366,6 +340,11 @@ fn run_podman_creation(
                             provisioning_failed = Some(error)
                         }
                     }
+                }
+            },
+            Err(error) => {
+                if ! ignore_sync_error {
+                    provisioning_failed = Some(error)
                 }
             }
         }
@@ -377,7 +356,7 @@ fn run_podman_creation(
             update_removed_files(&instance_mount_point, &removed_files)?;
             sync_host(
                 &instance_mount_point, &removed_files,
-                root_user, ignore_missing, copy_links,
+                root_user, ignore_missing,
                 defaults::HOST_DEPENDENCIES
             )?;
         }
@@ -420,7 +399,7 @@ fn run_podman_creation(
             }
             sync_host(
                 &instance_mount_point, &removed_files,
-                root_user, ignore_missing, copy_links,
+                root_user, ignore_missing,
                 defaults::HOST_DEPENDENCIES
             )?;
         }
@@ -605,7 +584,7 @@ pub fn umount_container(
 
 pub fn sync_host(
     target: &String, mut removed_files: &File, user: User,
-    ignore_missing: bool, copy_links: bool, from: &str
+    ignore_missing: bool, from: &str
 ) -> Result<(), FlakeError> {
     /*!
     Sync files/dirs specified in target/from, from the running
@@ -627,9 +606,6 @@ pub fn sync_host(
 
     let mut call = user.run("rsync");
     call.arg("-av");
-    if copy_links {
-        call.arg("--copy-links");
-    }
     if ignore_missing {
         call.arg("--ignore-missing-args");
     }
@@ -768,26 +744,52 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn has_system_dependencies(
-    target: &String, dependency_file: &str, mut file: &File
-) -> Result<bool, std::io::Error> {
+pub fn build_system_dependencies(
+    target: &String, dependency_file: &str, mut file: &File, user: User
+) -> Result<bool, FlakeError> {
     /*!
-    Check if container provides a /systemfiles file which indicates
-    there are files that needs to be provisioned from the host
+    Check if container provides a /systemfiles script which
+    contains code to build up a list of files that needs
+    to be provisioned from the host
     !*/
     let system_deps = format!("{}/{}", &target, dependency_file);
     if Path::new(&system_deps).exists() {
         if Lookup::is_debug() {
-            debug!("Adding system deps from {}", system_deps);
+            debug!("Calling system deps generator: {}", system_deps);
         }
-        let data = fs::read_to_string(&system_deps)?;
-        // The subsequent rsync call logs enough information
-        // Let's keep this for convenience debugging
-        //if Lookup::is_debug() {
-        //    debug!("{}", &String::from_utf8_lossy(data.as_bytes()));
-        //}
-        file.write_all(data.as_bytes())?;
-        return Ok(true);
+        let mut call = user.run("sh");
+        call.arg(system_deps);
+// TODO
+        if Lookup::is_debug() {
+            debug!("{:?}", call.get_args());
+        }
+        match call.output() {
+            Ok(output) => {
+                if output.status.success() {
+                    file.write_all(&output.stdout)?;
+                    return Ok(true);
+                } else {
+                    if Lookup::is_debug() {
+                        debug!("{}", String::from_utf8_lossy(&output.stdout));
+                        debug!("{}", String::from_utf8_lossy(&output.stderr));
+                    }
+                    return Err(
+                        FlakeError::IOError {
+                            kind: "system deps generator failed".to_string(),
+                            message: "Please run with PILOT_DEBUG=1 for details".to_string()
+                        }
+                    );
+                }
+            },
+            Err(error) => {
+                return Err(
+                    FlakeError::IOError {
+                        kind: "call failed".to_string(),
+                        message: format!("{:?}", error)
+                    }
+                );
+            }
+        };
     }
     Ok(false)
 }

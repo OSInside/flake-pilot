@@ -759,7 +759,6 @@ pub fn build_system_dependencies(
         }
         let mut call = user.run("sh");
         call.arg(system_deps);
-// TODO
         if Lookup::is_debug() {
             debug!("{:?}", call.get_args());
         }

@@ -150,7 +150,10 @@ OPTIONS
 
 %interactive
 
-  Use when running interactive processes like a shell
+  Force interactive call style for processes like a shell.
+  Usually the pilot automatically detects if called in a
+  terminal or not. This options allows to override the
+  detection.
 
 DEBUGGING
 ---------

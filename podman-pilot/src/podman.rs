@@ -182,9 +182,28 @@ pub fn create(
     }
 
     // create the container with configured runtime arguments
-    let has_runtime_args = podman.as_ref().map(|p| !p.is_empty()).unwrap_or_default();
-    app.args(podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')));
+    for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
+        let mut arg_value = arg.to_string();
+        let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
+        while var_pattern.captures(&arg_value.clone()).is_some() {
+            for capture in var_pattern.captures_iter(&arg_value.clone()) {
+                // replace %VAR placeholder(s) with the respective
+                // environment variable value if possible.
+                // If not possible replace by the variable name
+                let var_name = capture.get(1).unwrap().as_str();
+                let var_value = env::var(var_name)
+                    .unwrap_or(format!("${}", var_name));
+                arg_value = arg_value.replace(
+                    &format!("%{}", var_name), &var_value
+                );
+            }
+        }
+        app.arg(arg_value);
+    };
 
+    // set default runtime arguments if none configured
+    let has_runtime_args = podman
+        .as_ref().map(|p| !p.is_empty()).unwrap_or_default();
     if !has_runtime_args {
         app.arg("--tty").arg("--interactive");
     }

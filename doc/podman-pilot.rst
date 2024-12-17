@@ -116,11 +116,19 @@ can be set for the supported container engine:
          - -ti
 
 After reading of the app configuration information the application
-will be called using the configured engine. If no runtime
+will be called using the configured engine. If no podman runtime
 arguments exists, the following defaults will apply:
 
 - The instance will be removed after the call
 - The instance allows for interactive shell sessions
+
+The podman runtime arguments allows to set environment variable
+placeholders starting with '%' and followed by the name of the
+environment variable. For example %HOME will be replaced to the
+value of $HOME of the calling user. If the given placeholder
+cannot be translated into an existing environment variable it
+will be turned into the variable name, $HOME in the above
+example
 
 All caller arguments will be passed to the program call inside
 of the instance except for arguments that starts with the '@'

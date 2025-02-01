@@ -509,8 +509,6 @@ pub fn call_instance(
     /*!
     Call container ID based podman commands
     !*/
-    let args: Vec<String> = env::args().collect();
-
     let RuntimeSection { resume, .. } = config().runtime();
 
     let pilot_options = Lookup::get_pilot_run_options();
@@ -542,10 +540,8 @@ pub fn call_instance(
         call.arg(
             get_target_app_path(program_name)
         );
-        for arg in &args[1..] {
-            if ! arg.starts_with('@') {
-                call.arg(arg);
-            }
+        for arg in Lookup::get_run_cmdline(Vec::new(), false) {
+            call.arg(arg);
         }
     }
     if Lookup::is_debug() {

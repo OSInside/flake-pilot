@@ -182,9 +182,9 @@ pub fn create(
     }
 
     // create the container with configured runtime arguments
+    let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
         let mut arg_value = arg.to_string();
-        let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
         while var_pattern.captures(&arg_value.clone()).is_some() {
             for capture in var_pattern.captures_iter(&arg_value.clone()) {
                 // replace %VAR placeholder(s) with the respective
@@ -462,7 +462,7 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     let user = User::from(current_user.to_str().unwrap());
 
     let is_running = container_running(cid, user)?;
-    let is_created = container_exists(&cid, user)?;
+    let is_created = container_exists(cid, user)?;
     let mut is_removed = false;
 
     if is_running {

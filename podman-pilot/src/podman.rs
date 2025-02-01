@@ -456,11 +456,14 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     Start container with the given container ID
     !*/
     let RuntimeSection { resume, attach, .. } = config().runtime();
-    
+
+    let pilot_options = Lookup::get_pilot_run_options();
     let current_user = get_current_username().unwrap();
     let user = User::from(current_user.to_str().unwrap());
 
     let is_running = container_running(cid, user)?;
+    let is_created = container_exists(&cid, user)?;
+    let mut is_removed = false;
 
     if is_running {
         if attach {
@@ -477,6 +480,13 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     } else {
         // 4. Startup container
         call_instance("start", cid, program_name, user)?;
+        if ! attach || ! is_created {
+            call_instance("rm_force", cid, program_name, user)?;
+            is_removed = true
+        }
+    };
+
+    if pilot_options.contains_key("%remove") && ! is_removed {
         call_instance("rm_force", cid, program_name, user)?;
     };
     Ok(())
@@ -668,6 +678,31 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
     Ok(())
 }
 
+pub fn container_exists(cid: &str, user: User) -> Result<bool, std::io::Error> {
+    /*!
+    Check if container exists according to the specified cid
+    !*/
+    let mut exists = user.run("podman");
+    exists.arg("container").arg("exists").arg(cid);
+    if Lookup::is_debug() {
+        debug!("{:?}", exists.get_args());
+    }
+    match exists.status() {
+        Ok(status) => {
+            if status.success() {
+                return Ok(status.success())
+            } else {
+                let _ = Container::podman_setup_permissions();
+                exists.status()?;
+            }
+        }
+        Err(error) => {
+            return Err(error)
+        }
+    }
+    Ok(exists.status()?.success())
+}
+
 pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     /*!
     Check if container with specified cid is running
@@ -849,28 +884,7 @@ pub fn gc_cid_file(
     !*/
     let cid = fs::read_to_string(container_cid_file)?;
 
-    let mut exists = user.run("podman");
-    exists.arg("container")
-        .arg("exists")
-        .arg(&cid);
-    if Lookup::is_debug() {
-        debug!("{:?}", exists.get_args());
-    }
-    let status = match exists.output() {
-        Ok(output) => {
-            if output.status.success() {
-                output.status
-            } else {
-                let _ = Container::podman_setup_permissions();
-                exists.output()?.status
-            }
-        }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-            exists.output()?.status
-        }
-    };
-    if status.success() {
+    if container_exists(&cid, user)? {
         Ok(true)
     } else {
         fs::remove_file(container_cid_file)?;

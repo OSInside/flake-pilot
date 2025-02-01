@@ -163,6 +163,15 @@ OPTIONS
   terminal or not. This options allows to override the
   detection.
 
+%remove
+
+  When running in attach or resume mode, podman-pilot keeps the
+  container created such that the call of the same flake can either
+  start/attach the container with its entry command or execute
+  the command in the resume/running container. If the container
+  should be removed at the end of the process execution, pass
+  this flake option to the call.
+
 DEBUGGING
 ---------
 

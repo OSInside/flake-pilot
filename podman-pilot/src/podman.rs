@@ -182,9 +182,9 @@ pub fn create(
     }
 
     // create the container with configured runtime arguments
+    let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
         let mut arg_value = arg.to_string();
-        let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
         while var_pattern.captures(&arg_value.clone()).is_some() {
             for capture in var_pattern.captures_iter(&arg_value.clone()) {
                 // replace %VAR placeholder(s) with the respective
@@ -456,11 +456,14 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     Start container with the given container ID
     !*/
     let RuntimeSection { resume, attach, .. } = config().runtime();
-    
+
+    let pilot_options = Lookup::get_pilot_run_options();
     let current_user = get_current_username().unwrap();
     let user = User::from(current_user.to_str().unwrap());
 
     let is_running = container_running(cid, user)?;
+    let is_created = container_exists(cid, user)?;
+    let mut is_removed = false;
 
     if is_running {
         if attach {
@@ -477,6 +480,13 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     } else {
         // 4. Startup container
         call_instance("start", cid, program_name, user)?;
+        if ! attach || ! is_created {
+            call_instance("rm_force", cid, program_name, user)?;
+            is_removed = true
+        }
+    };
+
+    if pilot_options.contains_key("%remove") && ! is_removed {
         call_instance("rm_force", cid, program_name, user)?;
     };
     Ok(())
@@ -499,8 +509,6 @@ pub fn call_instance(
     /*!
     Call container ID based podman commands
     !*/
-    let args: Vec<String> = env::args().collect();
-
     let RuntimeSection { resume, .. } = config().runtime();
 
     let pilot_options = Lookup::get_pilot_run_options();
@@ -532,10 +540,8 @@ pub fn call_instance(
         call.arg(
             get_target_app_path(program_name)
         );
-        for arg in &args[1..] {
-            if ! arg.starts_with('@') {
-                call.arg(arg);
-            }
+        for arg in Lookup::get_run_cmdline(Vec::new(), false) {
+            call.arg(arg);
         }
     }
     if Lookup::is_debug() {
@@ -666,6 +672,31 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
         mkdir(&get_podman_ids_dir(), "777", User::ROOT)?;
     }
     Ok(())
+}
+
+pub fn container_exists(cid: &str, user: User) -> Result<bool, std::io::Error> {
+    /*!
+    Check if container exists according to the specified cid
+    !*/
+    let mut exists = user.run("podman");
+    exists.arg("container").arg("exists").arg(cid);
+    if Lookup::is_debug() {
+        debug!("{:?}", exists.get_args());
+    }
+    match exists.status() {
+        Ok(status) => {
+            if status.success() {
+                return Ok(status.success())
+            } else {
+                let _ = Container::podman_setup_permissions();
+                exists.status()?;
+            }
+        }
+        Err(error) => {
+            return Err(error)
+        }
+    }
+    Ok(exists.status()?.success())
 }
 
 pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
@@ -849,28 +880,7 @@ pub fn gc_cid_file(
     !*/
     let cid = fs::read_to_string(container_cid_file)?;
 
-    let mut exists = user.run("podman");
-    exists.arg("container")
-        .arg("exists")
-        .arg(&cid);
-    if Lookup::is_debug() {
-        debug!("{:?}", exists.get_args());
-    }
-    let status = match exists.output() {
-        Ok(output) => {
-            if output.status.success() {
-                output.status
-            } else {
-                let _ = Container::podman_setup_permissions();
-                exists.output()?.status
-            }
-        }
-        Err(_) => {
-            let _ = Container::podman_setup_permissions();
-            exists.output()?.status
-        }
-    };
-    if status.success() {
+    if container_exists(&cid, user)? {
         Ok(true)
     } else {
         fs::remove_file(container_cid_file)?;

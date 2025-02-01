@@ -27,7 +27,7 @@ jobs:
         run:  python3 -m robot robot_tests
       - name: Upload Log
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: robot-log
           path: /home/runner/work/flake-pilot/flake-pilot/log.html

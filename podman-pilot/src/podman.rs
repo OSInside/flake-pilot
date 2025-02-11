@@ -119,7 +119,8 @@ pub fn create(
     !*/
     // Read optional @NAME pilot argument to differentiate
     // simultaneous instances of the same container application
-    let (name, _): (Vec<_>, Vec<_>) = env::args().skip(1).partition(|arg| arg.starts_with('@'));
+    let (name, _): (Vec<_>, Vec<_>) = env::args()
+        .skip(1).partition(|arg| arg.starts_with('@'));
 
     // setup container ID file name
     let suffix = name.first().map(String::as_str).unwrap_or("");
@@ -166,7 +167,8 @@ pub fn create(
     let _ = Container::podman_setup_run_permissions();
 
     // Check early return condition in resume mode
-    if Path::new(&container_cid_file).exists() && gc_cid_file(&container_cid_file, user)? && (resume || attach) {
+    if Path::new(&container_cid_file).exists() &&
+       gc_cid_file(&container_cid_file, user)? && (resume || attach) {
         // resume or attach mode is active and container exists
         // report ID value and its ID file name
         let cid = fs::read_to_string(&container_cid_file)?;
@@ -217,7 +219,9 @@ pub fn create(
     }
 
     // setup container name to use
-    app.arg(config().container.base_container.unwrap_or(config().container.name));
+    app.arg(
+        config().container.base_container.unwrap_or(config().container.name)
+    );
 
     // setup entry point
     if resume {
@@ -293,7 +297,9 @@ fn run_podman_creation(
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            let error_pattern = Regex::new(
+                r".*(not permitted|permission denied).*"
+            ).unwrap();
             if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
                 // On permission error, fix permissions and try again
                 // This is an expensive operation depending on the storage size
@@ -306,7 +312,9 @@ fn run_podman_creation(
                     debug!("Force cleanup container instance...");
                 }
                 let error_pattern = Regex::new(r"in use by (.*)\.").unwrap();
-                if let Some(captures) = error_pattern.captures(&format!("{:?}", error.base)) {
+                if let Some(captures) = error_pattern.captures(
+                    &format!("{:?}", error.base)
+                ) {
                     let cid = captures.get(1).unwrap().as_str();
                     call_instance("rm_force", cid, "none", root_user)?;
                 }
@@ -317,11 +325,13 @@ fn run_podman_creation(
         }
     };
 
-    let cid = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned();
+    let cid = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n').to_owned();
 
     let is_delta_container = config().container.base_container.is_some();
     let check_host_dependencies = config().container.check_host_dependencies;
-    let has_includes = !config().tars().is_empty() || !config().paths().is_empty();
+    let has_includes =
+        !config().tars().is_empty() || !config().paths().is_empty();
 
     let mut provisioning_failed = None;
 
@@ -390,8 +400,9 @@ fn run_podman_creation(
             }
             let layers = config().layers();
             let layers = layers.iter()
-                .inspect(|layer| if Lookup::is_debug() { debug!("Adding layer: [{layer}]") })
-                .chain(Some(&config().container.name));
+                .inspect(|layer| if Lookup::is_debug() {debug!(
+                    "Adding layer: [{layer}]"
+                )}).chain(Some(&config().container.name));
 
             if Lookup::is_debug() {
                 debug!(
@@ -584,7 +595,10 @@ pub fn mount_container(
         debug!("{:?}", call.get_args());
     }
     let output = call.perform()?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_owned())
+    Ok(
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches('\n').to_owned()
+    )
 }
 
 pub fn umount_container(
@@ -651,8 +665,10 @@ pub fn sync_host(
             if ! output.status.success() && ! ignore_missing {
                 return Err(
                     FlakeError::IOError {
-                        kind: "rsync transfer incomplete".to_string(),
-                        message: "Please run with PILOT_DEBUG=1 for details".to_string()
+                        kind: "rsync transfer incomplete"
+                            .to_string(),
+                        message: "Please run with PILOT_DEBUG=1 for details"
+                            .to_string()
                     }
                 );
             }
@@ -686,10 +702,12 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     let output = match exists.output() {
         Ok(output) => {
             if ! output.status.success() {
-                let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+                let error_pattern = Regex::new(
+                    r".*(not permitted|permission denied).*"
+                ).unwrap();
                 if error_pattern.captures(&format!("{:?}", output)).is_some() {
-                    // On permission error, fix permissions and try again
-                    // This is an expensive operation depending on the storage size
+                    // On permission error, fix permissions and try again. This
+                    // is an expensive operation depending on the storage size
                     let _ = Container::podman_setup_permissions();
                     exists.output()?;
                 }
@@ -711,7 +729,9 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     Ok(false)
 }
 
-pub fn container_image_exists(name: &str, user: User) -> Result<bool, FlakeError> {
+pub fn container_image_exists(
+    name: &str, user: User
+) -> Result<bool, FlakeError> {
     /*!
     Check if container image is present in local registry
     !*/
@@ -723,10 +743,12 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, FlakeError
     let output: Output = match exists.output() {
         Ok(output) => {
             if ! output.status.success() {
-                let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap(); 
+                let error_pattern = Regex::new(
+                    r".*(not permitted|permission denied).*"
+                ).unwrap(); 
                 if error_pattern.captures(&format!("{:?}", output)).is_some() {
-                    // On permission error, fix permissions and try again
-                    // This is an expensive operation depending on the storage size                 
+                    // On permission error, fix permissions and try again. This
+                    // is an expensive operation depending on the storage size
                     let _ = Container::podman_setup_permissions();
                     exists.output()?;
                 }
@@ -764,10 +786,12 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            let error_pattern = Regex::new(
+                r".*(not permitted|permission denied).*"
+            ).unwrap();
             if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
-                // On permission error, fix permissions and try again
-                // This is an expensive operation depending on the storage size
+                // On permission error, fix permissions and try again. This
+                // is an expensive operation depending on the storage size
                 let _ = Container::podman_setup_permissions();
                 running.perform()?
             } else {
@@ -802,7 +826,9 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            let error_pattern = Regex::new(
+                r".*(not permitted|permission denied).*"
+            ).unwrap();
             if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
                 let _ = Container::podman_setup_permissions();
                 pull.perform()?
@@ -850,8 +876,10 @@ pub fn build_system_dependencies(
                     }
                     return Err(
                         FlakeError::IOError {
-                            kind: "system deps generator failed".to_string(),
-                            message: "Please run with PILOT_DEBUG=1 for details".to_string()
+                            kind: "system deps generator failed"
+                                .to_string(),
+                            message: "Please run with PILOT_DEBUG=1 for details"
+                                .to_string()
                         }
                     );
                 }

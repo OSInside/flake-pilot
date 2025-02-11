@@ -685,23 +685,61 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     }
     let output = match exists.output() {
         Ok(output) => {
+            if ! output.status.success() {
+                let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+                if error_pattern.captures(&format!("{:?}", output)).is_some() {
+                    // On permission error, fix permissions and try again
+                    // This is an expensive operation depending on the storage size
+                    let _ = Container::podman_setup_permissions();
+                    exists.output()?;
+                }
+            };
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
-            if error_pattern.captures(&format!("{:?}", error)).is_some() {
-                // On permission error, fix permissions and try again
-                // This is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions();
-                exists.output()?
-            } else {
-                return Err(
-                    FlakeError::IOError {
-                        kind: "call failed".to_string(),
-                        message: format!("{:?}", error)
-                    }
-                );
-            }
+            return Err(
+                FlakeError::IOError {
+                    kind: "call failed".to_string(),
+                    message: format!("{:?}", error)
+                }
+            );
+        }
+    };
+    if output.status.success() {
+        return Ok(true)
+    }
+    Ok(false)
+}
+
+pub fn container_image_exists(name: &str, user: User) -> Result<bool, FlakeError> {
+    /*!
+    Check if container image is present in local registry
+    !*/
+    let mut exists = user.run("podman");
+    exists.arg("image").arg("exists").arg(name);
+    if Lookup::is_debug() {
+        debug!("{:?}", exists.get_args());
+    }
+    let output: Output = match exists.output() {
+        Ok(output) => {
+            if ! output.status.success() {
+                let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap(); 
+                if error_pattern.captures(&format!("{:?}", output)).is_some() {
+                    // On permission error, fix permissions and try again
+                    // This is an expensive operation depending on the storage size                 
+                    let _ = Container::podman_setup_permissions();
+                    exists.output()?;
+                }
+            };
+            output
+        }
+        Err(error) => {
+            return Err(
+                FlakeError::IOError {
+                    kind: "call failed".to_string(),
+                    message: format!("{:?}", error)
+                }
+            );
         }
     };
     if output.status.success() {
@@ -748,42 +786,6 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
         }
     }
     Ok(running_status)
-}
-
-pub fn container_image_exists(name: &str, user: User) -> Result<bool, FlakeError> {
-    /*!
-    Check if container image is present in local registry
-    !*/
-    let mut exists = user.run("podman");
-    exists.arg("image").arg("exists").arg(name);
-    if Lookup::is_debug() {
-        debug!("{:?}", exists.get_args());
-    }
-    let output: Output = match exists.output() {
-        Ok(output) => {
-            output
-        }
-        Err(error) => {
-            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
-            if error_pattern.captures(&format!("{:?}", error)).is_some() {
-                // On permission error, fix permissions and try again
-                // This is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions();
-                exists.output()?
-            } else {
-                return Err(
-                    FlakeError::IOError {
-                        kind: "call failed".to_string(),
-                        message: format!("{:?}", error)
-                    }
-                );
-            }
-        }
-    };
-    if output.status.success() {
-        return Ok(true)
-    }
-    Ok(false)
 }
 
 pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {

@@ -699,7 +699,10 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, CommandError> {
             }
         }
     };
-    Ok(output.status.success())
+    if output.status.success() {
+        return Ok(true)
+    }
+    Ok(false)
 }
 
 pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
@@ -767,7 +770,10 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, CommandErr
             }
         }
     };
-    Ok(output.status.success())
+    if output.status.success() {
+        return Ok(true)
+    }
+    Ok(false)
 }
 
 pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {

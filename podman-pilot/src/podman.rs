@@ -674,7 +674,7 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn container_exists(cid: &str, user: User) -> Result<bool, CommandError> {
+pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified cid
     !*/
@@ -683,19 +683,24 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, CommandError> {
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
-    let output: Output = match exists.perform() {
+    let output = match exists.output() {
         Ok(output) => {
             output
         }
         Err(error) => {
             let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
-            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+            if error_pattern.captures(&format!("{:?}", error)).is_some() {
                 // On permission error, fix permissions and try again
                 // This is an expensive operation depending on the storage size
                 let _ = Container::podman_setup_permissions();
-                exists.perform()?
+                exists.output()?
             } else {
-                return Err(error)
+                return Err(
+                    FlakeError::IOError {
+                        kind: "call failed".to_string(),
+                        message: format!("{:?}", error)
+                    }
+                );
             }
         }
     };
@@ -745,7 +750,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     Ok(running_status)
 }
 
-pub fn container_image_exists(name: &str, user: User) -> Result<bool, CommandError> {
+pub fn container_image_exists(name: &str, user: User) -> Result<bool, FlakeError> {
     /*!
     Check if container image is present in local registry
     !*/
@@ -754,19 +759,24 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, CommandErr
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
-    let output: Output = match exists.perform() {
+    let output: Output = match exists.output() {
         Ok(output) => {
             output
         }
         Err(error) => {
             let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
-            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+            if error_pattern.captures(&format!("{:?}", error)).is_some() {
                 // On permission error, fix permissions and try again
                 // This is an expensive operation depending on the storage size
                 let _ = Container::podman_setup_permissions();
-                exists.perform()?
+                exists.output()?
             } else {
-                return Err(error)
+                return Err(
+                    FlakeError::IOError {
+                        kind: "call failed".to_string(),
+                        message: format!("{:?}", error)
+                    }
+                );
             }
         }
     };

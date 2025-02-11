@@ -674,7 +674,7 @@ pub fn init_cid_dir() -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn container_exists(cid: &str, user: User) -> Result<bool, std::io::Error> {
+pub fn container_exists(cid: &str, user: User) -> Result<bool, CommandError> {
     /*!
     Check if container exists according to the specified cid
     !*/
@@ -683,20 +683,23 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, std::io::Error> {
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
-    match exists.status() {
-        Ok(status) => {
-            if status.success() {
-                return Ok(status.success())
-            } else {
-                let _ = Container::podman_setup_permissions();
-                exists.status()?;
-            }
+    let output: Output = match exists.perform() {
+        Ok(output) => {
+            output
         }
         Err(error) => {
-            return Err(error)
+            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+                // On permission error, fix permissions and try again
+                // This is an expensive operation depending on the storage size
+                let _ = Container::podman_setup_permissions();
+                exists.perform()?
+            } else {
+                return Err(error)
+            }
         }
-    }
-    Ok(exists.status()?.success())
+    };
+    Ok(output.status.success())
 }
 
 pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
@@ -739,7 +742,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     Ok(running_status)
 }
 
-pub fn container_image_exists(name: &str, user: User) -> Result<bool, std::io::Error> {
+pub fn container_image_exists(name: &str, user: User) -> Result<bool, CommandError> {
     /*!
     Check if container image is present in local registry
     !*/
@@ -748,20 +751,23 @@ pub fn container_image_exists(name: &str, user: User) -> Result<bool, std::io::E
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
     }
-    match exists.status() {
-        Ok(status) => {
-            if status.success() {
-                return Ok(status.success())
-            } else {
-                let _ = Container::podman_setup_permissions();
-                exists.status()?;
-            }
+    let output: Output = match exists.perform() {
+        Ok(output) => {
+            output
         }
         Err(error) => {
-            return Err(error)
+            let error_pattern = Regex::new(r".*(not permitted|permission denied).*").unwrap();
+            if error_pattern.captures(&format!("{:?}", error.base)).is_some() {
+                // On permission error, fix permissions and try again
+                // This is an expensive operation depending on the storage size
+                let _ = Container::podman_setup_permissions();
+                exists.perform()?
+            } else {
+                return Err(error)
+            }
         }
-    }
-    Ok(exists.status()?.success())
+    };
+    Ok(output.status.success())
 }
 
 pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {

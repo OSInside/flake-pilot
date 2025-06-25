@@ -100,7 +100,7 @@ pub async fn send_request(
             let request_status = format!("{}", status);
             if request_status != "200 OK" {
                 return Err(
-                    Box::new(Error::new(ErrorKind::Other, request_status))
+                    Box::new(Error::other(request_status))
                 )
             }
         },

@@ -31,7 +31,7 @@ use crate::defaults;
 use crate::{app, app_config};
 use flakes::container::Container;
 use flakes::config::get_flakes_dir;
-use users::{get_current_username};
+use uzers::{get_current_username};
 
 pub fn pull(uri: &String) -> i32 {
     /*!

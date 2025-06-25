@@ -26,7 +26,7 @@ use std::path::Path;
 use std::{process::Command, ffi::OsStr};
 use serde::{Serialize, Deserialize};
 use crate::command::{CommandExtTrait, CommandError};
-use users::{get_current_uid, get_current_groupname};
+use uzers::{get_current_uid, get_current_groupname};
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct User<'a> {

@@ -49,7 +49,7 @@ use spinoff::{Spinner, spinners, Color};
 use tempfile::tempfile;
 use regex::Regex;
 
-use users::{get_current_username};
+use uzers::{get_current_username};
 
 pub fn create(
     program_name: &String

@@ -28,7 +28,7 @@ use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
 use crate::user::User;
 use crate::command::CommandExtTrait;
-use users::{get_current_uid, get_current_gid};
+use uzers::{get_current_uid, get_current_gid};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Container {

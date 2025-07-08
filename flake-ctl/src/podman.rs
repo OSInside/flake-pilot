@@ -110,6 +110,14 @@ pub fn load(oci: &String) -> i32 {
     let status_code = status.code().unwrap();
     if ! status.success() {
         error!("Failed, error message(s) reported");
+    } else {
+        // prune old images
+        info!("podman prune");
+        let mut prune = setup_podman_call("any");
+        let _ = prune.arg("image")
+            .arg("prune")
+            .arg("--force")
+            .status();
     }
     status_code
 }

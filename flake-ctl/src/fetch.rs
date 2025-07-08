@@ -34,7 +34,7 @@ pub async fn fetch_file(
     let url = &format!("{}", response.url());
     let total_size = response
         .content_length()
-        .ok_or(format!("Failed to get content length from '{}'", url))?;
+        .ok_or(format!("Failed to get content length from '{url}'"))?;
     let progress = ProgressBar::new(total_size);
 
     progress.set_style(ProgressStyle::default_bar()
@@ -52,7 +52,7 @@ pub async fn fetch_file(
             )
         )
         .progress_chars("#>-"));
-    progress.set_message(&format!("Downloading {}", filepath));
+    progress.set_message(&format!("Downloading {filepath}"));
 
     let mut file = File::create(filepath)?;
     let mut downloaded: u64 = 0;
@@ -66,7 +66,7 @@ pub async fn fetch_file(
         progress.set_position(new);
     }
     progress.finish_with_message(
-        &format!("Downloaded {}", filepath)
+        &format!("Downloaded {filepath}")
     );
     Ok(())
 }
@@ -97,7 +97,7 @@ pub async fn send_request(
             )
         },
         status => {
-            let request_status = format!("{}", status);
+            let request_status = format!("{status}");
             if request_status != "200 OK" {
                 return Err(
                     Box::new(Error::other(request_status))

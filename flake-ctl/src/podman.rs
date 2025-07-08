@@ -38,7 +38,7 @@ pub fn pull(uri: &String) -> i32 {
     Call podman pull and prune with the provided uri
     !*/
     info!("Fetching from registry...");
-    info!("podman pull {}", uri);
+    info!("podman pull {uri}");
 
     let mut call = setup_podman_call("any");
     call.arg("pull")
@@ -87,7 +87,7 @@ pub fn load(oci: &String) -> i32 {
                     container_archive = entry.display().to_string()
             }
         }
-    info!("podman load -i {}", container_archive);
+    info!("podman load -i {container_archive}");
     let mut call = setup_podman_call("any");
     call.arg("load")
         .arg("-i")
@@ -110,6 +110,14 @@ pub fn load(oci: &String) -> i32 {
     let status_code = status.code().unwrap();
     if ! status.success() {
         error!("Failed, error message(s) reported");
+    } else {
+        // prune old images
+        info!("podman prune");
+        let mut prune = setup_podman_call("any");
+        let _ = prune.arg("image")
+            .arg("prune")
+            .arg("--force")
+            .status();
     }
     status_code
 }
@@ -119,7 +127,7 @@ pub fn rm(container: &String) {
     Call podman image rm with force option to remove all running containers
     !*/
     info!("Removing image and all running containers...");
-    info!("podman rm -f {}", container);
+    info!("podman rm -f {container}");
 
     let mut call = setup_podman_call("any");
     call.arg("image")
@@ -218,8 +226,7 @@ pub fn purge_container(container: &str) {
             },
             Err(error) => {
                 error!(
-                    "Ignoring error on load or parse flake config {}: {:?}",
-                    config_file, error
+                    "Ignoring error on load or parse flake config {config_file}: {error:?}"
                 );
             }
         };
@@ -242,7 +249,7 @@ pub fn print_container_info(container: &str) {
         return
     }
     let info_file = format!(
-        "{}/{}.yaml", image_mount_point, container_basename
+        "{image_mount_point}/{container_basename}.yaml"
     );
     if Path::new(&info_file).exists() {
         match fs::read_to_string(&info_file) {
@@ -253,12 +260,11 @@ pub fn print_container_info(container: &str) {
             },
             Err(error) => {
                 // info_file file exists but could not be read
-                error!("Error reading {}: {:?}", info_file, error);
+                error!("Error reading {info_file}: {error:?}");
             }
         }
     } else {
-        error!("No info file {}.yaml found in container: {}",
-            container_basename, container
+        error!("No info file {container_basename}.yaml found in container: {container}"
         );
     }
     umount_container(container);

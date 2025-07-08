@@ -38,7 +38,7 @@ impl IO {
         Sync custom include data to target path
         !*/
         for tar in tar_includes {
-            FlakeLog::debug(&format!("Provision tar archive: [{}]", tar));
+            FlakeLog::debug(&format!("Provision tar archive: [{tar}]"));
             let mut call = user.run("tar");
             call.arg("-C").arg(target)
                 .arg("-xf").arg(tar);
@@ -52,9 +52,9 @@ impl IO {
             );
         }
         for path in path_includes {
-            FlakeLog::debug(&format!("Provision path: [{}]", path));
+            FlakeLog::debug(&format!("Provision path: [{path}]"));
             Self::sync_data(
-                path, &format!("{}/{}", target, path),
+                path, &format!("{target}/{path}"),
                 ["--mkpath"].to_vec(), user
             )?;
         }

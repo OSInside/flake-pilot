@@ -56,7 +56,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 println!("No application(s) registered");
             } else {
                 for app in app_names {
-                    println!("- {}", app);
+                    println!("- {app}");
                 }
             }
         },

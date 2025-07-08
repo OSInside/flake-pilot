@@ -42,6 +42,6 @@ pub const VM_WAIT_TIMEOUT_MSEC: u64 =
 
 pub fn debug(message: &str) {
     if env::var("PILOT_DEBUG").is_ok() {
-        debug!("{}", message)
+        debug!("{message}")
     };
 }

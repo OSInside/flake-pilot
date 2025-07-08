@@ -70,7 +70,7 @@ fn main() {
 
     // print user space env
     for (key, value) in env::vars() {
-        debug(&format!("{}: {}", key, value));
+        debug(&format!("{key}: {value}"));
     }
 
     // parse commandline from run environment variable
@@ -81,7 +81,7 @@ fn main() {
                     args = call_params
                 },
                 Err(error) => {
-                    debug(&format!("Failed to parse {}: {}", call_cmd, error));
+                    debug(&format!("Failed to parse {call_cmd}: {error}"));
                     do_reboot(false)
                 }
             }
@@ -128,7 +128,7 @@ fn main() {
             match modprobe.status() {
                 Ok(_) => { },
                 Err(error) => {
-                    debug(&format!("Loading overlay module failed: {}", error));
+                    debug(&format!("Loading overlay module failed: {error}"));
                 }
             }
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
@@ -136,11 +136,11 @@ fn main() {
                 .fstype("ext2").mount(overlay.as_str(), "/overlayroot")
             {
                 Ok(_) => {
-                    debug(&format!("Mounted {:?} on /overlayroot", overlay));
+                    debug(&format!("Mounted {overlay:?} on /overlayroot"));
                     ok = true
                 },
                 Err(error) => {
-                    debug(&format!("Failed to mount overlayroot: {}", error));
+                    debug(&format!("Failed to mount overlayroot: {error}"));
                     ok = false
                 }
             }
@@ -182,7 +182,7 @@ fn main() {
                     },
                     Err(error) => {
                         debug(&format!(
-                            "Failed to mount overlayroot: {}", error
+                            "Failed to mount overlayroot: {error}"
                         ));
                         ok = false;
                     }
@@ -201,7 +201,7 @@ fn main() {
                     },
                     Err(error) => {
                         debug(&format!(
-                            "Failed to change working directory: {}", error
+                            "Failed to change working directory: {error}"
                         ));
                         ok = false;
                     }
@@ -227,7 +227,7 @@ fn main() {
                             ok = true;
                         },
                         Err(error) => {
-                            debug(&format!("Failed to pivot_root: {}", error));
+                            debug(&format!("Failed to pivot_root: {error}"));
                             ok = false;
                         }
                     }
@@ -302,7 +302,7 @@ fn main() {
                                 },
                                 Err(error) => {
                                     debug(&format!(
-                                        "Failed to read data {}", error
+                                        "Failed to read data {error}"
                                     ));
                                     ok = false
                                 }
@@ -315,7 +315,7 @@ fn main() {
                                 continue
                             }
                             debug(&format!(
-                                "SCI CALL RAW BUF: {:?}", call_str
+                                "SCI CALL RAW BUF: {call_str:?}"
                             ));
                             let mut call_stack: Vec<&str> =
                                 call_str.split(' ').collect();
@@ -326,15 +326,13 @@ fn main() {
                                 Ok(num) => { exec_port_num = num },
                                 Err(error) => {
                                     debug(&format!(
-                                        "Failed to parse port: {}: {}",
-                                        exec_port, error
+                                        "Failed to parse port: {exec_port}: {error}"
                                     ));
                                     ok = false
                                 }
                             }
                             debug(&format!(
-                                "CALL SCI: string:'{}' u32:{}",
-                                exec_cmd, exec_port_num
+                                "CALL SCI: string:'{exec_cmd}' u32:{exec_port_num}"
                             ));
 
                             // Establish a VSOCK connection with the farend
@@ -355,8 +353,7 @@ fn main() {
                                         },
                                         Err(error) => {
                                             debug(&format!(
-                                                "[{}] VSOCK-CONNECT failed with: {}",
-                                                retry_count, error
+                                                "[{retry_count}] VSOCK-CONNECT failed with: {error}"
                                             ));
                                             let some_time = time::Duration::from_millis(
                                                 defaults::VM_WAIT_TIMEOUT_MSEC
@@ -374,8 +371,7 @@ fn main() {
                         },
                         Err(error) => {
                             debug(&format!(
-                                "Failed to accept incoming connection: {}",
-                                error
+                                "Failed to accept incoming connection: {error}"
                             ));
                             ok = false
                         }
@@ -425,7 +421,7 @@ fn redirect_command(command: &str, stream: vsock::VsockStream) {
         },
         Err(error) => {
             debug(&format!(
-                "Terminal allocation failed, using raw channels: {:?}", error
+                "Terminal allocation failed, using raw channels: {error:?}"
             ));
             redirect_command_to_raw_channels(command, stream)
         }
@@ -440,13 +436,13 @@ fn set_output_terminal_flags(fd: i32) {
             match tcsetattr(fd, TCSANOW, &termios) {
                 Ok(_) => {}
                 Err(error) => {
-                    debug(&format!("tcsetattr failed with: {}", error));
+                    debug(&format!("tcsetattr failed with: {error}"));
                 }
             }
         },
         Err(error) => {
             debug(&format!(
-                "Term I/O failed with: {}", error
+                "Term I/O failed with: {error}"
             ));
         }
     }
@@ -565,7 +561,7 @@ fn redirect_command_to_raw_channels(
         },
         Err(error) => {
             debug(&format!(
-                "SCI guest command failed with: {}", error
+                "SCI guest command failed with: {error}"
             ));
         }
     }
@@ -656,7 +652,7 @@ fn redirect_command_to_pty(
             Ok(_) => { },
             Err(error) => {
                 debug(&format!(
-                    "SCI guest command failed with: {}", error
+                    "SCI guest command failed with: {error}"
                 ));
             }
         }
@@ -701,18 +697,18 @@ fn move_mounts(new_root: &str) {
     !*/
     // /run
     let mut call = Command::new("mount");
-    call.arg("--bind").arg("/run").arg(format!("{}/run", new_root));
+    call.arg("--bind").arg("/run").arg(format!("{new_root}/run"));
     debug(&format!("EXEC: mount -> {:?}", call.get_args()));
     match call.status() {
         Ok(_) => debug("Bind mounted /run"),
         Err(error) => {
-            debug(&format!("Failed to bind mount /run: {}", error));
+            debug(&format!("Failed to bind mount /run: {error}"));
             match Mount::builder()
-                .fstype("tmpfs").mount("tmpfs", format!("{}/run", new_root))
+                .fstype("tmpfs").mount("tmpfs", format!("{new_root}/run"))
             {
                 Ok(_) => debug("Mounted tmpfs on /run"),
                 Err(error) => {
-                    debug(&format!("Failed to mount /run: {}", error));
+                    debug(&format!("Failed to mount /run: {error}"));
                 }
             }
         }
@@ -726,25 +722,25 @@ fn mount_basic_fs() {
     match Mount::builder().fstype("proc").mount("proc", "/proc") {
         Ok(_) => debug("Mounted proc on /proc"),
         Err(error) => {
-            debug(&format!("Failed to mount /proc [skipped]: {}", error));
+            debug(&format!("Failed to mount /proc [skipped]: {error}"));
         }
     }
     match Mount::builder().fstype("sysfs").mount("sysfs", "/sys") {
         Ok(_) => debug("Mounted sysfs on /sys"),
         Err(error) => {
-            debug(&format!("Failed to mount /sys: {}", error));
+            debug(&format!("Failed to mount /sys: {error}"));
         }
     }
     match Mount::builder().fstype("devtmpfs").mount("devtmpfs", "/dev") {
         Ok(_) => debug("Mounted devtmpfs on /dev"),
         Err(error) => {
-            debug(&format!("Failed to mount /dev: {}", error));
+            debug(&format!("Failed to mount /dev: {error}"));
         }
     }
     match Mount::builder().fstype("devpts").mount("devpts", "/dev/pts") {
         Ok(_) => debug("Mounted devpts on /dev/pts"),
         Err(error) => {
-            debug(&format!("Failed to mount /dev/pts: {}", error));
+            debug(&format!("Failed to mount /dev/pts: {error}"));
         }
     }
 }

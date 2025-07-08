@@ -71,6 +71,6 @@ container:
 
 #[test]
 fn test_program_config_file() {
-    let config_file = config_file(&"app".to_string());
+    let config_file = config_file("app");
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }

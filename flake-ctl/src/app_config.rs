@@ -246,7 +246,7 @@ impl AppConfig {
             return Err(
                 Box::new(Error::new(
                     ErrorKind::NotFound,
-                    format!("No rootfs image found: {}", rootfs_image_path)
+                    format!("No rootfs image found: {rootfs_image_path}")
                 ))
             )
         }
@@ -262,7 +262,7 @@ impl AppConfig {
             return Err(
                 Box::new(Error::new(
                     ErrorKind::NotFound,
-                    format!("No kernel image found: {}", kernel_image_path)
+                    format!("No kernel image found: {kernel_image_path}")
                 ))
             )
         }

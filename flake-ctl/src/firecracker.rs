@@ -53,8 +53,8 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
         }
     }
     let mut subdirs: Vec<String> = Vec::new();
-    subdirs.push(format!("{}/images", real_registry_dir));
-    subdirs.push(format!("{}/storage", real_registry_dir));
+    subdirs.push(format!("{real_registry_dir}/images"));
+    subdirs.push(format!("{real_registry_dir}/storage"));
     for subdir in subdirs {
         if Path::new(&subdir).exists() {
             continue
@@ -151,7 +151,7 @@ pub async fn pull_component_image(
                             Ok(_) => { },
                             Err(error) => {
                                 error!(
-                                    "Download failed with: {}", error
+                                    "Download failed with: {error}"
                                 );
                                 return result
                             }
@@ -237,7 +237,7 @@ pub async fn pull_component_image(
             }
         },
         Err(error) => {
-            error!("Failed to create tempdir: {}", error);
+            error!("Failed to create tempdir: {error}");
             return result
         }
     }
@@ -278,7 +278,7 @@ pub async fn pull_kis_image(
                             match fetch_file(response, &kis_tar).await {
                                 Ok(_) => { },
                                 Err(error) => {
-                                    error!("Download failed with: {}", error);
+                                    error!("Download failed with: {error}");
                                     return result
                                 }
                             }
@@ -294,8 +294,7 @@ pub async fn pull_kis_image(
                 },
                 Err(error) => {
                     error!(
-                        "Error creating work directory {}: {}",
-                        work_dir, error
+                        "Error creating work directory {work_dir}: {error}"
                     );
                     return result
                 }
@@ -311,7 +310,7 @@ pub async fn pull_kis_image(
                     result = status.code().unwrap();
                 },
                 Err(error) => {
-                    error!("Failed to execute tar: {:?}", error);
+                    error!("Failed to execute tar: {error:?}");
                     return result
                 }
             }
@@ -350,7 +349,7 @@ pub async fn pull_kis_image(
             }
         },
         Err(error) => {
-            error!("Failed to create tempdir: {}", error);
+            error!("Failed to create tempdir: {error}");
             return result
         }
     }
@@ -369,7 +368,7 @@ pub fn mkdir(dirname: &String, user: &str) -> bool {
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to mkdir: {}: {:?}", dirname, error);
+            error!("Failed to mkdir: {dirname}: {error:?}");
             return false
         }
     }
@@ -388,7 +387,7 @@ pub fn mv(source: &str, target: &String, user: &str) -> bool {
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to mv: {} -> {}: {:?}", source, target, error);
+            error!("Failed to mv: {source} -> {target}: {error:?}");
             return false
         }
     }
@@ -407,7 +406,7 @@ pub fn copy(source: &str, target: &String, user: &str) -> bool {
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to cp: {} -> {}: {:?}", source, target, error);
+            error!("Failed to cp: {source} -> {target}: {error:?}");
             return false
         }
     }
@@ -428,7 +427,7 @@ pub fn mount_fs_image(
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to execute mount: {:?}", error);
+            error!("Failed to execute mount: {error:?}");
             return false
         }
     }
@@ -447,7 +446,7 @@ pub fn umount(mount_point: &str, user: &str) -> bool {
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to execute mount: {:?}", error);
+            error!("Failed to execute mount: {error:?}");
             return false
         }
     }
@@ -467,13 +466,13 @@ pub fn pull_new(name: &String, force: bool) -> bool {
         match fs::remove_dir_all(&image_dir) {
             Ok(_) => { },
             Err(error) => {
-                error!("Error removing directory {}: {}", image_dir, error);
+                error!("Error removing directory {image_dir}: {error}");
                 return false
             }
         }
     }
     if Path::new(&image_dir).exists() {
-        error!("Image directory '{}' already exists", image_dir);
+        error!("Image directory '{image_dir}' already exists");
         return false
     }
     true
@@ -502,8 +501,7 @@ pub fn purge_vm(vm: &str) {
             },
             Err(error) => {
                 error!(
-                    "Ignoring error on load or parse flake config {}: {:?}",
-                    config_file, error
+                    "Ignoring error on load or parse flake config {config_file}: {error:?}"
                 );
             }
         };
@@ -512,7 +510,7 @@ pub fn purge_vm(vm: &str) {
     match fs::remove_dir_all(&image_dir) {
         Ok(_) => { },
         Err(error) => {
-            error!("Error removing directory {}: {}", image_dir, error);
+            error!("Error removing directory {image_dir}: {error}");
         }
     }
 }

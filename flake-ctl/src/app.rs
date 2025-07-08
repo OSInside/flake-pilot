@@ -44,13 +44,12 @@ pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> 
     for path in &[host_app_path, target_app_path] {
         if !path.starts_with('/') {
             error!(
-                "Application {:?} must be specified with an absolute path",
-                path
+                "Application {path:?} must be specified with an absolute path"
             );
             return false;
         }
     }
-    info!("Registering application: {}", host_app_path);
+    info!("Registering application: {host_app_path}");
 
     // host_app_path -> pointing to engine
     let host_app_dir = Path::new(host_app_path).parent().unwrap().to_str().unwrap();
@@ -143,8 +142,7 @@ pub fn create_container_config(
         Ok(_) => true,
         Err(error) => {
             error!(
-                "Failed to create AppConfig {}: {:?}",
-                app_config_file, error
+                "Failed to create AppConfig {app_config_file}: {error:?}"
             );
             false
         }
@@ -196,8 +194,7 @@ pub fn create_vm_config(
         Ok(_) => true,
         Err(error) => {
             error!(
-                "Failed to create AppConfig {}: {:?}",
-                app_config_file, error
+                "Failed to create AppConfig {app_config_file}: {error:?}"
             );
             false
         }
@@ -211,14 +208,13 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
     if !app.starts_with('/') {
         if !silent {
             error!(
-                "Application {:?} must be specified with an absolute path",
-                app
+                "Application {app:?} must be specified with an absolute path"
             );
         };
         return false
     }
     if !silent {
-        info!("Removing application: {}", app);
+        info!("Removing application: {app}");
     }
     // remove pilot link if valid
     match fs::read_link(app) {
@@ -228,21 +224,21 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
                     Ok(_) => {}
                     Err(error) => {
                         if !silent {
-                            error!("Error removing pilot link: {}: {:?}", app, error);
+                            error!("Error removing pilot link: {app}: {error:?}");
                         };
                         return false
                     }
                 }
             } else {
                 if !silent {
-                    error!("Symlink not pointing to {}: {}", engine, app);
+                    error!("Symlink not pointing to {engine}: {app}");
                 };
                 return false
             }
         }
         Err(error) => {
             if !silent {
-                error!("Failed to read as symlink: {}: {:?}", app, error);
+                error!("Failed to read as symlink: {app}: {error:?}");
             };
             return false
         }
@@ -256,7 +252,7 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
             Ok(_) => {}
             Err(error) => {
                 if !silent {
-                    error!("Error removing config file: {}: {:?}", config_file, error)
+                    error!("Error removing config file: {config_file}: {error:?}")
                 };
                 return false
             }
@@ -268,8 +264,7 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
             Err(error) => {
                 if !silent {
                     error!(
-                        "Error removing config directory: {}: {:?}",
-                        app_config_dir, error
+                        "Error removing config directory: {app_config_dir}: {error:?}"
                     );
                     return false
                 }
@@ -310,10 +305,10 @@ pub fn app_names() -> Vec<String> {
                         app_name.push_str(value);
                         flakes.push(app_name);
                     }
-                    None => error!("Ignoring invalid config_file format: {}", base_config_file),
+                    None => error!("Ignoring invalid config_file format: {base_config_file}"),
                 }
             }
-            Err(error) => error!("Error while traversing flakes folder: {:?}", error),
+            Err(error) => error!("Error while traversing flakes folder: {error:?}"),
         }
     }
     flakes

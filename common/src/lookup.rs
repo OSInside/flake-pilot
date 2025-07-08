@@ -52,7 +52,7 @@ impl Lookup {
         let args: Vec<String> = env::args().collect();
         let mut run: Vec<String> = init;
         for arg in &args[1..] {
-            FlakeLog::debug(&format!("Got Argument: {}", arg));
+            FlakeLog::debug(&format!("Got Argument: {arg}"));
             if ! arg.starts_with('@') && ! arg.starts_with('%') {
                 if quote_for_kernel_cmdline {
                     run.push(arg.replace('-', "\\-").to_string());
@@ -90,7 +90,7 @@ impl Lookup {
     pub fn which(command: &str) -> bool {
         if let Ok(path) = env::var("PATH") {
             for path_entry in path.split(':') {
-                let abs_command = format!("{}/{}", path_entry, command);
+                let abs_command = format!("{path_entry}/{command}");
                 if fs::metadata(abs_command).is_ok() {
                     return true;
                 }

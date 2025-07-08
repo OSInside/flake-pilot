@@ -194,9 +194,9 @@ pub fn create(
                 // If not possible replace by the variable name
                 let var_name = capture.get(1).unwrap().as_str();
                 let var_value = env::var(var_name)
-                    .unwrap_or(format!("${}", var_name));
+                    .unwrap_or(format!("${var_name}"));
                 arg_value = arg_value.replace(
-                    &format!("%{}", var_name), &var_value
+                    &format!("%{var_name}"), &var_value
                 );
             }
         }
@@ -418,8 +418,8 @@ fn run_podman_creation(
                 let app_mount_point = mount_container(layer, true)?;
                 update_removed_files(&app_mount_point, &removed_files)?;
                 IO::sync_data(
-                    &format!("{}/", app_mount_point),
-                    &format!("{}/", instance_mount_point),
+                    &format!("{app_mount_point}/"),
+                    &format!("{instance_mount_point}/"),
                     [].to_vec(),
                     root_user
                 )?;
@@ -705,7 +705,7 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
                 let error_pattern = Regex::new(
                     r".*(not permitted|permission denied).*"
                 ).unwrap();
-                if error_pattern.captures(&format!("{:?}", output)).is_some() {
+                if error_pattern.captures(&format!("{output:?}")).is_some() {
                     // On permission error, fix permissions and try again. This
                     // is an expensive operation depending on the storage size
                     let _ = Container::podman_setup_permissions();
@@ -718,7 +718,7 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
             return Err(
                 FlakeError::IOError {
                     kind: "call failed".to_string(),
-                    message: format!("{:?}", error)
+                    message: format!("{error:?}")
                 }
             );
         }
@@ -746,7 +746,7 @@ pub fn container_image_exists(
                 let error_pattern = Regex::new(
                     r".*(not permitted|permission denied).*"
                 ).unwrap(); 
-                if error_pattern.captures(&format!("{:?}", output)).is_some() {
+                if error_pattern.captures(&format!("{output:?}")).is_some() {
                     // On permission error, fix permissions and try again. This
                     // is an expensive operation depending on the storage size
                     let _ = Container::podman_setup_permissions();
@@ -759,7 +759,7 @@ pub fn container_image_exists(
             return Err(
                 FlakeError::IOError {
                     kind: "call failed".to_string(),
-                    message: format!("{:?}", error)
+                    message: format!("{error:?}")
                 }
             );
         }
@@ -840,8 +840,8 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     let mut prune = user.run("podman");
     prune.arg("image").arg("prune").arg("--force");
     match prune.status() {
-        Ok(status) => { if Lookup::is_debug() { debug!("{:?}", status) }},
-        Err(error) => { if Lookup::is_debug() { debug!("{:?}", error) }}
+        Ok(status) => { if Lookup::is_debug() { debug!("{status:?}") }},
+        Err(error) => { if Lookup::is_debug() { debug!("{error:?}") }}
     }
     Ok(())
 }
@@ -857,7 +857,7 @@ pub fn build_system_dependencies(
     let system_deps = format!("{}/{}", &target, dependency_file);
     if Path::new(&system_deps).exists() {
         if Lookup::is_debug() {
-            debug!("Calling system deps generator: {}", system_deps);
+            debug!("Calling system deps generator: {system_deps}");
         }
         let mut call = user.run("sh");
         call.arg(system_deps);
@@ -888,7 +888,7 @@ pub fn build_system_dependencies(
                 return Err(
                     FlakeError::IOError {
                         kind: "call failed".to_string(),
-                        message: format!("{:?}", error)
+                        message: format!("{error:?}")
                     }
                 );
             }
@@ -907,7 +907,7 @@ pub fn update_removed_files(
     let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
     if Path::new(&host_deps).exists() {
         if Lookup::is_debug() {
-            debug!("Adding host deps from {}", host_deps);
+            debug!("Adding host deps from {host_deps}");
         }
         let data = fs::read_to_string(&host_deps)?;
         // The subsequent rsync call logs enough information

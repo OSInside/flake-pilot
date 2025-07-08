@@ -39,7 +39,7 @@ impl Container {
         let root = User::from("root");
         let user_id = get_current_uid();
         let user_gid = get_current_gid();
-        let chown_param = format!("{}:{}", user_id, user_gid);
+        let chown_param = format!("{user_id}:{user_gid}");
 
         // This is an expensive operation
         let mut fix_storage = root.run("chown");
@@ -58,7 +58,7 @@ impl Container {
         let root = User::from("root");
         let user_id = get_current_uid();
         let user_gid = get_current_gid();
-        let chown_param = format!("{}:{}", user_id, user_gid);
+        let chown_param = format!("{user_id}:{user_gid}");
 
         let mut fix_run_storage = root.run("chown");
         fix_run_storage.arg("-R")

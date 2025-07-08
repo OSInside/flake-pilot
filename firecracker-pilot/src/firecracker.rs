@@ -389,7 +389,7 @@ pub fn call_instance(
     let child = firecracker.spawn()?;
     let pid = child.id();
     if Lookup::is_debug() {
-        debug!("PID {}", pid)
+        debug!("PID {pid}")
     }
 
     File::create(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
@@ -579,7 +579,7 @@ pub fn execute_command_at_instance(
 
     // spawn the listener and wait for sci to run the command
     let exec_port = get_exec_port();
-    let command_socket = &format!("{}_{}", vsock_uds_path, exec_port);
+    let command_socket = &format!("{vsock_uds_path}_{exec_port}");
     let thread_handle = stream_listener(command_socket);
 
     send_command_to_instance(program_name, exec_port);
@@ -774,7 +774,7 @@ pub fn get_meta_name(program_name: &String) -> String {
             // The special @NAME argument is not passed to the
             // actual call and can be used to run different VM
             // instances for the same application
-            meta_file = format!("{}{}", meta_file, arg);
+            meta_file = format!("{meta_file}{arg}");
         }
     }
     meta_file
@@ -794,12 +794,12 @@ pub fn gc_meta_files(
         Ok(vmid) => {
             if ! vm_running(&vmid, user)? {
                 if Lookup::is_debug() {
-                    debug!("Deleting {}", vm_id_file);
+                    debug!("Deleting {vm_id_file}");
                 }
                 match fs::remove_file(vm_id_file) {
                     Ok(_) => { },
                     Err(error) => {
-                        error!("Failed to remove VMID: {:?}", error)
+                        error!("Failed to remove VMID: {error:?}")
                     }
                 }
                 let vsock_uds_path = format!(
@@ -807,7 +807,7 @@ pub fn gc_meta_files(
                 );
                 if Path::new(&vsock_uds_path).exists() {
                     if Lookup::is_debug() {
-                        debug!("Deleting {}", vsock_uds_path);
+                        debug!("Deleting {vsock_uds_path}");
                     }
                     delete_file(&vsock_uds_path, user);
                 }
@@ -822,12 +822,12 @@ pub fn gc_meta_files(
                 );
                 if Path::new(&vm_overlay_file).exists() && ! resume {
                     if Lookup::is_debug() {
-                        debug!("Deleting {}", vm_overlay_file);
+                        debug!("Deleting {vm_overlay_file}");
                     }
                     match fs::remove_file(&vm_overlay_file) {
                         Ok(_) => { },
                         Err(error) => {
-                            error!("Failed to remove VMID: {:?}", error)
+                            error!("Failed to remove VMID: {error:?}")
                         }
                     }
                 }
@@ -836,7 +836,7 @@ pub fn gc_meta_files(
             }
         },
         Err(error) => {
-            error!("Error reading VMID: {:?}", error);
+            error!("Error reading VMID: {error:?}");
         }
     }
     Ok(vmid_status)
@@ -876,7 +876,7 @@ pub fn delete_file(filename: &String, user: User) -> bool {
     match call.status() {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to rm: {}: {:?}", filename, error);
+            error!("Failed to rm: {filename}: {error:?}");
             return false
         }
     }
@@ -895,7 +895,7 @@ pub fn mount_vm(
         defaults::IMAGE_ROOT,
         defaults::IMAGE_OVERLAY
     ].iter()
-        .map(|p| format!("{}/{}", sub_dir, p))
+        .map(|p| format!("{sub_dir}/{p}"))
         .filter(|path| !Path::new(path).exists())
         .try_for_each(fs::create_dir_all)?;
 
@@ -927,7 +927,7 @@ pub fn mount_vm(
         defaults::OVERLAY_UPPER,
         defaults::OVERLAY_WORK
     ].iter()
-        .map(|p| format!("{}/{}", sub_dir, p))
+        .map(|p| format!("{sub_dir}/{p}"))
         .filter(|path| !Path::new(path).exists())
         .try_for_each(|path| mkdir(&path, "755", User::ROOT))?;
 
@@ -984,13 +984,13 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
                             stream_io(stream);
                         }
                         Err(error) => {
-                            error!("VM Connection failed: {}", error);
+                            error!("VM Connection failed: {error}");
                         }
                     }
                 }
             }
             Err(error) => {
-                error!("VM sockket listener failed: {}", error)
+                error!("VM sockket listener failed: {error}")
             }
         }
     };

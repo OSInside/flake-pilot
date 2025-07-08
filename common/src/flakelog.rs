@@ -30,7 +30,7 @@ pub struct FlakeLog {
 impl FlakeLog {
     pub fn debug(message: &str) {
         if Self::is_debug() {
-            debug!("{}", message)
+            debug!("{message}")
         }
     }
 

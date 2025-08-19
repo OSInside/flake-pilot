@@ -511,7 +511,6 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     };
 
     if pilot_options.contains_key("%remove") && ! is_removed {
-        call_instance("kill", cid, program_name, user)?;
         call_instance("rm_force", cid, program_name, user)?;
     };
     Ok(())

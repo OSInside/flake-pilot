@@ -19,3 +19,4 @@ flakes = { version = "3.1.20", path = "../common" }
 rust-ini = { version = "0.21" }
 uzers = { version = "0.12" }
 atty = { version = "0.2" }
+rand = { version = "0.9" }

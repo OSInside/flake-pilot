@@ -26,6 +26,7 @@ use crate::defaults;
 use crate::config::{RuntimeSection, config};
 
 use atty::Stream;
+use rand::Rng;
 
 use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
@@ -142,7 +143,7 @@ pub fn create(
     let current_user = get_current_username().unwrap();
     let user = User::from(current_user.to_str().unwrap());
 
-    let container_cid_file = format!(
+    let mut container_cid_file = format!(
         "{}/{}{suffix}_{}.cid",
         get_podman_ids_dir(), program_name, current_user.to_str().unwrap()
     );
@@ -178,9 +179,21 @@ pub fn create(
     // Garbage collect occasionally
     gc(user)?;
 
-    // Sanity check
+    // Sanity check. Auto assign a random sequence number
+    // if a container for the same invocation already exists
     if Path::new(&container_cid_file).exists() {
-        return Err(FlakeError::AlreadyRunning);
+        let mut rng = rand::rng();
+        let sequence_number: u32 = rng.random();
+        container_cid_file = format!(
+            "{}/{}@NAME={}_{}.cid",
+            get_podman_ids_dir(),
+            program_name,
+            sequence_number,
+            current_user.to_str().unwrap()
+        );
+        app = user.run("podman");
+        app.arg("create")
+            .arg("--cidfile").arg(&container_cid_file);
     }
 
     // create the container with configured runtime arguments

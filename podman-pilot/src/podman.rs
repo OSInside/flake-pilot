@@ -225,6 +225,7 @@ pub fn create(
 
     if target_app_path != "/" {
         if resume {
+            app.arg("--init");
             app.arg("--entrypoint").arg("sleep");
         } else {
             app.arg("--entrypoint").arg(target_app_path.clone());

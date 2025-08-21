@@ -26,6 +26,8 @@ use crate::defaults;
 use crate::config::{RuntimeSection, config};
 
 use atty::Stream;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 
 use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
@@ -117,19 +119,28 @@ pub fn create(
     container ID and and the name of the container ID
     file.
     !*/
-    // Read optional @NAME pilot argument to differentiate
-    // simultaneous instances of the same container application
-    let (name, _): (Vec<_>, Vec<_>) = env::args()
-        .skip(1).partition(|arg| arg.starts_with('@'));
-
-    // setup container ID file name
-    let suffix = name.first().map(String::as_str).unwrap_or("");
-
     // setup app command path name to call
     let target_app_path = get_target_app_path(program_name);
 
     // get runtime section
     let RuntimeSection { resume, attach, podman, .. } = config().runtime();
+
+    // Read optional @NAME pilot argument to differentiate
+    // simultaneous instances of the same container application.
+    // If no @NAME is assigned and the flake is not a resume flake
+    // and not an attach flake, a random seed sequence_number
+    // considered collision free is used as described in:
+    // https://rust-random.github.io/book/guide-seeding.html#fresh-entropy
+    let (name_value, _): (Vec<_>, Vec<_>) = env::args()
+        .skip(1).partition(|arg| arg.starts_with('@'));
+    let name = name_value.first().map(String::as_str).unwrap_or("");
+    let suffix = if name.is_empty() && ! (resume || attach) {
+        let mut rng = ChaCha20Rng::from_os_rng();
+        let sequence_number: u32 = rng.random();
+        format!("@NAME={sequence_number}")
+    } else {
+        name.to_string()
+    };
 
     // provisioning needs root permissions for mount
     // make sure we have them for this session
@@ -143,8 +154,9 @@ pub fn create(
     let user = User::from(current_user.to_str().unwrap());
 
     let container_cid_file = format!(
-        "{}/{}{suffix}_{}.cid",
-        get_podman_ids_dir(), program_name, current_user.to_str().unwrap()
+        "{}/{}{}_{}.cid",
+        get_podman_ids_dir(), program_name, suffix,
+        current_user.to_str().unwrap()
     );
 
     let container_runroot = format!(
@@ -178,11 +190,6 @@ pub fn create(
     // Garbage collect occasionally
     gc(user)?;
 
-    // Sanity check
-    if Path::new(&container_cid_file).exists() {
-        return Err(FlakeError::AlreadyRunning);
-    }
-
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
@@ -212,6 +219,7 @@ pub fn create(
 
     if target_app_path != "/" {
         if resume {
+            app.arg("--init");
             app.arg("--entrypoint").arg("sleep");
         } else {
             app.arg("--entrypoint").arg(target_app_path.clone());
@@ -498,7 +506,6 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     };
 
     if pilot_options.contains_key("%remove") && ! is_removed {
-        call_instance("kill", cid, program_name, user)?;
         call_instance("rm_force", cid, program_name, user)?;
     };
     Ok(())

@@ -108,7 +108,7 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    pub fn runtime(&self) -> RuntimeSection {
+    pub fn runtime(&self) -> RuntimeSection<'_> {
         self.vm.runtime.as_ref().cloned().unwrap_or_default()
     }
 

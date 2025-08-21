@@ -126,10 +126,8 @@ impl AppConfig {
         if check_host_dependencies {
             container_config.check_host_dependencies = check_host_dependencies
         }
-        if layers.is_some() {
-            container_config.layers = Some(
-                layers.as_ref().unwrap().to_vec()
-            );
+        if let Some(layers) = &layers {
+            container_config.layers = Some(layers.to_vec());
         }
         if resume {
             container_config.runtime.as_mut().unwrap()
@@ -142,19 +140,15 @@ impl AppConfig {
             container_config.runtime.as_mut().unwrap()
                 .runas = Some(run_as.to_string());
         }
-        if includes_tar.is_some() {
-            yaml_config.include.tar = Some(
-                includes_tar.as_ref().unwrap().to_vec()
-            );
+        if let Some(includes_tar) = &includes_tar {
+            yaml_config.include.tar = Some(includes_tar.to_vec());
         }
-        if includes_path.is_some() {
-            yaml_config.include.path = Some(
-                includes_path.as_ref().unwrap().to_vec()
-            );
+        if let Some(includes_path) = &includes_path {
+            yaml_config.include.path = Some(includes_path.to_vec());
         }
-        if opts.is_some() {
+        if let Some(opts) = &opts {
             let mut final_opts: Vec<String> = Vec::new();
-            for opt in opts.as_ref().unwrap() {
+            for opt in opts {
                 if let Some(stripped_opt) = opt.strip_prefix('\\') {
                     final_opts.push(stripped_opt.to_string())
                 } else {
@@ -220,15 +214,11 @@ impl AppConfig {
             vm_config.runtime.as_mut().unwrap()
                 .runas = Some(run_as.to_string());
         }
-        if includes_tar.is_some() {
-            yaml_config.include.tar = Some(
-                includes_tar.as_ref().unwrap().to_vec()
-            );
+        if let Some(includes_tar) = &includes_tar {
+            yaml_config.include.tar = Some(includes_tar.to_vec());
         }
-        if includes_path.is_some() {
-            yaml_config.include.path = Some(
-                includes_path.as_ref().unwrap().to_vec()
-            );
+        if let Some(includes_path) = &includes_path {
+            yaml_config.include.path = Some(includes_path.to_vec());
         }
         if let Some(overlay_size) = overlay_size {
             vm_config.runtime.as_mut().unwrap()

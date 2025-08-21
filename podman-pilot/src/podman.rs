@@ -27,7 +27,7 @@ use crate::config::{RuntimeSection, config};
 
 use atty::Stream;
 use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
+use rand_chacha::ChaCha20Rng;
 
 use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
@@ -130,12 +130,12 @@ pub fn create(
     // If no @NAME is assigned and the flake is not a resume flake
     // and not an attach flake, a random seed sequence_number
     // considered collision free is used as described in:
-    // https://rust-random.github.io/book/guide-seeding.html#a-simple-number
+    // https://rust-random.github.io/book/guide-seeding.html#fresh-entropy
     let (name_value, _): (Vec<_>, Vec<_>) = env::args()
         .skip(1).partition(|arg| arg.starts_with('@'));
     let name = name_value.first().map(String::as_str).unwrap_or("");
     let suffix = if name.is_empty() && ! (resume || attach) {
-        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let mut rng = ChaCha20Rng::from_os_rng();
         let sequence_number: u32 = rng.random();
         format!("@NAME={sequence_number}")
     } else {

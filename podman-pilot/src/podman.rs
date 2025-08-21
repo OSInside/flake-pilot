@@ -26,7 +26,8 @@ use crate::defaults;
 use crate::config::{RuntimeSection, config};
 
 use atty::Stream;
-use rand::Rng;
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 
 use flakes::user::{User, mkdir};
 use flakes::lookup::Lookup;
@@ -118,19 +119,28 @@ pub fn create(
     container ID and and the name of the container ID
     file.
     !*/
-    // Read optional @NAME pilot argument to differentiate
-    // simultaneous instances of the same container application
-    let (name, _): (Vec<_>, Vec<_>) = env::args()
-        .skip(1).partition(|arg| arg.starts_with('@'));
-
-    // setup container ID file name
-    let suffix = name.first().map(String::as_str).unwrap_or("");
-
     // setup app command path name to call
     let target_app_path = get_target_app_path(program_name);
 
     // get runtime section
     let RuntimeSection { resume, attach, podman, .. } = config().runtime();
+
+    // Read optional @NAME pilot argument to differentiate
+    // simultaneous instances of the same container application.
+    // If no @NAME is assigned and the flake is not a resume flake
+    // and not an attach flake, a random seed sequence_number
+    // considered collision free is used as described in:
+    // https://rust-random.github.io/book/guide-seeding.html#a-simple-number
+    let (name_value, _): (Vec<_>, Vec<_>) = env::args()
+        .skip(1).partition(|arg| arg.starts_with('@'));
+    let name = name_value.first().map(String::as_str).unwrap_or("");
+    let suffix = if name.is_empty() && ! (resume || attach) {
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let sequence_number: u32 = rng.random();
+        format!("@NAME={sequence_number}")
+    } else {
+        name.to_string()
+    };
 
     // provisioning needs root permissions for mount
     // make sure we have them for this session
@@ -143,9 +153,10 @@ pub fn create(
     let current_user = get_current_username().unwrap();
     let user = User::from(current_user.to_str().unwrap());
 
-    let mut container_cid_file = format!(
-        "{}/{}{suffix}_{}.cid",
-        get_podman_ids_dir(), program_name, current_user.to_str().unwrap()
+    let container_cid_file = format!(
+        "{}/{}{}_{}.cid",
+        get_podman_ids_dir(), program_name, suffix,
+        current_user.to_str().unwrap()
     );
 
     let container_runroot = format!(
@@ -178,23 +189,6 @@ pub fn create(
 
     // Garbage collect occasionally
     gc(user)?;
-
-    // Sanity check. Auto assign a random sequence number
-    // if a container for the same invocation already exists
-    if Path::new(&container_cid_file).exists() {
-        let mut rng = rand::rng();
-        let sequence_number: u32 = rng.random();
-        container_cid_file = format!(
-            "{}/{}@NAME={}_{}.cid",
-            get_podman_ids_dir(),
-            program_name,
-            sequence_number,
-            current_user.to_str().unwrap()
-        );
-        app = user.run("podman");
-        app.arg("create")
-            .arg("--cidfile").arg(&container_cid_file);
-    }
 
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();

@@ -109,7 +109,7 @@ impl<'a> Config<'a> {
         self.container.base_container.is_some()
     }
 
-    pub fn runtime(&self) -> RuntimeSection {
+    pub fn runtime(&self) -> RuntimeSection<'_> {
         self.container.runtime.as_ref().cloned().unwrap_or_default()
     }
 

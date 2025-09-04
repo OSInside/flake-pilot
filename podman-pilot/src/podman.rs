@@ -29,7 +29,7 @@ use atty::Stream;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
-use flakes::user::{User, mkdir};
+use flakes::user::{User, mkdir, cp, exists};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
@@ -49,6 +49,7 @@ use std::io::SeekFrom;
 
 use spinoff::{Spinner, spinners, Color};
 use tempfile::tempfile;
+use tempfile::NamedTempFile;
 use regex::Regex;
 
 use uzers::{get_current_username};
@@ -151,7 +152,7 @@ pub fn create(
     mkdir(defaults::FLAKES_REGISTRY, "777", User::ROOT)?;
 
     let current_user = get_current_username().unwrap();
-    let user = User::from(current_user.to_str().unwrap());
+    let user = User::from("root");
 
     let container_cid_file = format!(
         "{}/{}{}_{}.cid",
@@ -477,36 +478,35 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     let RuntimeSection { resume, attach, .. } = config().runtime();
 
     let pilot_options = Lookup::get_pilot_run_options();
-    let current_user = get_current_username().unwrap();
-    let user = User::from(current_user.to_str().unwrap());
+    let root_user = User::from("root");
 
-    let is_running = container_running(cid, user)?;
-    let is_created = container_exists(cid, user)?;
+    let is_running = container_running(cid, root_user)?;
+    let is_created = container_exists(cid, root_user)?;
     let mut is_removed = false;
 
     if is_running {
         if attach {
             // 1. Attach to running container
-            call_instance("attach", cid, program_name, user)?;
+            call_instance("attach", cid, program_name, root_user)?;
         } else {
             // 2. Execute app in running container
-            call_instance("exec", cid, program_name, user)?;
+            call_instance("exec", cid, program_name, root_user)?;
         }
     } else if resume {
         // 3. Startup resume type container and execute app
-        call_instance("start", cid, program_name, user)?;
-        call_instance("exec", cid, program_name, user)?;
+        call_instance("start", cid, program_name, root_user)?;
+        call_instance("exec", cid, program_name, root_user)?;
     } else {
         // 4. Startup container
-        call_instance("start", cid, program_name, user)?;
+        call_instance("start", cid, program_name, root_user)?;
         if ! attach || ! is_created {
-            call_instance("rm_force", cid, program_name, user)?;
+            call_instance("rm_force", cid, program_name, root_user)?;
             is_removed = true
         }
     };
 
     if pilot_options.contains_key("%remove") && ! is_removed {
-        call_instance("rm_force", cid, program_name, user)?;
+        call_instance("rm_force", cid, program_name, root_user)?;
     };
     Ok(())
 }
@@ -641,6 +641,7 @@ pub fn sync_host(
     !*/
     let mut removed_files_contents = String::new();
     let files_from = format!("{}/{}", &target, from);
+    let mut temp_files_from = NamedTempFile::new()?;
     removed_files.seek(SeekFrom::Start(0))?;
     removed_files.read_to_string(&mut removed_files_contents)?;
 
@@ -650,8 +651,8 @@ pub fn sync_host(
         }
         return Ok(())
     }
-
-    File::create(&files_from)?.write_all(removed_files_contents.as_bytes())?;
+    temp_files_from.write_all(removed_files_contents.as_bytes())?;
+    cp(temp_files_from.path().to_str().unwrap(), &files_from, User::ROOT)?;
 
     let mut call = user.run("rsync");
     call.arg("-av");
@@ -863,7 +864,7 @@ pub fn build_system_dependencies(
     to be provisioned from the host
     !*/
     let system_deps = format!("{}/{}", &target, dependency_file);
-    if Path::new(&system_deps).exists() {
+    if exists(&system_deps, User::ROOT)? {
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
         }
@@ -907,17 +908,19 @@ pub fn build_system_dependencies(
 
 pub fn update_removed_files(
     target: &String, mut accumulated_file: &File
-) -> Result<(), std::io::Error> {
+) -> Result<(), FlakeError> {
     /*!
     Take the contents of the given removed_file and append it
     to the accumulated_file
     !*/
     let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
-    if Path::new(&host_deps).exists() {
+    if exists(&host_deps, User::ROOT)? {
         if Lookup::is_debug() {
             debug!("Adding host deps from {host_deps}");
         }
-        let data = fs::read_to_string(&host_deps)?;
+        let temp_host_deps = NamedTempFile::new()?;
+        cp(&host_deps, temp_host_deps.path().to_str().unwrap(), User::ROOT)?;
+        let data = fs::read_to_string(temp_host_deps.path())?;
         // The subsequent rsync call logs enough information
         // Let's keep this for convenience debugging
         // if Lookup::is_debug() {

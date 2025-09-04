@@ -1,6 +1,6 @@
 [package]
 name = "flakes"
-version = "3.1.21"
+version = "3.1.22"
 edition = "2021"
 
 [lib]

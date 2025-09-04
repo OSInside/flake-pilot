@@ -27,6 +27,8 @@ use std::{process::Command, ffi::OsStr};
 use serde::{Serialize, Deserialize};
 use crate::command::{CommandExtTrait, CommandError};
 use uzers::{get_current_uid, get_current_groupname};
+use crate::lookup::{Lookup};
+use crate::error::FlakeError;
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct User<'a> {
@@ -69,11 +71,57 @@ impl User<'_> {
     }
 }
 
+pub fn exists(filename: &str, user: User) -> Result<bool, FlakeError> {
+    /*!
+    check file exists via sudo
+    !*/
+    let mut call = user.run("test");
+    call.arg("-e").arg(filename);
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
+    let output = match call.output() {
+        Ok(output) => {
+            output
+        }
+        Err(error) => {
+            return Err(
+                FlakeError::IOError {
+                    kind: "call failed".to_string(),
+                    message: format!("{error:?}")
+                }
+            );
+        }
+    };
+    if output.status.success() {
+        return Ok(true)
+    }
+    Ok(false)
+}
+
+pub fn cp(source: &str, target: &str, user: User) -> Result<(), CommandError> {
+    /*!
+    copy filename via sudo
+    !*/
+    let mut call = user.run("cp");
+    call.arg(source).arg(target);
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
+    call.perform()?;
+    Ok(())
+}
+
 pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), CommandError> {
     /*!
     Chmod filename via sudo
     !*/
-    user.run("chmod").arg(mode).arg(filename).perform()?;
+    let mut call = user.run("chmod");
+    call.arg(mode).arg(filename);
+    if Lookup::is_debug() {
+        debug!("{:?}", call.get_args());
+    }
+    call.perform()?;
     Ok(())
 }
 
@@ -90,10 +138,18 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), CommandError> 
         targetdir = workdir.to_str().unwrap();
     }
     if ! Path::new(&targetdir).exists() {
-        user.run("mkdir")
-            .arg("-p").arg("-m").arg(mode).arg(targetdir).perform()?;
-        user.run("chmod")
-            .arg(mode).arg(targetdir).perform()?;
+        let mut mkdir_call = user.run("mkdir");
+        mkdir_call.arg("-p").arg("-m").arg(mode).arg(targetdir);
+        if Lookup::is_debug() {
+            debug!("{:?}", mkdir_call.get_args());
+        }
+        mkdir_call.perform()?;
+        let mut chmod_call = user.run("chmod");
+        chmod_call.arg(mode).arg(targetdir);
+        if Lookup::is_debug() {
+            debug!("{:?}", chmod_call.get_args());
+        }
+        chmod_call.perform()?;
     }
     Ok(())
 }

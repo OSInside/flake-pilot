@@ -271,9 +271,16 @@ The proposed example works within the following requirements:
 
    Network Address Translation(NAT) is an easy way to route traffic
    to the outside world even when it originates from another network.
-   All traffic looks like if it would come from the outgoing interface
-   though. In this example we assume ```eth0``` to be the outgoing
-   interface:
+   All traffic looks like as if it would come from the outgoing
+   interface.
+
+   **_NOTE:_** Please check what tooling is managing the firewall on
+   your host and refer to its documentation on how to set up the
+   nat/postrouting rules. The information below assumes there is no
+   other firewall software active on your host and only serves the
+   purpose of an example setup !
+
+   In this example we assume ```eth0``` to be the outgoing interface:
 
    ```bash
    sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE

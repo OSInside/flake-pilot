@@ -199,14 +199,9 @@ pub struct EngineSection<'a> {
     pub boot_args: Vec<&'a str>,
 }
 
-#[derive(Debug, Deserialize, Clone, Display)]
+#[derive(Default, Debug, Deserialize, Clone, Display)]
 pub enum CacheType {
+    #[default]
     Writeback,
     Unsafe
-}
-
-impl Default for CacheType {
-    fn default() -> Self {
-        Self::Writeback
-    }
 }

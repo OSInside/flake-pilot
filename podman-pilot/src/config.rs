@@ -74,18 +74,25 @@ fn load_config() -> Config<'static> {
 
 pub fn config_from_str(input: &str) -> Config<'static> {
     // Parse into a generic YAML to remove duplicate keys
+    let yaml_documents = yaml_rust::YamlLoader::load_from_str(input).unwrap();
+    let yaml = yaml_documents.first();
+    if let Some(yaml) = yaml {
+        let mut buffer = String::new();
+        yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
 
-    let yaml = yaml_rust::YamlLoader::load_from_str(input).unwrap();
-    let yaml = yaml.first().unwrap();
-    let mut buffer = String::new();
-    yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
+        // Convert to a String and leak it to make it static
+        // Can not use serde_yaml::from_value because of lifetime limitations
+        // Safety: This does not cause a reocurring memory leak
+        // since `load_config` is only called once
+        let content = Box::leak(buffer.into_boxed_str());
 
-    // Convert to a String and leak it to make it static
-    // Can not use serde_yaml::from_value because of lifetime limitations
-    // Safety: This does not cause a reocurring memory leak since `load_config` is only called once
-    let content = Box::leak(buffer.into_boxed_str());
-    
-    serde_yaml::from_str(content).unwrap()
+        serde_yaml::from_str(content).unwrap()
+    } else {
+        panic!(
+            "No configuration data provided for {:?} in {}",
+            get_base_path(), get_flakes_dir()
+        )
+    }
 }
 
 pub fn config_file(program: &str) -> String {

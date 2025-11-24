@@ -21,6 +21,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use std::path::Path;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{env, path::PathBuf, fs};
@@ -56,7 +57,12 @@ fn load_config() -> Config<'static> {
     !*/
     let base_path = get_base_path();
     let base_path  = base_path.file_name().unwrap().to_str().unwrap();
-    let base_yaml = fs::read_to_string(config_file(base_path));
+    let base_file = config_file(base_path);
+    let base_yaml = fs::read_to_string(&base_file);
+
+    if ! Path::new(&base_file).exists() {
+        panic!("No flake registration file found: {}", base_file)
+    }
 
     let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path))
         .into_iter()
@@ -66,26 +72,46 @@ fn load_config() -> Config<'static> {
 
     extra_yamls.sort();
         
-
-    let full_yaml: String = base_yaml.into_iter().chain(extra_yamls.into_iter().flat_map(fs::read_to_string)).collect();
+    let full_yaml: String = base_yaml.into_iter().chain(
+        extra_yamls.into_iter().flat_map(fs::read_to_string)
+    ).collect();
     config_from_str(&full_yaml)
-
 }
 
 pub fn config_from_str(input: &str) -> Config<'static> {
     // Parse into a generic YAML to remove duplicate keys
+    let yaml_documents = match yaml_rust::YamlLoader::load_from_str(input) {
+        Ok(yaml_documents) => {
+            yaml_documents
+        }
+        Err(error) => {
+            panic!(
+                "Failed to parse yaml input at: {:?}: {}",
+                config_file(
+                    get_base_path().file_name().unwrap().to_str().unwrap()
+                ), error
+            )
+        }
+    };
 
-    let yaml = yaml_rust::YamlLoader::load_from_str(input).unwrap();
-    let yaml = yaml.first().unwrap();
-    let mut buffer = String::new();
-    yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
+    let yaml = yaml_documents.first();
+    if let Some(yaml) = yaml {
+        let mut buffer = String::new();
+        yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
 
-    // Convert to a String and leak it to make it static
-    // Can not use serde_yaml::from_value because of lifetime limitations
-    // Safety: This does not cause a reocurring memory leak since `load_config` is only called once
-    let content = Box::leak(buffer.into_boxed_str());
-    
-    serde_yaml::from_str(content).unwrap()
+        // Convert to a String and leak it to make it static
+        // Can not use serde_yaml::from_value because of lifetime limitations
+        // Safety: This does not cause a reocurring memory leak
+        // since `load_config` is only called once
+        let content = Box::leak(buffer.into_boxed_str());
+
+        serde_yaml::from_str(content).unwrap()
+    } else {
+        panic!(
+            "No configuration data provided for {:?} in {}",
+            get_base_path(), get_flakes_dir()
+        )
+    }
 }
 
 pub fn config_file(program: &str) -> String {

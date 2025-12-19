@@ -169,6 +169,7 @@ pub fn create(
 
     let mut app = user.run("podman");
     app.arg("create")
+        .arg("--pull=newer")
         .arg("--cidfile").arg(&container_cid_file);
 
     // Make sure CID dir exists

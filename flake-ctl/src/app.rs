@@ -336,9 +336,11 @@ pub fn init(app: Option<&String>) -> bool {
     already exists.
     !*/
     let mut status = true;
-    if app.is_some() && Path::new(&app.unwrap()).exists() {
-        error!("App path {} already exists", app.unwrap());
-        return false;
+    if let Some(path) = app {
+        if Path::new(&app.unwrap()).exists() {
+            error!("App path {} already exists", path);
+            return false;
+        }
     }
     let mut flake_dir = String::new();
     match fs::read_link(get_flakes_dir()) {

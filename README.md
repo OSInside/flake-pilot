@@ -61,7 +61,12 @@ section.
   container but take the certificates or other sensitive information
   from the host; three way dependency model.
 
-Actually all of the above use cases are immaterial if a proper packaging,
+* isolating applications that require different library versions
+  than the host provides, e.g old legacy applications.
+
+* running AI workloads in isolated environments
+
+Actually some of the above use cases are immaterial if a proper packaging,
 release and maintenance of the application is possible. However, I have
 learned the world is not an ideal place and there might be a spot for
 this project to be useful, supporting users with "special" needs and
@@ -73,11 +78,11 @@ for further details
 
 ## Installation <a name="installation"/>
 
-flake-pilot components are written in rust and available as packages
-for SUSE ALP as follows:
+flake-pilot components are written in rust and are vailable as packages
+for SUSE as follows:
 
 ```bash
-zypper addrepo https://download.opensuse.org/repositories/home:/marcus.schaefer:/EOS/ALP/
+zypper addrepo https://download.opensuse.org/repositories/home:/marcus.schaefer:/EOS/TW/
 zypper install flake-pilot flake-pilot-podman flake-pilot-firecracker
 ```
 
@@ -164,13 +169,13 @@ Start an application as virtual machine (VM) instance as follows:
 
 1. Pull a firecracker compatible VM
 
-   ```bash 
+   ```bash
    flake-ctl firecracker pull --name leap \
        --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images_leap/firecracker-basesystem.$(uname -m).tar.xz
    ```
 
 2. Register the ```mybash``` application
-  
+
    ```bash
    flake-ctl firecracker register --vm leap \
        --app /usr/bin/mybash --target /bin/bash --overlay-size 20GiB
@@ -263,7 +268,7 @@ The proposed example works within the following requirements:
 
 1. Enable IP forwarding
 
-   ```bash 
+   ```bash
    sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
    ```
 
@@ -386,7 +391,7 @@ looks like the following:
 └── aws.yaml
 ```
 
-Please consult the manual pages for detailed information 
+Please consult the manual pages for detailed information
 about the contents of the flake setup.
 
 https://github.com/OSInside/flake-pilot/tree/main/doc
@@ -396,7 +401,7 @@ https://github.com/OSInside/flake-pilot/tree/main/doc
 Building images as container- or VM images can be done in different ways.
 One option is to use the **Open Build Service** which is able to build
 software packages and images and therefore allows to maintain the
-complete application stack. 
+complete application stack.
 
 For demo purposes and to showcase the mentioned [Use Cases](#usecases)
 some example images were created and could be considered as a simple

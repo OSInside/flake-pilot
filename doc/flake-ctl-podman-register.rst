@@ -136,7 +136,7 @@ FILES
 -----
 
 * /usr/share/flakes
-* /etc/flakes
+* /etc/flakes.yml
 
 EXAMPLE
 -------

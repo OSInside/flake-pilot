@@ -23,9 +23,11 @@ on your host. For details about flake-ctl see:
 FILES
 -----
 
-- /etc/flakes
+- /etc/flakes.yml
 
-  System wide configuration file:
+  System wide configuration file. By default loaded or when
+  the calling user is root. If the calling user is a normal user
+  the file $HOME/.config/flakes.yml is loaded when present.
 
   .. code:: yaml
 

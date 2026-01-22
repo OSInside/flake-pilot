@@ -36,6 +36,7 @@ use flakes::error::FlakeError;
 use flakes::command::{CommandError, CommandExtTrait};
 use flakes::container::Container;
 use flakes::config::get_podman_ids_dir;
+use flakes::config::read_storage_conf;
 
 use std::io;
 use std::path::Path;
@@ -125,7 +126,9 @@ pub fn create(
     let target_app_path = get_target_app_path(program_name);
 
     // get runtime section
-    let RuntimeSection { resume, attach, podman, .. } = config().runtime();
+    let RuntimeSection {
+        runas, resume, attach, podman, ..
+    } = config().runtime();
 
     // Read optional @NAME pilot argument to differentiate
     // simultaneous instances of the same container application.
@@ -144,6 +147,9 @@ pub fn create(
         name.to_string()
     };
 
+    // depending on the user either the system wide flake
+    // setup or the user specific flake setup is read
+    let mut usermode = false;
     // depending on the user specific operations are restricted
     let mut supports_provsioning = true;
     // name of the user calling the program
@@ -152,13 +158,14 @@ pub fn create(
     let user;
 
     // setup user and features
-    if get_podman_storage_conf() != defaults::PODMAN_STORAGE_CONF {
+    if runas != "root" {
         // The system wide storage conf is not in use.
         // This indicates a user specific storage setup is in place.
         // all provisioning operations need root permissions
         // and will be disabled
         user = User::from(calling_user_name.to_str().unwrap());
         supports_provsioning = false;
+        usermode = true
     } else {
         // provisioning needs root permissions for mount
         // make sure we have them for this session via sudo
@@ -169,19 +176,24 @@ pub fn create(
 
     let container_cid_file = format!(
         "{}/{}{}_{}.cid",
-        get_podman_ids_dir(), program_name, suffix,
+        get_podman_ids_dir(usermode), program_name, suffix,
         calling_user_name.to_str().unwrap()
     );
 
+    // read podman storage setup
+    let storage = read_storage_conf(usermode)?;
+
+    // create storage paths
+    mkdir(storage.get("graphroot").unwrap(), "777", user)?;
     let container_runroot = format!(
         "{}/{}",
-        defaults::FLAKES_REGISTRY_RUNROOT, calling_user_name.to_str().unwrap()
+        storage.get("runroot").unwrap(),
+        calling_user_name.to_str().unwrap()
     );
-
-    mkdir(defaults::FLAKES_REGISTRY, "777", user)?;
     mkdir(&container_runroot, "777", user)?;
 
-    let mut app = user.run("podman");
+    // init podman creation call
+    let mut app = setup_podman_call(usermode);
     app.arg("create")
         .arg("--pull=newer")
         .arg("--cidfile").arg(&container_cid_file);
@@ -189,11 +201,8 @@ pub fn create(
     // Make sure CID dir exists
     init_cid_dir(user)?;
 
-    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf());
-    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
-
-    if user.get_name() == "root" {
-        let _ = Container::podman_setup_run_permissions();
+    if ! usermode {
+        let _ = Container::podman_setup_run_permissions(false);
     }
 
     // Check early return condition in resume mode
@@ -317,7 +326,6 @@ fn run_podman_creation(
     Create and provision container prior start
     !*/
     let RuntimeSection { resume, .. } = config().runtime();
-
     let output: Output = match app.perform() {
         Ok(output) => {
             output
@@ -331,7 +339,7 @@ fn run_podman_creation(
             {
                 // On permission error, fix permissions and try again
                 // This is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(false);
                 app.perform()?
             } else if resume {
                 // Cleanup potentially left over container instance from an
@@ -500,15 +508,15 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     /*!
     Start container with the given container ID
     !*/
-    let RuntimeSection { resume, attach, .. } = config().runtime();
-
+    let RuntimeSection { runas, resume, attach, .. } = config().runtime();
     let pilot_options = Lookup::get_pilot_run_options();
     let calling_user_name = get_current_username().unwrap();
-    let user = if get_podman_storage_conf() != defaults::PODMAN_STORAGE_CONF {
+    let user = if runas != "root" {
         User::from(calling_user_name.to_str().unwrap())
     } else {
         User::from("root")
     };
+
     let is_running = container_running(cid, user)?;
     let is_created = container_exists(cid, user)?;
     let mut is_removed = false;
@@ -557,15 +565,16 @@ pub fn call_instance(
     /*!
     Call container ID based podman commands
     !*/
-    let RuntimeSection { resume, .. } = config().runtime();
+    let RuntimeSection { runas, resume, .. } = config().runtime();
 
+    let usermode = runas != "root";
     let pilot_options = Lookup::get_pilot_run_options();
     let mut interactive = false;
     if pilot_options.contains_key("%interactive") {
         interactive = true;
     }
 
-    let mut call = user.run("podman");
+    let mut call = setup_podman_call(usermode);
     if action == "rm" || action == "rm_force" {
         call.stdout(Stdio::null());
         call.arg("rm").arg("--force");
@@ -605,7 +614,7 @@ pub fn call_instance(
             },
             Err(_) => {
                 if user.get_name() == "root" {
-                    let _ = Container::podman_setup_permissions();
+                    let _ = Container::podman_setup_permissions(false);
                     call.output()?;
                 }
             }
@@ -624,7 +633,7 @@ pub fn mount_container(
     if as_image && ! container_image_exists(container_name, root_user)? {
         pull(container_name, root_user)?;
     }
-    let mut call = root_user.run("podman");
+    let mut call = setup_podman_call(false);
     if as_image {
         call.arg("image").arg("mount").arg(container_name);
     } else {
@@ -646,8 +655,7 @@ pub fn umount_container(
     /*!
     Umount container image
     !*/
-    let root_user = User::from("root");
-    let mut call = root_user.run("podman");
+    let mut call = setup_podman_call(false);
     call.stderr(Stdio::null());
     call.stdout(Stdio::null());
     if as_image {
@@ -724,8 +732,9 @@ pub fn init_cid_dir(user: User) -> Result<(), FlakeError> {
     /*!
     Create meta data directory structure
     !*/
-    if ! Path::new(&get_podman_ids_dir()).is_dir() {
-        mkdir(&get_podman_ids_dir(), "777", user)?;
+    let usermode = user.get_name() != "root";
+    if ! Path::new(&get_podman_ids_dir(usermode)).is_dir() {
+        mkdir(&get_podman_ids_dir(usermode), "777", user)?;
     }
     Ok(())
 }
@@ -734,7 +743,9 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified cid
     !*/
-    let mut exists = user.run("podman");
+    let RuntimeSection { runas, .. } = config().runtime();
+    let usermode = runas != "root";
+    let mut exists = setup_podman_call(usermode);
     exists.arg("container").arg("exists").arg(cid);
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
@@ -749,7 +760,7 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
                     // On permission error, fix permissions and try again. This
                     // is an expensive operation depending on the storage size
                     if user.get_name() == "root" {
-                        let _ = Container::podman_setup_permissions();
+                        let _ = Container::podman_setup_permissions(false);
                         exists.output()?;
                     }
                 }
@@ -777,7 +788,9 @@ pub fn container_image_exists(
     /*!
     Check if container image is present in local registry
     !*/
-    let mut exists = user.run("podman");
+    let RuntimeSection { runas, .. } = config().runtime();
+    let usermode = runas != "root";
+    let mut exists = setup_podman_call(usermode);
     exists.arg("image").arg("exists").arg(name);
     if Lookup::is_debug() {
         debug!("{:?}", exists.get_args());
@@ -792,7 +805,7 @@ pub fn container_image_exists(
                     // On permission error, fix permissions and try again. This
                     // is an expensive operation depending on the storage size
                     if user.get_name() == "root" {
-                        let _ = Container::podman_setup_permissions();
+                        let _ = Container::podman_setup_permissions(false);
                         exists.output()?;
                     }
                 }
@@ -818,8 +831,10 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     /*!
     Check if container with specified cid is running
     !*/
+    let RuntimeSection { runas, .. } = config().runtime();
+    let usermode = runas != "root";
     let mut running_status = false;
-    let mut running = user.run("podman");
+    let mut running = setup_podman_call(usermode);
     running.arg("ps")
         .arg("--format").arg("{{.ID}}");
     if Lookup::is_debug() {
@@ -838,7 +853,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
             {
                 // On permission error, fix permissions and try again. This
                 // is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(false);
                 running.perform()?
             } else {
                 return Err(error)
@@ -862,7 +877,9 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     /*!
     Call podman pull with the provided uri
     !*/
-    let mut pull = user.run("podman");
+    let RuntimeSection { runas, .. } = config().runtime();
+    let usermode = runas != "root";
+    let mut pull = setup_podman_call(usermode);
     pull.arg("pull").arg(uri);
     if Lookup::is_debug() {
         debug!("{:?}", pull.get_args());
@@ -878,7 +895,7 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
             if error_pattern.captures(&format!("{:?}", error.base)).is_some()
                 && user.get_name() == "root"
             {
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(false);
                 pull.perform()?
             } else {
                 return Err(FlakeError::CommandError(error))
@@ -888,7 +905,7 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn prune(user: User) -> Result<(), FlakeError> {
+pub fn prune() -> Result<(), FlakeError> {
     /*!
     Call podman image prune to get rid of old containers.
     Errors from the call are only logged but will not cause
@@ -896,7 +913,9 @@ pub fn prune(user: User) -> Result<(), FlakeError> {
     doesn't get wiped but this should not prevent the app
     from being called with the latest container available.
     !*/
-    let mut prune = user.run("podman");
+    let RuntimeSection { runas, .. } = config().runtime();
+    let usermode = runas != "root";
+    let mut prune = setup_podman_call(usermode);
     prune.arg("image").arg("prune").arg("--force");
     match prune.status() {
         Ok(status) => { if Lookup::is_debug() { debug!("{status:?}") }},
@@ -1009,13 +1028,14 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
     let paths;
-    match fs::read_dir(get_podman_ids_dir()) {
+    let usermode = user.get_name() != "root";
+    match fs::read_dir(get_podman_ids_dir(usermode)) {
         Ok(result) => { paths = result },
         Err(error) => {
             return Err(FlakeError::IOError {
                 kind: format!("{:?}", error.kind()),
                 message: format!("fs::read_dir failed on {}: {}",
-                    get_podman_ids_dir(), error
+                    get_podman_ids_dir(usermode), error
                 )
             })
         }
@@ -1029,6 +1049,27 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
             let _ = gc_cid_file(&container_cid_file, user);
         }
     }
-    prune(user)?;
+    prune()?;
     Ok(())
+}
+
+pub fn setup_podman_call(usermode: bool) -> Command {
+    let storage = read_storage_conf(usermode).unwrap();
+    let calling_user_name = get_current_username().unwrap();
+    let container_runroot = format!(
+        "{}/{}",
+        storage.get("runroot").unwrap(),
+        calling_user_name.to_str().unwrap()
+    );
+    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
+    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
+    let mut call = Command::new("sudo");
+    call.arg("--preserve-env");
+    if usermode {
+        call.arg("--user").arg(calling_user_name);
+    } else {
+        call.arg("--user").arg("root");
+    }
+    call.arg(defaults::PODMAN_PATH);
+    call
 }

@@ -26,6 +26,3 @@ pub const GC_THRESHOLD: i32 = 20;
 pub const HOST_DEPENDENCIES: &str = "removed";
 pub const SYSTEM_HOST_DEPENDENCIES: &str = "systemfiles";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
-pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
-pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";
-pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";

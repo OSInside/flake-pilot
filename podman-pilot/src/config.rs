@@ -26,14 +26,16 @@ use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{env, path::PathBuf, fs};
 use flakes::config::get_flakes_dir;
+use uzers::{get_current_username};
 
 lazy_static! {
     static ref CONFIG: Config<'static> = load_config();
 }
 
 /// Returns the config singleton
-/// 
-/// Will initialize the config on first call and return the cached version afterwards
+///
+/// Will initialize the config on first call and return
+/// the cached version afterwards
 pub fn config() -> &'static Config<'static> {
     &CONFIG
 }
@@ -55,30 +57,46 @@ fn load_config() -> Config<'static> {
     and attached to the master program_name.yaml file. The result
     is send to the Yaml parser
     !*/
+    let calling_user_name = get_current_username().unwrap();
+    let mut usermode = calling_user_name != "root";
+
     let base_path = get_base_path();
     let base_path  = base_path.file_name().unwrap().to_str().unwrap();
-    let base_file = config_file(base_path);
-    let base_yaml = fs::read_to_string(&base_file);
+    let mut base_file = config_file(base_path, usermode);
 
     if ! Path::new(&base_file).exists() {
-        panic!("No flake registration file found: {}", base_file)
+        if usermode {
+            // no user specific config found, try system wide
+            usermode = false;
+            base_file = config_file(base_path, usermode);
+            if ! Path::new(&base_file).exists() {
+                panic!(
+                    "No flake registration file found: {}",
+                    config_file(base_path, true)
+                )
+            }
+        } else {
+            panic!("No flake registration file found: {}", base_file)
+        }
     }
 
-    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path))
+    let base_yaml = fs::read_to_string(&base_file);
+
+    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path, usermode))
         .into_iter()
         .flatten()
         .flatten()
         .map(|x| x.path()).collect();
 
     extra_yamls.sort();
-        
+
     let full_yaml: String = base_yaml.into_iter().chain(
         extra_yamls.into_iter().flat_map(fs::read_to_string)
     ).collect();
-    config_from_str(&full_yaml)
+    config_from_str(&full_yaml, usermode)
 }
 
-pub fn config_from_str(input: &str) -> Config<'static> {
+pub fn config_from_str(input: &str, usermode: bool) -> Config<'static> {
     // Parse into a generic YAML to remove duplicate keys
     let yaml_documents = match yaml_rust::YamlLoader::load_from_str(input) {
         Ok(yaml_documents) => {
@@ -88,7 +106,8 @@ pub fn config_from_str(input: &str) -> Config<'static> {
             panic!(
                 "Failed to parse yaml input at: {:?}: {}",
                 config_file(
-                    get_base_path().file_name().unwrap().to_str().unwrap()
+                    get_base_path().file_name().unwrap().to_str().unwrap(),
+                    usermode
                 ), error
             )
         }
@@ -108,18 +127,18 @@ pub fn config_from_str(input: &str) -> Config<'static> {
         serde_yaml::from_str(content).unwrap()
     } else {
         panic!(
-            "No configuration data provided for {:?} in {}",
-            get_base_path(), get_flakes_dir()
+            "No configuration data provided for {:?} in {} or {}",
+            get_base_path(), get_flakes_dir(false), get_flakes_dir(true)
         )
     }
 }
 
-pub fn config_file(program: &str) -> String {
-    format!("{}/{}.yaml", get_flakes_dir(), program)
+pub fn config_file(program: &str, usermode: bool) -> String {
+    format!("{}/{}.yaml", get_flakes_dir(usermode), program)
 }
 
-fn config_dir(program: &str) -> String {
-    format!("{}/{}.d", get_flakes_dir(), program)
+fn config_dir(program: &str, usermode: bool) -> String {
+    format!("{}/{}.d", get_flakes_dir(usermode), program)
 }
 
 #[derive(Deserialize)]
@@ -197,7 +216,9 @@ pub struct ContainerSection<'a> {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct RuntimeSection<'a> {
-    /// Obsolete, to be removed
+    /// Shows which user has created this registration
+    /// file and serves as indicator for using the system wide
+    /// or user specific flake setup
     pub runas: &'a str,
 
     /// Resume the container from previous execution.

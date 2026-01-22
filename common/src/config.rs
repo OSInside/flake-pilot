@@ -21,9 +21,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use std::env;
 use serde::Deserialize;
 use std::path::Path;
 use lazy_static::lazy_static;
+use uzers::{get_current_username};
 
 use crate::defaults;
 
@@ -43,7 +45,9 @@ pub fn get_podman_ids_dir() -> String {
 
 pub fn get_firecracker_ids_dir() -> String {
     let GenericData { firecracker_ids_dir, .. } = &flakes_config().generic;
-    firecracker_ids_dir.clone().unwrap_or(defaults::FIRECRACKER_IDS_DIR.to_string())
+    firecracker_ids_dir.clone().unwrap_or(
+        defaults::FIRECRACKER_IDS_DIR.to_string()
+    )
 }
 
 fn flakes_config() -> &'static FlakesConfig {
@@ -59,12 +63,27 @@ fn read_flakes_config() -> FlakesConfig {
         podman_ids_dir: ~
         firecracker_ids_dir: ~
     !*/
-    if Path::new(defaults::FLAKES_CONFIG).exists() {
-        let flakes_file = std::fs::File::open(defaults::FLAKES_CONFIG)
-            .unwrap_or_else(|_| panic!("Failed to open {}", defaults::FLAKES_CONFIG));
-        serde_yaml::from_reader(flakes_file)
-            .unwrap_or_else(|error| panic!("Failed to import {}: {}", defaults::FLAKES_CONFIG, error))
+    let current_user = get_current_username().unwrap();
+    let flake_config_path;
+    if current_user != "root" {
+        flake_config_path = format!(
+            "{}/.config/flakes.yml", env::var("HOME").unwrap()
+        );
     } else {
+        flake_config_path = format!("{}", defaults::FLAKES_CONFIG);
+    }
+    if Path::new(&flake_config_path).exists() {
+        info!("Using flakes config file: {}", flake_config_path);
+        let flakes_file = std::fs::File::open(&flake_config_path)
+            .unwrap_or_else(|_| panic!("Failed to open {}", flake_config_path));
+        serde_yaml::from_reader(flakes_file)
+            .unwrap_or_else(
+                |error| panic!(
+                    "Failed to import {}: {}", flake_config_path, error
+                    )
+                )
+    } else {
+        info!("Using compiled in flakes config");
         FlakesConfig {
             generic: GenericData {
                 flakes_dir: None::<String>,

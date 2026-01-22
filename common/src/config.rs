@@ -28,6 +28,7 @@ use lazy_static::lazy_static;
 use uzers::{get_current_username};
 
 use crate::defaults;
+use crate::lookup::{Lookup};
 
 lazy_static! {
     static ref FLAKES_CONFIG: FlakesConfig = read_flakes_config();
@@ -50,6 +51,13 @@ pub fn get_firecracker_ids_dir() -> String {
     )
 }
 
+pub fn get_podman_storage_conf() -> String {
+    let GenericData { podman_storage_conf, .. } = &flakes_config().generic;
+    podman_storage_conf.clone().unwrap_or(
+        defaults::PODMAN_STORAGE_CONF.to_string()
+    )
+}
+
 fn flakes_config() -> &'static FlakesConfig {
     &FLAKES_CONFIG
 }
@@ -62,18 +70,20 @@ fn read_flakes_config() -> FlakesConfig {
         flakes_dir: ~
         podman_ids_dir: ~
         firecracker_ids_dir: ~
+        podman_storage_conf: ~
     !*/
     let current_user = get_current_username().unwrap();
-    let flake_config_path;
-    if current_user != "root" {
-        flake_config_path = format!(
+    let flake_config_path = if current_user != "root" {
+        format!(
             "{}/.config/flakes.yml", env::var("HOME").unwrap()
-        );
+        )
     } else {
-        flake_config_path = format!("{}", defaults::FLAKES_CONFIG);
-    }
+        defaults::FLAKES_CONFIG.to_string()
+    };
     if Path::new(&flake_config_path).exists() {
-        info!("Using flakes config file: {}", flake_config_path);
+        if Lookup::is_debug() {
+            debug!("Using flakes config file: {}", flake_config_path);
+        }
         let flakes_file = std::fs::File::open(&flake_config_path)
             .unwrap_or_else(|_| panic!("Failed to open {}", flake_config_path));
         serde_yaml::from_reader(flakes_file)
@@ -83,12 +93,15 @@ fn read_flakes_config() -> FlakesConfig {
                     )
                 )
     } else {
-        info!("Using compiled in flakes config");
+        if Lookup::is_debug() {
+            debug!("Using compiled in flakes config");
+        }
         FlakesConfig {
             generic: GenericData {
                 flakes_dir: None::<String>,
                 podman_ids_dir: None::<String>,
-                firecracker_ids_dir: None::<String>
+                firecracker_ids_dir: None::<String>,
+                podman_storage_conf: None::<String>
             }
         }
     }
@@ -108,5 +121,8 @@ struct GenericData {
     podman_ids_dir: Option<String>,
 
     /// ID files directory for firecracker registrations
-    firecracker_ids_dir: Option<String>
+    firecracker_ids_dir: Option<String>,
+
+    /// Container storage conf for podman pilot
+    podman_storage_conf: Option<String>
 }

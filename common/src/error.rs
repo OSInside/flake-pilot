@@ -56,6 +56,10 @@ pub enum FlakeError {
     #[error("Instance in use by another instance, consider @NAME argument")]
     AlreadyRunning,
 
+    /// Provisioning not support for standard users
+    #[error("Provisioning not supported for standard users")]
+    ProvisioningNotSupported,
+
     #[error("Datasync failed, for details recall with PILOT_DEBUG=1")]
     SyncFailed,
 

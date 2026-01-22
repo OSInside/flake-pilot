@@ -2,3 +2,4 @@ generic:
   flakes_dir: /usr/share/flakes
   podman_ids_dir: /tmp/flakes
   firecracker_ids_dir: /tmp/flakes
+  podman_storage_conf: /etc/flakes/storage.conf

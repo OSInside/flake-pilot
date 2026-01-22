@@ -824,7 +824,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
 
 pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     /*!
-    Call podman pull and prune with the provided uri
+    Call podman pull with the provided uri
     !*/
     let mut pull = user.run("podman");
     pull.arg("pull").arg(uri);
@@ -847,6 +847,17 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
             }
         }
     };
+    Ok(())
+}
+
+pub fn prune(user: User) -> Result<(), FlakeError> {
+    /*!
+    Call podman image prune to get rid of old containers.
+    Errors from the call are only logged but will not cause
+    the app run to fail. In the worse case old containers
+    doesn't get wiped but this should not prevent the app
+    from being called with the latest container available.
+    !*/
     let mut prune = user.run("podman");
     prune.arg("image").arg("prune").arg("--force");
     match prune.status() {
@@ -955,6 +966,7 @@ pub fn gc_cid_file(
 pub fn gc(user: User) -> Result<(), FlakeError> {
     /*!
     Garbage collect CID files for which no container exists anymore
+    Next prune old containers if present
     !*/
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
@@ -979,5 +991,7 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
             let _ = gc_cid_file(&container_cid_file, user);
         }
     }
+    let root_user = User::from("root");
+    prune(root_user)?;
     Ok(())
 }

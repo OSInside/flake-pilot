@@ -197,13 +197,7 @@ pub struct ContainerSection<'a> {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct RuntimeSection<'a> {
-    /// Run the container engine as a user other than the
-    /// default target user root. The user may be either
-    /// a user name or a numeric user-ID (UID) prefixed
-    /// with the ‘#’ character (e.g. #0 for UID 0). The call
-    /// of the container engine is performed by sudo.
-    /// The behavior of sudo can be controlled via the
-    /// file /etc/sudoers
+    /// Obsolete, to be removed
     pub runas: &'a str,
 
     /// Resume the container from previous execution.

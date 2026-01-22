@@ -281,7 +281,7 @@ pub fn setup_podman_call(user: &str) -> Command {
     let container_runroot = format!(
         "{}/{}", defaults::FLAKES_REGISTRY_RUNROOT, current_user
     );
-    env::set_var("CONTAINERS_STORAGE_CONF", defaults::FLAKES_STORAGE);
+    env::set_var("CONTAINERS_STORAGE_CONF", defaults::PODMAN_STORAGE_CONF);
     env::set_var("XDG_RUNTIME_DIR", &container_runroot);
     let mut call = Command::new("sudo");
     call.arg("--preserve-env")

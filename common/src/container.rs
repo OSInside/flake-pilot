@@ -35,39 +35,45 @@ pub struct Container {
 }
 
 impl Container {
-    pub fn podman_setup_permissions() -> Result<(), FlakeError> {
-        let root = User::from("root");
-        let user_id = get_current_uid();
-        let user_gid = get_current_gid();
-        let chown_param = format!("{user_id}:{user_gid}");
+    pub fn podman_setup_permissions(
+        usermode: bool
+    ) -> Result<(), FlakeError> {
+        if ! usermode {
+            let root = User::from("root");
+            let user_id = get_current_uid();
+            let user_gid = get_current_gid();
+            let chown_param = format!("{user_id}:{user_gid}");
 
-        // This is an expensive operation
-        let mut fix_storage = root.run("chown");
-        fix_storage.arg("-R")
-            .arg(chown_param.clone())
-            .arg(defaults::FLAKES_REGISTRY);
-        FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
-        fix_storage.perform()?;
+            // This is an expensive operation
+            let mut fix_storage = root.run("chown");
+            fix_storage.arg("-R")
+                .arg(chown_param.clone())
+                .arg(defaults::FLAKES_REGISTRY);
+            FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
+            fix_storage.perform()?;
 
-        let _ = Self::podman_setup_run_permissions();
-
+            let _ = Self::podman_setup_run_permissions(usermode);
+        }
         Ok(())
     }
 
-    pub fn podman_setup_run_permissions() -> Result<(), FlakeError> {
-        let root = User::from("root");
-        let user_id = get_current_uid();
-        let user_gid = get_current_gid();
-        let chown_param = format!("{user_id}:{user_gid}");
+    pub fn podman_setup_run_permissions(
+        usermode: bool
+    ) -> Result<(), FlakeError> {
+        if ! usermode {
+            let root = User::from("root");
+            let user_id = get_current_uid();
+            let user_gid = get_current_gid();
+            let chown_param = format!("{user_id}:{user_gid}");
 
-        let mut fix_run_storage = root.run("chown");
-        fix_run_storage.arg("-R")
-            .arg(chown_param)
-            .arg("/run/libpod")
-            .arg(defaults::FLAKES_REGISTRY_RUNROOT);
-        FlakeLog::debug(&format!("{:?}", fix_run_storage.get_args()));
-        fix_run_storage.perform()?;
-
+            let mut fix_run_storage = root.run("chown");
+            fix_run_storage.arg("-R")
+                .arg(chown_param)
+                .arg("/run/libpod")
+                .arg(defaults::FLAKES_REGISTRY_RUNROOT);
+            FlakeLog::debug(&format!("{:?}", fix_run_storage.get_args()));
+            fix_run_storage.perform()?;
+        }
         Ok(())
     }
 }

@@ -232,6 +232,24 @@ pub fn remove(
     if !silent {
         info!("Removing application: {app}");
     }
+
+    // sanity checks
+    let app_basename = basename(&app.to_string());
+    let config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
+    );
+    let app_config_dir = format!(
+        "{}/{}.d", get_flakes_dir(usermode), &app_basename
+    );
+    if ! Path::new(&config_file).exists() {
+        error!("No app config file found: {config_file}");
+        return false
+    }
+    if ! Path::new(&app_config_dir).exists() {
+        error!("No app directory found: {app_config_dir}");    
+        return false
+    }
+
     // remove pilot link if valid
     match fs::read_link(app) {
         Ok(link_name) => {
@@ -260,34 +278,23 @@ pub fn remove(
         }
     }
     // remove config file and config directory
-    let app_basename = basename(&app.to_string());
-    let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
-    );
-    let app_config_dir = format!(
-        "{}/{}.d", get_flakes_dir(usermode), &app_basename
-    );
-    if Path::new(&config_file).exists() {
-        match fs::remove_file(&config_file) {
-            Ok(_) => {}
-            Err(error) => {
-                if !silent {
-                    error!("Error removing config file: {config_file}: {error:?}")
-                };
-                return false
-            }
+    match fs::remove_file(&config_file) {
+        Ok(_) => {}
+        Err(error) => {
+            if !silent {
+                error!("Error removing config file: {config_file}: {error:?}")
+            };
+            return false
         }
     }
-    if Path::new(&app_config_dir).exists() {
-        match fs::remove_dir_all(&app_config_dir) {
-            Ok(_) => {}
-            Err(error) => {
-                if !silent {
-                    error!(
-                        "Error removing config directory: {app_config_dir}: {error:?}"
-                    );
-                    return false
-                }
+    match fs::remove_dir_all(&app_config_dir) {
+        Ok(_) => {}
+        Err(error) => {
+            if !silent {
+                error!(
+                    "Error removing config directory: {app_config_dir}: {error:?}"
+                );
+                return false
             }
         }
     }

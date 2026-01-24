@@ -189,7 +189,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // setup VM ID file name
     let vm_id_file_path = get_meta_file_name(
-        program_name, &get_firecracker_ids_dir(), "vmid"
+        program_name, &get_firecracker_ids_dir(false), "vmid"
     );
 
     // get flake config sections
@@ -726,7 +726,7 @@ pub fn get_target_app_path(
 }
 
 pub fn init_meta_dirs() -> Result<(), CommandError> {
-    [defaults::FIRECRACKER_OVERLAY_DIR, &get_firecracker_ids_dir()].iter()
+    [defaults::FIRECRACKER_OVERLAY_DIR, &get_firecracker_ids_dir(false)].iter()
         .filter(|path| !Path::new(path).is_dir())
         .try_for_each(|path| mkdir(path, "777", User::ROOT))
 }
@@ -846,7 +846,7 @@ pub fn gc(user: User, program_name: &String) -> Result<(), FlakeError> {
     /*!
     Garbage collect VMID files for which no VM exists anymore
     !*/
-    let vmid_file_names: Vec<_> = fs::read_dir(get_firecracker_ids_dir())?
+    let vmid_file_names: Vec<_> = fs::read_dir(get_firecracker_ids_dir(false))?
         .filter_map(|entry| entry.ok())
         .filter_map(|x| x.path()
             .to_str()

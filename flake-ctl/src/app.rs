@@ -28,8 +28,12 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use flakes::config::get_flakes_dir;
+use uzers::{get_current_username};
 
-pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> bool {
+pub fn register(
+    app: Option<&String>, target: Option<&String>,
+    engine: &str, usermode: bool,
+) -> bool {
     /*!
     Register container application for specified engine.
 
@@ -52,7 +56,8 @@ pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> 
     info!("Registering application: {host_app_path}");
 
     // host_app_path -> pointing to engine
-    let host_app_dir = Path::new(host_app_path).parent().unwrap().to_str().unwrap();
+    let host_app_dir = Path::new(host_app_path)
+        .parent().unwrap().to_str().unwrap();
     match fs::create_dir_all(host_app_dir) {
         Ok(dir) => dir,
         Err(error) => {
@@ -77,7 +82,9 @@ pub fn register(app: Option<&String>, target: Option<&String>, engine: &str) -> 
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_dir = format!("{}/{}.d", get_flakes_dir(), &app_basename);
+    let app_config_dir = format!(
+        "{}/{}.d", get_flakes_dir(usermode), &app_basename
+    );
     match fs::create_dir_all(&app_config_dir) {
         Ok(dir) => dir,
         Err(error) => {
@@ -100,7 +107,7 @@ pub fn create_container_config(
     includes_path: Option<Vec<String>>,
     resume: bool,
     attach: bool,
-    run_as: Option<&String>,
+    usermode: bool,
     opts: Option<Vec<String>>,
 ) -> bool {
     /*!
@@ -110,6 +117,10 @@ pub fn create_container_config(
     containing the required information to launch the
     application inside of the container engine.
     !*/
+    let mut current_user = String::new();
+    current_user.push_str(
+        get_current_username().unwrap().to_str().unwrap()
+    );
     if base.is_none() && layers.is_some() {
         error!("Layer(s) specified without a base");
         return false;
@@ -123,7 +134,9 @@ pub fn create_container_config(
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
+    let app_config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
+    );
     match app_config::AppConfig::save_container(
         Path::new(&app_config_file),
         container,
@@ -136,7 +149,7 @@ pub fn create_container_config(
         includes_path,
         resume,
         attach,
-        run_as,
+        Some(&current_user),
         opts,
     ) {
         Ok(_) => true,
@@ -169,7 +182,6 @@ pub fn create_vm_config(
     containing the required information to launch the
     application inside of the firecracker engine.
     !*/
-    
     let host_app_path = app.unwrap();
     let target_app_path = target.unwrap_or(host_app_path);
     let app_basename = Path::new(host_app_path)
@@ -177,7 +189,9 @@ pub fn create_vm_config(
         .unwrap()
         .to_str()
         .unwrap();
-    let app_config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
+    let app_config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(false), &app_basename
+    );
     match app_config::AppConfig::save_vm(
         Path::new(&app_config_file),
         vm,
@@ -201,7 +215,9 @@ pub fn create_vm_config(
     }
 }
 
-pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
+pub fn remove(
+    app: &str, engine: &str, usermode: bool, silent: bool
+) -> bool {
     /*!
     Delete application link and config files
     !*/
@@ -216,6 +232,24 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
     if !silent {
         info!("Removing application: {app}");
     }
+
+    // sanity checks
+    let app_basename = basename(&app.to_string());
+    let config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
+    );
+    let app_config_dir = format!(
+        "{}/{}.d", get_flakes_dir(usermode), &app_basename
+    );
+    if ! Path::new(&config_file).exists() {
+        error!("No app config file found: {config_file}");
+        return false
+    }
+    if ! Path::new(&app_config_dir).exists() {
+        error!("No app directory found: {app_config_dir}");    
+        return false
+    }
+
     // remove pilot link if valid
     match fs::read_link(app) {
         Ok(link_name) => {
@@ -244,30 +278,23 @@ pub fn remove(app: &str, engine: &str, silent: bool) -> bool {
         }
     }
     // remove config file and config directory
-    let app_basename = basename(&app.to_string());
-    let config_file = format!("{}/{}.yaml", get_flakes_dir(), &app_basename);
-    let app_config_dir = format!("{}/{}.d", get_flakes_dir(), &app_basename);
-    if Path::new(&config_file).exists() {
-        match fs::remove_file(&config_file) {
-            Ok(_) => {}
-            Err(error) => {
-                if !silent {
-                    error!("Error removing config file: {config_file}: {error:?}")
-                };
-                return false
-            }
+    match fs::remove_file(&config_file) {
+        Ok(_) => {}
+        Err(error) => {
+            if !silent {
+                error!("Error removing config file: {config_file}: {error:?}")
+            };
+            return false
         }
     }
-    if Path::new(&app_config_dir).exists() {
-        match fs::remove_dir_all(&app_config_dir) {
-            Ok(_) => {}
-            Err(error) => {
-                if !silent {
-                    error!(
-                        "Error removing config directory: {app_config_dir}: {error:?}"
-                    );
-                    return false
-                }
+    match fs::remove_dir_all(&app_config_dir) {
+        Ok(_) => {}
+        Err(error) => {
+            if !silent {
+                error!(
+                    "Error removing config directory: {app_config_dir}: {error:?}"
+                );
+                return false
             }
         }
     }
@@ -289,16 +316,18 @@ pub fn basename(program_path: &String) -> String {
     program_name
 }
 
-pub fn app_names() -> Vec<String> {
+pub fn app_names(usermode: bool) -> Vec<String> {
     /*!
     Read all flake config files
     !*/
     let mut flakes: Vec<String> = Vec::new();
-    let glob_pattern = format!("{}/*.yaml", get_flakes_dir());
+    let glob_pattern = format!("{}/*.yaml", get_flakes_dir(usermode));
     for config_file in glob(&glob_pattern).unwrap() {
         match config_file {
             Ok(filepath) => {
-                let base_config_file = basename(&filepath.into_os_string().into_string().unwrap());
+                let base_config_file = basename(
+                    &filepath.into_os_string().into_string().unwrap()
+                );
                 match base_config_file.split('.').next() {
                     Some(value) => {
                         let mut app_name = String::new();
@@ -314,20 +343,20 @@ pub fn app_names() -> Vec<String> {
     flakes
 }
 
-pub fn purge(app: &str, engine: &str) {
+pub fn purge(app: &str, engine: &str, usermode: bool) {
     /*!
     Iterate over all yaml config files and delete all app
     registrations and its connected resources for the specified app
     !*/
     if engine == defaults::PODMAN_PILOT {
-        podman::purge_container(app)
+        podman::purge_container(app, usermode)
     }
     if engine == defaults::FIRECRACKER_PILOT {
         firecracker::purge_vm(app)
     }
 }
 
-pub fn init(app: Option<&String>) -> bool {
+pub fn init(app: Option<&String>, usermode: bool) -> bool {
     /*!
     Create required directory structure.
 
@@ -338,21 +367,23 @@ pub fn init(app: Option<&String>) -> bool {
     let mut status = true;
     if let Some(path) = app {
         if Path::new(&app.unwrap()).exists() {
-            error!("App path {} already exists", path);
+            error!("App path {path} already exists");
             return false;
         }
     }
     let mut flake_dir = String::new();
-    match fs::read_link(get_flakes_dir()) {
+    match fs::read_link(get_flakes_dir(usermode)) {
         Ok(target) => {
             flake_dir.push_str(&target.into_os_string().into_string().unwrap());
         }
         Err(_) => {
-            flake_dir.push_str(&get_flakes_dir());
+            flake_dir.push_str(&get_flakes_dir(usermode));
         }
     }
     fs::create_dir_all(flake_dir).unwrap_or_else(|why| {
-        error!("Failed creating {}: {:?}", get_flakes_dir(), why.kind());
+        error!(
+            "Failed creating {}: {:?}", get_flakes_dir(usermode), why.kind()
+        );
         status = false
     });
     status

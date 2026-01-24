@@ -34,7 +34,6 @@ use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
 use flakes::command::{CommandError, CommandExtTrait};
-use flakes::container::Container;
 use flakes::config::get_podman_ids_dir;
 use flakes::config::read_storage_conf;
 
@@ -201,13 +200,9 @@ pub fn create(
     // Make sure CID dir exists
     init_cid_dir(user)?;
 
-    if ! usermode {
-        let _ = Container::podman_setup_run_permissions(false);
-    }
-
     // Check early return condition in resume mode
     if Path::new(&container_cid_file).exists() &&
-       gc_cid_file(&container_cid_file, user)? && (resume || attach) {
+       gc_cid_file(&container_cid_file)? && (resume || attach) {
         // resume or attach mode is active and container exists
         // report ID value and its ID file name
         let cid = fs::read_to_string(&container_cid_file)?;
@@ -331,17 +326,7 @@ fn run_podman_creation(
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(
-                r".*(not permitted|permission denied).*"
-            ).unwrap();
-            if error_pattern.captures(&format!("{:?}", error.base)).is_some()
-                && user.get_name() == "root"
-            {
-                // On permission error, fix permissions and try again
-                // This is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions(false);
-                app.perform()?
-            } else if resume {
+            if resume {
                 // Cleanup potentially left over container instance from an
                 // inconsistent state, e.g powerfail
                 if Lookup::is_debug() {
@@ -352,7 +337,7 @@ fn run_podman_creation(
                     &format!("{:?}", error.base)
                 ) {
                     let cid = captures.get(1).unwrap().as_str();
-                    call_instance("rm_force", cid, "none", user)?;
+                    call_instance("rm_force", cid, "none")?;
                 }
                 app.perform()?
             } else {
@@ -386,7 +371,7 @@ fn run_podman_creation(
                 mount_point
             },
             Err(error) => {
-                call_instance("rm", &cid, "none", user)?;
+                call_instance("rm", &cid, "none")?;
                 return Err(error);
             }
         };
@@ -497,7 +482,7 @@ fn run_podman_creation(
     }
 
     if let Some(provisioning_failed) = provisioning_failed {
-        call_instance("rm", &cid, "none", user)?;
+        call_instance("rm", &cid, "none")?;
         return Err(provisioning_failed);
     }
 
@@ -508,42 +493,35 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     /*!
     Start container with the given container ID
     !*/
-    let RuntimeSection { runas, resume, attach, .. } = config().runtime();
+    let RuntimeSection { resume, attach, .. } = config().runtime();
     let pilot_options = Lookup::get_pilot_run_options();
-    let calling_user_name = get_current_username().unwrap();
-    let user = if runas != "root" {
-        User::from(calling_user_name.to_str().unwrap())
-    } else {
-        User::from("root")
-    };
-
-    let is_running = container_running(cid, user)?;
-    let is_created = container_exists(cid, user)?;
+    let is_running = container_running(cid)?;
+    let is_created = container_exists(cid)?;
     let mut is_removed = false;
 
     if is_running {
         if attach {
             // 1. Attach to running container
-            call_instance("attach", cid, program_name, user)?;
+            call_instance("attach", cid, program_name)?;
         } else {
             // 2. Execute app in running container
-            call_instance("exec", cid, program_name, user)?;
+            call_instance("exec", cid, program_name)?;
         }
     } else if resume {
         // 3. Startup resume type container and execute app
-        call_instance("start", cid, program_name, user)?;
-        call_instance("exec", cid, program_name, user)?;
+        call_instance("start", cid, program_name)?;
+        call_instance("exec", cid, program_name)?;
     } else {
         // 4. Startup container
-        call_instance("start", cid, program_name, user)?;
+        call_instance("start", cid, program_name)?;
         if ! attach || ! is_created {
-            call_instance("rm_force", cid, program_name, user)?;
+            call_instance("rm_force", cid, program_name)?;
             is_removed = true
         }
     };
 
     if pilot_options.contains_key("%remove") && ! is_removed {
-        call_instance("rm_force", cid, program_name, user)?;
+        call_instance("rm_force", cid, program_name)?;
     };
     Ok(())
 }
@@ -560,7 +538,7 @@ pub fn get_target_app_path(program_name: &str) -> String {
 }
 
 pub fn call_instance(
-    action: &str, cid: &str, program_name: &str, user: User
+    action: &str, cid: &str, program_name: &str
 ) -> Result<(), FlakeError> {
     /*!
     Call container ID based podman commands
@@ -606,19 +584,9 @@ pub fn call_instance(
     }
     if interactive || atty::is(Stream::Stdout) {
         call.status()?;
-    } else {
-        match call.output() {
-            Ok(output) => {
-                let _ = io::stdout().write_all(&output.stdout);
-                let _ = io::stderr().write_all(&output.stderr);
-            },
-            Err(_) => {
-                if user.get_name() == "root" {
-                    let _ = Container::podman_setup_permissions(false);
-                    call.output()?;
-                }
-            }
-        };
+    } else if let Ok(output) = call.output() {
+        let _ = io::stdout().write_all(&output.stdout);
+        let _ = io::stderr().write_all(&output.stderr);
     }
     Ok(())
 }
@@ -629,9 +597,8 @@ pub fn mount_container(
     /*!
     Mount container and return mount point
     !*/
-    let root_user = User::from("root");
-    if as_image && ! container_image_exists(container_name, root_user)? {
-        pull(container_name, root_user)?;
+    if as_image && ! container_image_exists(container_name)? {
+        pull(container_name)?;
     }
     let mut call = setup_podman_call(false);
     if as_image {
@@ -739,7 +706,7 @@ pub fn init_cid_dir(user: User) -> Result<(), FlakeError> {
     Ok(())
 }
 
-pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
+pub fn container_exists(cid: &str) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified cid
     !*/
@@ -752,19 +719,6 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     }
     let output = match exists.output() {
         Ok(output) => {
-            if ! output.status.success() {
-                let error_pattern = Regex::new(
-                    r".*(not permitted|permission denied).*"
-                ).unwrap();
-                if error_pattern.captures(&format!("{output:?}")).is_some() {
-                    // On permission error, fix permissions and try again. This
-                    // is an expensive operation depending on the storage size
-                    if user.get_name() == "root" {
-                        let _ = Container::podman_setup_permissions(false);
-                        exists.output()?;
-                    }
-                }
-            };
             output
         }
         Err(error) => {
@@ -782,9 +736,7 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     Ok(false)
 }
 
-pub fn container_image_exists(
-    name: &str, user: User
-) -> Result<bool, FlakeError> {
+pub fn container_image_exists(name: &str) -> Result<bool, FlakeError> {
     /*!
     Check if container image is present in local registry
     !*/
@@ -797,19 +749,6 @@ pub fn container_image_exists(
     }
     let output: Output = match exists.output() {
         Ok(output) => {
-            if ! output.status.success() {
-                let error_pattern = Regex::new(
-                    r".*(not permitted|permission denied).*"
-                ).unwrap();
-                if error_pattern.captures(&format!("{output:?}")).is_some() {
-                    // On permission error, fix permissions and try again. This
-                    // is an expensive operation depending on the storage size
-                    if user.get_name() == "root" {
-                        let _ = Container::podman_setup_permissions(false);
-                        exists.output()?;
-                    }
-                }
-            };
             output
         }
         Err(error) => {
@@ -827,7 +766,7 @@ pub fn container_image_exists(
     Ok(false)
 }
 
-pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
+pub fn container_running(cid: &str) -> Result<bool, CommandError> {
     /*!
     Check if container with specified cid is running
     !*/
@@ -840,26 +779,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     if Lookup::is_debug() {
         debug!("{:?} {:?}", running.get_program(), running.get_args());
     }
-    let output: Output = match running.perform() {
-        Ok(output) => {
-            output
-        }
-        Err(error) => {
-            let error_pattern = Regex::new(
-                r".*(not permitted|permission denied).*"
-            ).unwrap();
-            if error_pattern.captures(&format!("{:?}", error.base)).is_some()
-                && user.get_name() == "root"
-            {
-                // On permission error, fix permissions and try again. This
-                // is an expensive operation depending on the storage size
-                let _ = Container::podman_setup_permissions(false);
-                running.perform()?
-            } else {
-                return Err(error)
-            }
-        }
-    };
+    let output = running.perform()?;
     let mut running_cids = String::new();
     running_cids.push_str(
         &String::from_utf8_lossy(&output.stdout)
@@ -873,7 +793,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     Ok(running_status)
 }
 
-pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
+pub fn pull(uri: &str) -> Result<(), FlakeError> {
     /*!
     Call podman pull with the provided uri
     !*/
@@ -889,17 +809,7 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
             output
         }
         Err(error) => {
-            let error_pattern = Regex::new(
-                r".*(not permitted|permission denied).*"
-            ).unwrap();
-            if error_pattern.captures(&format!("{:?}", error.base)).is_some()
-                && user.get_name() == "root"
-            {
-                let _ = Container::podman_setup_permissions(false);
-                pull.perform()?
-            } else {
-                return Err(FlakeError::CommandError(error))
-            }
+            return Err(FlakeError::CommandError(error))
         }
     };
     Ok(())
@@ -1001,9 +911,7 @@ pub fn update_removed_files(
     Ok(())
 }
 
-pub fn gc_cid_file(
-    container_cid_file: &String, user: User
-) -> Result<bool, FlakeError> {
+pub fn gc_cid_file(container_cid_file: &String) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified
     container_cid_file. Garbage cleanup the container_cid_file
@@ -1012,7 +920,7 @@ pub fn gc_cid_file(
     !*/
     let cid = fs::read_to_string(container_cid_file)?;
 
-    if container_exists(&cid, user)? {
+    if container_exists(&cid)? {
         Ok(true)
     } else {
         fs::remove_file(container_cid_file)?;
@@ -1046,7 +954,7 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
     }
     if cid_file_count > defaults::GC_THRESHOLD {
         for container_cid_file in cid_file_names {
-            let _ = gc_cid_file(&container_cid_file, user);
+            let _ = gc_cid_file(&container_cid_file);
         }
     }
     prune()?;

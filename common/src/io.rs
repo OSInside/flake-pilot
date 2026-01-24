@@ -42,7 +42,9 @@ impl IO {
             let mut call = user.run("tar");
             call.arg("-C").arg(target)
                 .arg("-xf").arg(tar);
-            FlakeLog::debug(&format!("{:?}", call.get_args()));
+            FlakeLog::debug(
+                &format!("{:?} {:?}", call.get_program(), call.get_args())
+            );
             let output = call.perform()?;
             FlakeLog::debug(
                 &format!("{}", &String::from_utf8_lossy(&output.stdout))
@@ -73,7 +75,9 @@ impl IO {
             call.arg(option);
         }
         call.arg(source).arg(target);
-        FlakeLog::debug(&format!("{:?}", call.get_args()));
+        FlakeLog::debug(
+            &format!("{:?} {:?}", call.get_program(), call.get_args())
+        );
         let output = call.output()?;
         FlakeLog::debug(
             &format!("{}", &String::from_utf8_lossy(&output.stdout))

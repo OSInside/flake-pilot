@@ -38,6 +38,10 @@ pub struct Cli {
 pub enum Commands {
     /// Load and register OCI applications
     Podman {
+        /// Use user specific registry, rootless mode
+        #[clap(long)]
+        user: bool,
+
         #[clap(subcommand)]
         command: Podman,
     },
@@ -48,6 +52,9 @@ pub enum Commands {
     },
     /// List registered flake applications
     List {
+        /// Pull into user specific podman registry
+        #[clap(long)]
+        user: bool,
     }
 }
 

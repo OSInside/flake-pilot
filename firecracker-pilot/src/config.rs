@@ -92,11 +92,11 @@ pub fn config_from_str(input: &str) -> Config<'static> {
 }
 
 pub fn config_file(program: &str) -> String {
-    format!("{}/{}.yaml", get_flakes_dir(), program)
+    format!("{}/{}.yaml", get_flakes_dir(false), program)
 }
 
 fn config_dir(program: &str) -> String {
-    format!("{}/{}.d", get_flakes_dir(), program)
+    format!("{}/{}.d", get_flakes_dir(false), program)
 }
 
 #[derive(Deserialize)]

@@ -44,7 +44,3 @@ pub const FIRECRACKER_ROOTFS_NAME:&str =
     "rootfs";
 pub const FIRECRACKER_SCI:&str =
     "/usr/lib/flake-pilot/sci";
-pub const FLAKES_STORAGE:&str =
-    "/etc/flakes/storage.conf";
-pub const FLAKES_REGISTRY_RUNROOT: &str =
-    "/run/flakes";

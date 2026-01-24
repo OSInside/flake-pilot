@@ -47,9 +47,6 @@ fn main() -> ExitCode {
 
     let result = run();
 
-    // TODO: implement cleanup function 
-    // cleanup()
-
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -60,22 +57,20 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), FlakeError> {
-
     let program_path = app_path::program_abs_path();
     let program_name = app_path::basename(&program_path);
 
     let container = podman::create(&program_name)?;
     let cid = &container.0;
     podman::start(
-        &program_name,
-        cid
+        &program_name, cid
     )
 }
 
 fn setup_logger() {
     let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "debug")
-        .write_style_or("MY_LOG_STYLE", "always");
+        .filter_or("FLAKE_LOG_LEVEL", "debug")
+        .write_style_or("FLAKE_LOG_STYLE", "always");
 
     env_logger::init_from_env(env);
 }

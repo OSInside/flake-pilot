@@ -31,16 +31,17 @@ use crate::defaults;
 use crate::{app, app_config};
 use flakes::container::Container;
 use flakes::config::get_flakes_dir;
+use flakes::config::get_podman_storage_conf;
+use flakes::config::read_storage_conf;
 use uzers::{get_current_username};
 
-pub fn pull(uri: &String) -> i32 {
+pub fn pull(uri: &String, usermode: bool) -> i32 {
     /*!
     Call podman pull and prune with the provided uri
     !*/
     info!("Fetching from registry...");
     info!("podman pull {uri}");
-
-    let mut call = setup_podman_call("any");
+    let mut call = setup_podman_call(usermode);
     call.arg("pull")
         .arg(uri);
     let status = match call.status() {
@@ -48,12 +49,12 @@ pub fn pull(uri: &String) -> i32 {
             if status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions();
+            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -62,7 +63,7 @@ pub fn pull(uri: &String) -> i32 {
         error!("Failed, error message(s) reported");
     } else {
         info!("podman prune");
-        let mut prune = setup_podman_call("any");
+        let mut prune = setup_podman_call(usermode);
         let _ = prune.arg("image")
             .arg("prune")
             .arg("--force")
@@ -71,13 +72,12 @@ pub fn pull(uri: &String) -> i32 {
     status_code
 }
 
-pub fn load(oci: &String) -> i32 {
+pub fn load(oci: &String, usermode: bool) -> i32 {
     /*!
     Call podman load with the provided oci tar file
     !*/
-    let mut container_archive: String = oci.to_string();
-    
     info!("Loading OCI image...");
+    let mut container_archive: String = oci.to_string();
     if !Path::new(oci).exists() {
         let container_archives = oci.to_owned() + "*";
         // glob puts things in alpha sorted order which is expected to give
@@ -88,7 +88,7 @@ pub fn load(oci: &String) -> i32 {
             }
         }
     info!("podman load -i {container_archive}");
-    let mut call = setup_podman_call("any");
+    let mut call = setup_podman_call(usermode);
     call.arg("load")
         .arg("-i")
         .arg(container_archive);
@@ -97,12 +97,12 @@ pub fn load(oci: &String) -> i32 {
             if status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions();
+            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -113,7 +113,7 @@ pub fn load(oci: &String) -> i32 {
     } else {
         // prune old images
         info!("podman prune");
-        let mut prune = setup_podman_call("any");
+        let mut prune = setup_podman_call(usermode);
         let _ = prune.arg("image")
             .arg("prune")
             .arg("--force")
@@ -122,14 +122,14 @@ pub fn load(oci: &String) -> i32 {
     status_code
 }
 
-pub fn rm(container: &String) {
+pub fn rm(container: &String, usermode: bool) {
     /*!
     Call podman image rm with force option to remove all running containers
     !*/
     info!("Removing image and all running containers...");
     info!("podman rm -f {container}");
 
-    let mut call = setup_podman_call("any");
+    let mut call = setup_podman_call(usermode);
     call.arg("image")
         .arg("rm")
         .arg("-f")
@@ -139,12 +139,12 @@ pub fn rm(container: &String) {
             if ! status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions();
+                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions();
+            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -158,7 +158,7 @@ pub fn mount_container(container_name: &str) -> String {
     Mount container and return mount point,
     or an empty string in the error case
     !*/
-    let mut call = setup_podman_call("root");
+    let mut call = setup_podman_call(false);
     call.arg("image")
         .arg("mount")
         .arg(container_name);
@@ -167,7 +167,7 @@ pub fn mount_container(container_name: &str) -> String {
             output
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions();
+            let _ = Container::podman_setup_permissions(false);
             call.output().unwrap()
         }
     };
@@ -186,7 +186,7 @@ pub fn umount_container(container_name: &str) -> i32 {
     /*!
     Umount container image
     !*/
-    let mut call = setup_podman_call("root");
+    let mut call = setup_podman_call(false);
     call.arg("image")
         .arg("umount")
         .arg(container_name);
@@ -195,23 +195,23 @@ pub fn umount_container(container_name: &str) -> i32 {
             output
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions();
+            let _ = Container::podman_setup_permissions(false);
             call.output().unwrap()
         }
     };
     output.status.code().unwrap()
 }
 
-pub fn purge_container(container: &str) {
+pub fn purge_container(container: &str, usermode: bool) {
     /*!
     Iterate over all yaml config files and find those connected
     to the container. Delete all app registrations for this
     container and also delete the container from the local
     registry
     !*/
-    for app_name in app::app_names() {
+    for app_name in app::app_names(usermode) {
         let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(), app_name
+            "{}/{}.yaml", get_flakes_dir(usermode), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
             Ok(mut app_conf) => {
@@ -220,7 +220,9 @@ pub fn purge_container(container: &str) {
                 {
                     app::remove(
                         &app_conf.container.as_mut().unwrap().host_app_path,
-                        defaults::PODMAN_PILOT, false
+                        defaults::PODMAN_PILOT,
+                        usermode,
+                        false
                     );
                 }
             },
@@ -231,7 +233,7 @@ pub fn purge_container(container: &str) {
             }
         };
     }
-    rm(&container.to_string());
+    rm(&container.to_string(), usermode);
 }
 
 pub fn print_container_info(container: &str) {
@@ -270,21 +272,21 @@ pub fn print_container_info(container: &str) {
     umount_container(container);
 }
 
-pub fn setup_podman_call(user: &str) -> Command {
-    let mut current_user = String::new();
-    if user == "any" {
-        let username = get_current_username().unwrap();
-        current_user.push_str(username.to_str().unwrap())
-    } else {
-        current_user.push_str(user)
-    }
+pub fn setup_podman_call(usermode: bool) -> Command {
+    let storage = read_storage_conf(usermode).unwrap();
+    let calling_user_name = get_current_username().unwrap();
     let container_runroot = format!(
-        "{}/{}", defaults::FLAKES_REGISTRY_RUNROOT, current_user
+        "{}/{}",
+        storage.get("runroot").unwrap(),
+        calling_user_name.to_str().unwrap()
     );
-    env::set_var("CONTAINERS_STORAGE_CONF", defaults::FLAKES_STORAGE);
+    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
     env::set_var("XDG_RUNTIME_DIR", &container_runroot);
     let mut call = Command::new("sudo");
-    call.arg("--preserve-env")
-        .arg(defaults::PODMAN_PATH);
+    call.arg("--preserve-env");
+    if usermode {
+        call.arg("--user").arg(calling_user_name);
+    }
+    call.arg(defaults::PODMAN_PATH);
     call
 }

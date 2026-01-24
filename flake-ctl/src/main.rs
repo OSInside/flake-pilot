@@ -38,6 +38,7 @@ pub mod fetch;
 
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
+use uzers::get_current_username;
 
 #[tokio::main]
 async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
@@ -45,13 +46,18 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 
     let args = cli::parse_args();
 
-    mkdir(&get_flakes_dir(), "777", User::ROOT)?;
+    mkdir(&get_flakes_dir(false), "777", User::ROOT)?;
 
     match &args.command {
         // list
-        cli::Commands::List { } => {
+        cli::Commands::List { mut user } => {
             info!("Registered applications:");
-            let app_names = app::app_names();
+            let calling_user_name = get_current_username().unwrap();
+            if calling_user_name == "root" {
+                // if --user is used for the root user, we ignore it
+                user = false
+            }
+            let app_names = app::app_names(user);
             if app_names.is_empty() {
                 println!("No application(s) registered");
             } else {
@@ -87,10 +93,11 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     vm, app, target, run_as, overlay_size, no_net, resume,
                     force_vsock, include_tar, include_path
                 } => {
-                    if app::init(Some(app)) {
+                    if app::init(Some(app), false) {
                         let mut ok = app::register(
                             Some(app), target.as_ref(),
-                            defaults::FIRECRACKER_PILOT
+                            defaults::FIRECRACKER_PILOT,
+                            false
                         );
                         if ok {
                             ok = app::create_vm_config(
@@ -108,7 +115,9 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         }
                         if ! ok {
                             app::remove(
-                                app, defaults::FIRECRACKER_PILOT, true
+                                app, defaults::FIRECRACKER_PILOT,
+                                false,
+                                true
                             );
                             return Ok(ExitCode::FAILURE)
                         }
@@ -120,29 +129,37 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Firecracker::Remove { vm, app } => {
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
-                        defaults::FIRECRACKER_PILOT, false
+                        defaults::FIRECRACKER_PILOT,
+                        false,
+                        false
                     ) {
                         return Ok(ExitCode::FAILURE)
                     }
                     if ! vm.is_none() {
                         app::purge(
                             vm.as_ref().map(String::as_str).unwrap(),
-                            defaults::FIRECRACKER_PILOT
+                            defaults::FIRECRACKER_PILOT,
+                            false
                         );
                     }
                 }
             }
         },
         // podman engine
-        cli::Commands::Podman { command } => {
+        cli::Commands::Podman { command, mut user } => {
+            let calling_user_name = get_current_username().unwrap();
+            if calling_user_name == "root" {
+                // if --user is used for the root user, we ignore it
+                user = false
+            }
             match &command {
                 // pull
                 cli::Podman::Pull { uri } => {
-                    exit(podman::pull(uri));
+                    exit(podman::pull(uri, user));
                 },
                 // load
                 cli::Podman::Load { oci } => {
-                    exit(podman::load(oci));
+                    exit(podman::load(oci, user));
                 },
                 // register
                 cli::Podman::Register {
@@ -152,10 +169,11 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 } => {
                     if *info {
                         podman::print_container_info(container);
-                    } else if app::init(app.as_ref()) {
+                    } else if app::init(app.as_ref(), user) {
                         let mut ok = app::register(
                             app.as_ref(), target.as_ref(),
-                            defaults::PODMAN_PILOT
+                            defaults::PODMAN_PILOT,
+                            user
                         );
                         if ok {
                             ok = app::create_container_config(
@@ -169,14 +187,16 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 include_path.as_ref().cloned(),
                                 *resume,
                                 *attach,
-                                Some(&"any".to_string()),
+                                user,
                                 opt.as_ref().cloned()
                             );
                         }
                         if ! ok {
                             app::remove(
                                 app.as_ref().map(String::as_str).unwrap(),
-                                defaults::PODMAN_PILOT, true
+                                defaults::PODMAN_PILOT,
+                                user,
+                                true
                             );
                             return Ok(ExitCode::FAILURE)
                         }
@@ -188,14 +208,17 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Podman::Remove { container, app } => {
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
-                        defaults::PODMAN_PILOT, false
+                        defaults::PODMAN_PILOT,
+                        user,
+                        false
                     ) {
                         return Ok(ExitCode::FAILURE)
                     }
                     if ! container.is_none() {
                         app::purge(
                             container.as_ref().map(String::as_str).unwrap(),
-                            defaults::PODMAN_PILOT
+                            defaults::PODMAN_PILOT,
+                            user
                         );
                     }
                 }
@@ -207,8 +230,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 
 fn setup_logger() {
     let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "info")
-        .write_style_or("MY_LOG_STYLE", "always");
+        .filter_or("FLAKE_LOG_LEVEL", "info")
+        .write_style_or("FLAKE_LOG_STYLE", "always");
 
     env_logger::init_from_env(env);
 }

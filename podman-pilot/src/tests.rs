@@ -48,7 +48,7 @@ r#"container:
  check_host_dependencies: false
 include:
  tar: ~
-"#);
+"#, false);
     assert_eq!(cfg.container.name, "JoJo");
 }
 
@@ -65,12 +65,12 @@ container:
  name: Dio
  host_app_path: /other
  check_host_dependencies: false
-"#);
+"#, false);
     assert_eq!(cfg.container.name, "Dio");
 }
 
 #[test]
 fn test_program_config_file() {
-    let config_file = config_file("app");
+    let config_file = config_file("app", false);
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }

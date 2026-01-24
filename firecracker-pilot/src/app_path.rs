@@ -60,7 +60,7 @@ pub fn program_config_file(program_basename: &String) -> String {
     Provide expected config file path for the given program_basename
     !*/
     let config_file = &format!(
-        "{}/{}.yaml", get_flakes_dir(), program_basename
+        "{}/{}.yaml", get_flakes_dir(false), program_basename
     );
     config_file.to_string()
 }
@@ -70,7 +70,7 @@ pub fn program_config_dir(program_basename: &String) -> String {
     Provide expected config directory for the given program_basename
     !*/
     let config_dir = &format!(
-        "{}/{}.d", get_flakes_dir(), program_basename
+        "{}/{}.d", get_flakes_dir(false), program_basename
     );
     config_dir.to_string()
 }

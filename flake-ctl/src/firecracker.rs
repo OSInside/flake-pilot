@@ -484,9 +484,9 @@ pub fn purge_vm(vm: &str) {
     to the VM. Delete all app registrations for this
     VM and also delete the VM from the local registry
     !*/
-    for app_name in app::app_names() {
+    for app_name in app::app_names(false) {
         let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(), app_name
+            "{}/{}.yaml", get_flakes_dir(false), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
             Ok(mut app_conf) => {
@@ -495,7 +495,7 @@ pub fn purge_vm(vm: &str) {
                 {
                     app::remove(
                         &app_conf.vm.as_mut().unwrap().host_app_path,
-                        defaults::FIRECRACKER_PILOT, false
+                        defaults::FIRECRACKER_PILOT, false, false
                     );
                 }
             },

@@ -282,7 +282,7 @@ pub fn create(
     }
     // create container
     if Lookup::is_debug() {
-        debug!("{:?}", app.get_args());
+        debug!("{:?} {:?}", app.get_program(), app.get_args());
     }
     let pilot_options = Lookup::get_pilot_run_options();
     let mut spinner = None;
@@ -602,7 +602,7 @@ pub fn call_instance(
         }
     }
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     if interactive || atty::is(Stream::Stdout) {
         call.status()?;
@@ -640,7 +640,7 @@ pub fn mount_container(
         call.arg("mount").arg(container_name);
     }
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     let output = call.perform()?;
     Ok(
@@ -664,7 +664,7 @@ pub fn umount_container(
         call.arg("umount").arg(mount_point);
     }
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     call.perform()?;
     Ok(())
@@ -702,7 +702,7 @@ pub fn sync_host(
         .arg("/")
         .arg(format!("{}/", &target));
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     match call.output() {
         Ok(output) => {
@@ -748,7 +748,7 @@ pub fn container_exists(cid: &str, user: User) -> Result<bool, FlakeError> {
     let mut exists = setup_podman_call(usermode);
     exists.arg("container").arg("exists").arg(cid);
     if Lookup::is_debug() {
-        debug!("{:?}", exists.get_args());
+        debug!("{:?} {:?}", exists.get_program(), exists.get_args());
     }
     let output = match exists.output() {
         Ok(output) => {
@@ -793,7 +793,7 @@ pub fn container_image_exists(
     let mut exists = setup_podman_call(usermode);
     exists.arg("image").arg("exists").arg(name);
     if Lookup::is_debug() {
-        debug!("{:?}", exists.get_args());
+        debug!("{:?} {:?}", exists.get_program(), exists.get_args());
     }
     let output: Output = match exists.output() {
         Ok(output) => {
@@ -838,7 +838,7 @@ pub fn container_running(cid: &str, user: User) -> Result<bool, CommandError> {
     running.arg("ps")
         .arg("--format").arg("{{.ID}}");
     if Lookup::is_debug() {
-        debug!("{:?}", running.get_args());
+        debug!("{:?} {:?}", running.get_program(), running.get_args());
     }
     let output: Output = match running.perform() {
         Ok(output) => {
@@ -882,7 +882,7 @@ pub fn pull(uri: &str, user: User) -> Result<(), FlakeError> {
     let mut pull = setup_podman_call(usermode);
     pull.arg("pull").arg(uri);
     if Lookup::is_debug() {
-        debug!("{:?}", pull.get_args());
+        debug!("{:?} {:?}", pull.get_program(), pull.get_args());
     }
     match pull.perform() {
         Ok(output) => {
@@ -940,7 +940,7 @@ pub fn build_system_dependencies(
         let mut call = user.run("sh");
         call.arg(system_deps);
         if Lookup::is_debug() {
-            debug!("{:?}", call.get_args());
+            debug!("{:?} {:?}", call.get_program(), call.get_args());
         }
         match call.output() {
             Ok(output) => {

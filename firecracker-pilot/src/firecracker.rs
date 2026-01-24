@@ -288,7 +288,7 @@ fn run_creation(
             mkfs.arg("-F")
                 .arg(&vm_overlay_file);
             if Lookup::is_debug() {
-                debug!("sudo {:?}", mkfs.get_args());
+                debug!("{:?} {:?}", mkfs.get_program(), mkfs.get_args());
             }
             mkfs.perform()?;
         }
@@ -383,7 +383,7 @@ pub fn call_instance(
         .arg("--config-file")
         .arg(config_file.path());
     if Lookup::is_debug() {
-        debug!("sudo {:?}", firecracker.get_args())
+        debug!("{:?} {:?}", firecracker.get_program(), firecracker.get_args());
     }
 
     let child = firecracker.spawn()?;
@@ -711,9 +711,7 @@ pub fn create_firecracker_config(
     Ok(())
 }
 
-pub fn get_target_app_path(
-    program_name: &str, 
-) -> String {
+pub fn get_target_app_path(program_name: &str) -> String {
     /*!
     setup application command path name
 
@@ -744,7 +742,7 @@ pub fn vm_running(vmid: &String, user: User) -> Result<bool, FlakeError> {
     let mut running = user.run("kill");
     running.arg("-0").arg(vmid);
     if Lookup::is_debug() {
-        debug!("{:?}", running.get_args());
+        debug!("{:?} {:?}", running.get_program(), running.get_args());
     }
 
     let output = running.output()?;
@@ -907,7 +905,7 @@ pub fn mount_vm(
     mount_image.arg(rootfs_image_path)
         .arg(&image_mount_point);
     if Lookup::is_debug() {
-        debug!("{:?}", mount_image.get_args());
+        debug!("{:?} {:?}", mount_image.get_program(), mount_image.get_args());
     }
     mount_image.perform()?;
     // 3. mount Overlay image
@@ -918,7 +916,7 @@ pub fn mount_vm(
     mount_overlay.arg(overlay_path)
         .arg(&overlay_mount_point);
     if Lookup::is_debug() {
-        debug!("{:?}", mount_overlay.get_args());
+        debug!("{:?} {:?}", mount_overlay.get_program(), mount_overlay.get_args());
     }
     mount_overlay.perform()?;
     // 4. mount as overlay
@@ -944,7 +942,7 @@ pub fn mount_vm(
         ))
         .arg(&root_mount_point);
     if Lookup::is_debug() {
-        debug!("{:?}", mount_overlay.get_args());
+        debug!("{:?} {:?}", mount_overlay.get_program(), mount_overlay.get_args());
     }
     mount_overlay.perform()?;
     Ok(root_mount_point)
@@ -964,7 +962,7 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
         umount.stdout(Stdio::null());
         umount.arg(format!("{}/{}", &sub_dir, &mount_point));
         if Lookup::is_debug() {
-            debug!("{:?}", umount.get_args());
+            debug!("{:?} {:?}", umount.get_program(), umount.get_args());
         }
         umount.perform().map(|_| ())
     }).collect();

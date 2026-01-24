@@ -78,7 +78,7 @@ pub fn exists(filename: &str, user: User) -> Result<bool, FlakeError> {
     let mut call = user.run("test");
     call.arg("-e").arg(filename);
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     let output = match call.output() {
         Ok(output) => {
@@ -106,7 +106,7 @@ pub fn cp(source: &str, target: &str, user: User) -> Result<(), CommandError> {
     let mut call = user.run("cp");
     call.arg(source).arg(target);
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     call.perform()?;
     Ok(())
@@ -119,7 +119,7 @@ pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), CommandError>
     let mut call = user.run("chmod");
     call.arg(mode).arg(filename);
     if Lookup::is_debug() {
-        debug!("{:?}", call.get_args());
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
     call.perform()?;
     Ok(())
@@ -141,13 +141,13 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), CommandError> 
         let mut mkdir_call = user.run("mkdir");
         mkdir_call.arg("-p").arg("-m").arg(mode).arg(targetdir);
         if Lookup::is_debug() {
-            debug!("{:?}", mkdir_call.get_args());
+            debug!("{:?} {:?}", mkdir_call.get_program(), mkdir_call.get_args());
         }
         mkdir_call.perform()?;
         let mut chmod_call = user.run("chmod");
         chmod_call.arg(mode).arg(targetdir);
         if Lookup::is_debug() {
-            debug!("{:?}", chmod_call.get_args());
+            debug!("{:?} {:?}", chmod_call.get_program(), chmod_call.get_args());
         }
         chmod_call.perform()?;
     }

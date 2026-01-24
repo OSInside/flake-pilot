@@ -49,7 +49,9 @@ impl Container {
             fix_storage.arg("-R")
                 .arg(chown_param.clone())
                 .arg(defaults::FLAKES_REGISTRY);
-            FlakeLog::debug(&format!("{:?}", fix_storage.get_args()));
+            FlakeLog::debug(
+                &format!("{:?} {:?}", fix_storage.get_program(), fix_storage.get_args())
+            );
             fix_storage.perform()?;
 
             let _ = Self::podman_setup_run_permissions(usermode);
@@ -71,7 +73,9 @@ impl Container {
                 .arg(chown_param)
                 .arg("/run/libpod")
                 .arg(defaults::FLAKES_REGISTRY_RUNROOT);
-            FlakeLog::debug(&format!("{:?}", fix_run_storage.get_args()));
+            FlakeLog::debug(
+                &format!("{:?} {:?}", fix_run_storage.get_program(), fix_run_storage.get_args())
+            );
             fix_run_storage.perform()?;
         }
         Ok(())

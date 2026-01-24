@@ -176,6 +176,11 @@ pub enum Firecracker {
         /// specified multiple times.
         #[clap(long, multiple = true, requires = "overlay-size")]
         include_path: Option<Vec<String>>,
+
+        /// Force writing the registration even if a registration
+        /// of the same name already exists
+        #[clap(long)]
+        force: bool,
     },
     /// Remove application registration or entire VM
     #[clap(group(
@@ -311,6 +316,11 @@ pub enum Podman {
         /// Print registration information from container if provided
         #[clap(long)]
         info: bool,
+
+        /// Force writing the registration even if a registration
+        /// of the same name already exists
+        #[clap(long)]
+        force: bool,
     },
 }
 

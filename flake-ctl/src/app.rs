@@ -242,11 +242,15 @@ pub fn remove(
         "{}/{}.d", get_flakes_dir(usermode), &app_basename
     );
     if ! Path::new(&config_file).exists() {
-        error!("No app config file found: {config_file}");
+        if !silent {
+            error!("No app config file found: {config_file}");
+        }
         return false
     }
     if ! Path::new(&app_config_dir).exists() {
-        error!("No app directory found: {app_config_dir}");    
+        if !silent {
+            error!("No app directory found: {app_config_dir}");
+        }
         return false
     }
 

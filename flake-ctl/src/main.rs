@@ -91,8 +91,16 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, run_as, overlay_size, no_net, resume,
-                    force_vsock, include_tar, include_path
+                    force_vsock, include_tar, include_path, force
                 } => {
+                    if *force {
+                        app::remove(
+                            app,
+                            defaults::FIRECRACKER_PILOT,
+                            false,
+                            true
+                        );
+                    }
                     if app::init(Some(app), false) {
                         let mut ok = app::register(
                             Some(app), target.as_ref(),
@@ -165,43 +173,53 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Podman::Register {
                     container, app, target, base, check_host_dependencies,
                     layer, include_tar, include_path, resume, attach,
-                    opt, info
+                    opt, info, force
                 } => {
                     if *info {
                         podman::print_container_info(container);
-                    } else if app::init(app.as_ref(), user) {
-                        let mut ok = app::register(
-                            app.as_ref(), target.as_ref(),
-                            defaults::PODMAN_PILOT,
-                            user
-                        );
-                        if ok {
-                            ok = app::create_container_config(
-                                container,
-                                app.as_ref(),
-                                target.as_ref(),
-                                base.as_ref(),
-                                *check_host_dependencies,
-                                layer.as_ref().cloned(),
-                                include_tar.as_ref().cloned(),
-                                include_path.as_ref().cloned(),
-                                *resume,
-                                *attach,
-                                user,
-                                opt.as_ref().cloned()
-                            );
-                        }
-                        if ! ok {
+                    } else {
+                        if *force {
                             app::remove(
                                 app.as_ref().map(String::as_str).unwrap(),
                                 defaults::PODMAN_PILOT,
                                 user,
                                 true
                             );
+                        }
+                        if app::init(app.as_ref(), user) {
+                            let mut ok = app::register(
+                                app.as_ref(), target.as_ref(),
+                                defaults::PODMAN_PILOT,
+                                user
+                            );
+                            if ok {
+                                ok = app::create_container_config(
+                                    container,
+                                    app.as_ref(),
+                                    target.as_ref(),
+                                    base.as_ref(),
+                                    *check_host_dependencies,
+                                    layer.as_ref().cloned(),
+                                    include_tar.as_ref().cloned(),
+                                    include_path.as_ref().cloned(),
+                                    *resume,
+                                    *attach,
+                                    user,
+                                    opt.as_ref().cloned(),
+                                );
+                            }
+                            if ! ok {
+                                app::remove(
+                                    app.as_ref().map(String::as_str).unwrap(),
+                                    defaults::PODMAN_PILOT,
+                                    user,
+                                    true
+                                );
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        } else {
                             return Ok(ExitCode::FAILURE)
                         }
-                    } else {
-                        return Ok(ExitCode::FAILURE)
                     }
                 },
                 // remove

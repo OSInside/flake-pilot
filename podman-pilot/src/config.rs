@@ -26,7 +26,6 @@ use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{env, path::PathBuf, fs};
 use flakes::config::get_flakes_dir;
-use uzers::{get_current_username};
 
 lazy_static! {
     static ref CONFIG: Config<'static> = load_config();
@@ -57,26 +56,22 @@ fn load_config() -> Config<'static> {
     and attached to the master program_name.yaml file. The result
     is send to the Yaml parser
     !*/
-    let calling_user_name = get_current_username().unwrap();
-    let mut usermode = calling_user_name != "root";
+    // first try to find system wide config
+    let mut usermode = false;
 
     let base_path = get_base_path();
     let base_path  = base_path.file_name().unwrap().to_str().unwrap();
     let mut base_file = config_file(base_path, usermode);
 
     if ! Path::new(&base_file).exists() {
-        if usermode {
-            // no user specific config found, try system wide
-            usermode = false;
-            base_file = config_file(base_path, usermode);
-            if ! Path::new(&base_file).exists() {
-                panic!(
-                    "No flake registration file found: {}",
-                    config_file(base_path, true)
-                )
-            }
-        } else {
-            panic!("No flake registration file found: {}", base_file)
+        // no system wide config found, try user specific
+        usermode = true;
+        base_file = config_file(base_path, usermode);
+        if ! Path::new(&base_file).exists() {
+            panic!(
+                "No user/system wide flake registration found for: {}",
+                base_path
+            )
         }
     }
 

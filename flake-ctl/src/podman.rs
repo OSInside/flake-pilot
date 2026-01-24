@@ -29,7 +29,6 @@ use std::process::Command;
 use glob::glob;
 use crate::defaults;
 use crate::{app, app_config};
-use flakes::container::Container;
 use flakes::config::get_flakes_dir;
 use flakes::config::get_podman_storage_conf;
 use flakes::config::read_storage_conf;
@@ -49,12 +48,10 @@ pub fn pull(uri: &String, usermode: bool) -> i32 {
             if status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -97,12 +94,10 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
             if status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -139,12 +134,10 @@ pub fn rm(container: &String, usermode: bool) {
             if ! status.success() {
                 status
             } else {
-                let _ = Container::podman_setup_permissions(usermode);
                 call.status().unwrap()
             }
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions(usermode);
             call.status().unwrap()
         }
     };
@@ -167,7 +160,6 @@ pub fn mount_container(container_name: &str) -> String {
             output
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions(false);
             call.output().unwrap()
         }
     };
@@ -195,7 +187,6 @@ pub fn umount_container(container_name: &str) -> i32 {
             output
         }
         Err(_) => {
-            let _ = Container::podman_setup_permissions(false);
             call.output().unwrap()
         }
     };

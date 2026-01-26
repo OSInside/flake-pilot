@@ -216,7 +216,7 @@ pub fn create_vm_config(
 }
 
 pub fn remove(
-    app: &str, engine: &str, usermode: bool, silent: bool
+    app: &str, engine: &str, usermode: bool, silent: bool, force: bool
 ) -> bool {
     /*!
     Delete application link and config files
@@ -254,31 +254,45 @@ pub fn remove(
         return false
     }
 
-    // remove pilot link if valid
-    match fs::read_link(app) {
-        Ok(link_name) => {
-            if link_name.into_os_string() == engine {
-                match fs::remove_file(app) {
-                    Ok(_) => {}
-                    Err(error) => {
-                        if !silent {
-                            error!("Error removing pilot link: {app}: {error:?}");
-                        };
-                        return false
-                    }
-                }
-            } else {
+    if force {
+        match fs::remove_file(app) {
+            Ok(_) => {}
+            Err(error) => {
                 if !silent {
-                    error!("Symlink not pointing to {engine}: {app}");
+                    error!("Error removing: {app}: {error:?}");
                 };
                 return false
             }
         }
-        Err(error) => {
-            if !silent {
-                error!("Failed to read as symlink: {app}: {error:?}");
-            };
-            return false
+    } else {
+        // remove pilot link if valid
+        match fs::read_link(app) {
+            Ok(link_name) => {
+                if link_name.into_os_string() == engine {
+                    match fs::remove_file(app) {
+                        Ok(_) => {}
+                        Err(error) => {
+                            if !silent {
+                                error!(
+                                    "Error removing pilot link: {app}: {error:?}"
+                                );
+                            };
+                            return false
+                        }
+                    }
+                } else {
+                    if !silent {
+                        error!("Symlink not pointing to {engine}: {app}");
+                    };
+                    return false
+                }
+            }
+            Err(error) => {
+                if !silent {
+                    error!("Failed to read as symlink: {app}: {error:?}");
+                };
+                return false
+            }
         }
     }
     // remove config file and config directory

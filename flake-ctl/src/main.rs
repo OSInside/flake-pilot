@@ -98,7 +98,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             app,
                             defaults::FIRECRACKER_PILOT,
                             false,
-                            true
+                            true,
+                            *force
                         );
                     }
                     if app::init(Some(app), false) {
@@ -125,7 +126,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             app::remove(
                                 app, defaults::FIRECRACKER_PILOT,
                                 false,
-                                true
+                                true,
+                                *force
                             );
                             return Ok(ExitCode::FAILURE)
                         }
@@ -138,6 +140,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::FIRECRACKER_PILOT,
+                        false,
                         false,
                         false
                     ) {
@@ -183,7 +186,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 app.as_ref().map(String::as_str).unwrap(),
                                 defaults::PODMAN_PILOT,
                                 user,
-                                true
+                                true,
+                                *force
                             );
                         }
                         if app::init(app.as_ref(), user) {
@@ -213,7 +217,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     app.as_ref().map(String::as_str).unwrap(),
                                     defaults::PODMAN_PILOT,
                                     user,
-                                    true
+                                    true,
+                                    *force
                                 );
                                 return Ok(ExitCode::FAILURE)
                             }
@@ -228,6 +233,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::PODMAN_PILOT,
                         user,
+                        false,
                         false
                     ) {
                         return Ok(ExitCode::FAILURE)

@@ -495,7 +495,7 @@ pub fn purge_vm(vm: &str) {
                 {
                     app::remove(
                         &app_conf.vm.as_mut().unwrap().host_app_path,
-                        defaults::FIRECRACKER_PILOT, false, false
+                        defaults::FIRECRACKER_PILOT, false, false, false
                     );
                 }
             },

@@ -213,6 +213,7 @@ pub fn purge_container(container: &str, usermode: bool) {
                         &app_conf.container.as_mut().unwrap().host_app_path,
                         defaults::PODMAN_PILOT,
                         usermode,
+                        false,
                         false
                     );
                 }

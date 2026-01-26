@@ -17,6 +17,7 @@ SYNOPSIS
 
    OPTIONS:
        --app <APP>
+       --force
        --include-tar <INCLUDE_TAR>...
        --include-path <INCLUDE_PATH>...
        --no-net
@@ -51,6 +52,15 @@ OPTIONS
   An absolute path to the application on the host. If not specified via
   the target option, the application will be called with that path inside
   of the VM
+
+--force
+
+  Force writing the registration even if a registration
+  of the same name already exists. This is done by deleting
+  an eventual existing registration prio creating the new
+  registration. Please have in mind that a failed registration
+  still causes an eventual existing former registration to be
+  deleted in this case !
 
 --include-tar <INCLUDE_TAR>...
 

@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl podman register [OPTIONS] --container <CONTAINER> --app <APP>
+       flake-ctl podman [--user] register [OPTIONS] --container <CONTAINER> --app <APP>
 
    OPTIONS:
        --app <APP>
@@ -20,6 +20,7 @@ SYNOPSIS
        --base <BASE>
        --check_host_dependencies
        --container <CONTAINER>
+       --force
        --include-tar <INCLUDE_TAR>...
        --include-path <INCLUDE_PATH>...
        --info
@@ -43,6 +44,9 @@ like a normal application on this host.
 
 For further details about the flake configuration please refer to
 the **podman-pilot** manual page.
+
+For further details about the flake configuration when `--user` is
+used please refer to the **flake-pilot** manual page.
 
 NOTE
 ----
@@ -80,6 +84,15 @@ OPTIONS
 
   Check if the container has dependencies to the host When using
   a base container this check is enabled by default.
+
+--force
+
+  Force writing the registration even if a registration
+  of the same name already exists. This is done by deleting
+  an eventual existing registration prio creating the new
+  registration. Please have in mind that a failed registration
+  still causes an eventual existing former registration to be
+  deleted in this case !
 
 --include-tar <INCLUDE_TAR>...
 

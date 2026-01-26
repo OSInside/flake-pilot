@@ -15,14 +15,21 @@ SYNOPSIS
        flake-ctl list
 
    OPTIONS:
-       -h, --help       Print help information
-       -V, --version    Print version information
+       --user
+       --help
 
 
 DESCRIPTION
 -----------
 
 List registered flake applications.
+
+OPTIONS
+-------
+
+--user
+
+  List registered flake applications for the calling user
 
 FILES
 -----

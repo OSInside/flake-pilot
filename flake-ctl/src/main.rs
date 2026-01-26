@@ -228,13 +228,13 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     }
                 },
                 // remove
-                cli::Podman::Remove { container, app } => {
+                cli::Podman::Remove { container, app, force } => {
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::PODMAN_PILOT,
                         user,
                         false,
-                        false
+                        *force
                     ) {
                         return Ok(ExitCode::FAILURE)
                     }

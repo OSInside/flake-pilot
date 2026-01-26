@@ -17,6 +17,7 @@ SYNOPSIS
    OPTIONS:
        --app <APP>
        --container <CONTAINER>
+       --force
 
 DESCRIPTION
 -----------
@@ -34,7 +35,7 @@ Remove registration(s). The command operates in two modes:
    In this mode the command deletes all application registrations
    using the specified container. At the end also the specified
    container will be removed from the local podman registry
-   
+
 OPTIONS
 -------
 
@@ -45,6 +46,13 @@ OPTIONS
 --container <CONTAINER>
 
   Container basename as provided via **podman images**
+
+--force
+
+  Force removing the registration, do not raise an
+  error if no registration exists. Do not apply
+  the check for a flake registered app and remove
+  when present. Use with care !
 
 FILES
 -----

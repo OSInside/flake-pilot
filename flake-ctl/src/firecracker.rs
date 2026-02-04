@@ -489,14 +489,14 @@ pub fn purge_vm(vm: &str) {
             "{}/{}.yaml", get_flakes_dir(false), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
-            Ok(mut app_conf) => {
-                if app_conf.vm.is_some() &&
-                    vm == app_conf.vm.as_mut().unwrap().name
-                {
-                    app::remove(
-                        &app_conf.vm.as_mut().unwrap().host_app_path,
-                        defaults::FIRECRACKER_PILOT, false, false, false
-                    );
+            Ok(app_conf) => {
+                if let Some(ref vm_conf) = app_conf.vm {
+                    if vm == vm_conf.name {
+                        app::remove(
+                            &vm_conf.host_app_path,
+                            defaults::FIRECRACKER_PILOT, false, false, false
+                        );
+                    }
                 }
             },
             Err(error) => {

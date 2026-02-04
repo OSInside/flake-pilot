@@ -205,17 +205,17 @@ pub fn purge_container(container: &str, usermode: bool) {
             "{}/{}.yaml", get_flakes_dir(usermode), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
-            Ok(mut app_conf) => {
-                if app_conf.container.is_some() &&
-                    container == app_conf.container.as_mut().unwrap().name
-                {
-                    app::remove(
-                        &app_conf.container.as_mut().unwrap().host_app_path,
-                        defaults::PODMAN_PILOT,
-                        usermode,
-                        false,
-                        false
-                    );
+            Ok(app_conf) => {
+                if let Some(ref container_conf) = app_conf.container {
+                    if container == container_conf.name {
+                        app::remove(
+                            &container_conf.host_app_path,
+                            defaults::PODMAN_PILOT,
+                            usermode,
+                            false,
+                            false
+                        );
+                    }
                 }
             },
             Err(error) => {

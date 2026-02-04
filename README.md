@@ -151,6 +151,43 @@ This example also shows that it's not required to explicitly pull the
 required containers. At launch time, missing containers will be pulled
 automatically.
 
+Let's register an AI application next. The following example uses
+a gemini-cli container which was produced as a standalone container
+via the KIWI appliance builder and hosted on AWS ECR Public.
+
+1. Create an AI space in your home directory
+
+   ```bash
+   mkdir -p ~/ai
+   ```
+
+2. Register the ```ok-google``` application
+
+   ```bash
+   flake-ctl podman --user register \
+       --app /home/$USER/ok-google \
+       --target /usr/local/bin/gemini \
+       --container public.ecr.aws/b9k1j9y6/ai/gemini:latest \
+       --resume \
+       --opt "\--net host" \
+       --opt "\--interactive" \
+       --opt "\--workdir /root/ai" \
+       --opt "\--volume %HOME/ai:/root/ai" \
+       --opt "\-e GEMINI_API_KEY=YOUR_KEY_HERE"
+    ```
+
+3. Launch the application
+
+   To run ```ok-google```, just call, for example:
+
+   ```bash
+   ok-google "What is the capital of Germany?"
+   ```
+
+   This starts the gemini-cli application inside the container,
+   passing the question to it. The application uses the mounted
+   volume to store its data persistently in your home directory.
+
 ## Quick Start FireCracker VMs <a name="fire"/>
 
 Using containers to isolate applications from the host system is a common

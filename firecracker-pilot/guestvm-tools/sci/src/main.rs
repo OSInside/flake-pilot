@@ -405,7 +405,6 @@ fn main() {
             let _ = call.status();
         }
     }
-    
     // Close firecracker session
     do_reboot(ok)
 }

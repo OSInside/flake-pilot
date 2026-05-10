@@ -368,32 +368,27 @@ pub fn call_instance(
     Run firecracker with specified configuration
     !*/
     let mut firecracker = user.run(defaults::FIRECRACKER);
-    if ! Lookup::is_debug() {
-        firecracker.stderr(Stdio::null());
-    }
-    if ! Lookup::is_debug() && ! is_blocking {
-        firecracker
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped());
-    }
     firecracker
         .arg("--no-api")
         .arg("--id")
         .arg(id().to_string())
         .arg("--config-file")
         .arg(config_file.path());
+    if ! is_blocking {
+        firecracker
+            .stderr(Stdio::null())
+            .stdout(Stdio::null())
+            .stdin(Stdio::null());
+    }
     if Lookup::is_debug() {
         debug!("{:?} {:?}", firecracker.get_program(), firecracker.get_args());
     }
-
     let child = firecracker.spawn()?;
     let pid = child.id();
     if Lookup::is_debug() {
         debug!("PID {pid}")
     }
-
     File::create(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
-
     if is_blocking {
         handle_output(child.wait_with_output(), firecracker.get_args())?;
     }

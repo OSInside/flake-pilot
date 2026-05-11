@@ -24,6 +24,7 @@
 //
 use std::env;
 
+pub const SSHD: &str = "/usr/sbin/sshd";
 pub const SWITCH_ROOT: &str = "/sbin/switch_root";
 pub const PIVOT_ROOT: &str = "/sbin/pivot_root";
 pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";

@@ -983,7 +983,7 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
                 }
             }
             Err(error) => {
-                error!("VM sockket listener failed: {error}")
+                error!("VM socket listener failed: {error}")
             }
         }
     };

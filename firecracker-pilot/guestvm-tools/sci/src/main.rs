@@ -242,6 +242,9 @@ fn main() {
         }
     };
 
+    // start sshd if present
+    start_sshd();
+
     // Setup command call parameters
     for arg in &args[1..] {
         call.arg(arg);
@@ -685,6 +688,18 @@ fn setup_resolver_link() {
                     defaults::SYSTEMD_NETWORK_RESOLV_CONF,
                     error
                 ));
+            }
+        }
+    }
+}
+
+fn start_sshd() {
+    if Path::new(defaults::SSHD).exists() {
+        let mut sshd = Command::new(defaults::SSHD);
+        match sshd.status() {
+            Ok(_) => {},
+            Err(error) => {
+                debug(&format!("Failed to start sshd: {error}"));
             }
         }
     }

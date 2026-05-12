@@ -688,8 +688,35 @@ pub fn create_firecracker_config(
     }
 
     // set tap device name
-    firecracker_config.network_interfaces[0].host_dev_name =
-        format!("tap-{}", get_meta_name(program_name));
+    let tapname = format!("tap-{}", get_meta_name(program_name));
+    firecracker_config.network_interfaces[0].host_dev_name = tapname.clone();
+    // create tap device if not present
+    let mut taplist = Command::new("ip");
+    taplist.arg("tuntap").arg("list");
+    if Lookup::is_debug() {
+        debug!("{:?} {:?}", taplist.get_program(), taplist.get_args());
+    }
+    let output = taplist.output()?;
+    let mut tap_devices = String::new();
+    tap_devices.push_str(
+        &String::from_utf8_lossy(&output.stdout)
+    );
+    let tap_matching =
+        tap_devices.lines().find(|line| line.starts_with(&tapname));
+    if tap_matching.is_none() {
+        let root_user = User::from("root");
+        let mut tap = root_user.run("ip");
+        tap
+            .arg("tuntap")
+            .arg("add")
+            .arg(tapname)
+            .arg("mode")
+            .arg("tap");
+        if Lookup::is_debug() {
+            debug!("{:?} {:?}", tap.get_program(), tap.get_args());
+        }
+        tap.perform()?;
+    }
 
     // set vsock name
     firecracker_config.vsock.guest_cid = defaults::VM_CID;

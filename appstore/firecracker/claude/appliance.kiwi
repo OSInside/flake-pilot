@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<image schemaversion="7.5" name="claude">
+    <description type="system">
+        <author>Marcus Schäfer</author>
+        <contact>marcus.schaefer@gmail.com</contact>
+        <specification>FireCracker Base System for claude AI</specification>
+    </description>
+    <preferences>
+        <version>1.15.6</version>
+        <packagemanager>zypper</packagemanager>
+        <locale>en_US</locale>
+        <keytable>us</keytable>
+        <timezone>Europe/Berlin</timezone>
+        <rpm-excludedocs>true</rpm-excludedocs>
+        <rpm-check-signatures>false</rpm-check-signatures>
+        <type image="kis" filesystem="ext2"/>
+    </preferences>
+    <repository type="rpm-md">
+        <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_15.6"/>
+    </repository>
+    <repository type="rpm-md">
+        <source path="https://download.opensuse.org/update/leap/15.6/sle/"/>
+    </repository>
+    <repository type="rpm-md">
+        <source path="https://download.opensuse.org/distribution/leap/15.6/repo/oss"/>
+    </repository>
+    <packages type="image">
+        <!-- kernel -->
+        <!-- no vsock support in this kernel -->
+        <!-- <package name="kernel-kvmsmall"/> -->
+        <package name="kernel-default"/>
+        <!-- system -->
+        <package name="timezone"/>
+        <package name="systemd"/>
+        <package name="systemd-networkd"/>
+        <package name="systemd-resolved"/>
+        <package name="iputils"/>
+        <package name="binutils"/>
+        <package name="gzip"/>
+        <package name="iproute2"/>
+        <package name="socat"/>
+        <package name="kmod"/>
+        <package name="openssh-server"/>
+        <package name="npm-default"/>
+        <package name="dracut"/>
+        <package name="bash"/>
+        <package name="flake-pilot-firecracker-guestvm-tools"/>
+        <package name="flake-pilot-firecracker-dracut-netstart"/>
+    </packages>
+    <packages type="bootstrap">
+        <package name="filesystem"/>
+        <package name="glibc-locale-base"/>
+        <package name="ca-certificates"/>
+        <package name="ca-certificates-mozilla"/>
+    </packages>
+</image>

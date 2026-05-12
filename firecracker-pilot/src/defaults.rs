@@ -35,11 +35,11 @@ pub const OVERLAY_UPPER: &str =
 pub const OVERLAY_WORK: &str =
     "overlayroot/rootfs_work";
 pub const FIRECRACKER_OVERLAY_DIR:&str =
-    "/var/lib/firecracker/storage";
+    ".config/flakes/firecracker/storage";
 pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
-    "/run/sci_cmd_";
+    "/tmp/sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 pub const GC_THRESHOLD: usize = 20;
 pub const VM_CID: u32 = 3;

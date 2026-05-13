@@ -1,22 +1,29 @@
 # Flake Pilot
 
-## Semi-transparent Container/VM instances
+## Application Isolation - Secure Execution with a Native Feel
 
 1. [Introduction](#introduction)
     1. [Use Cases](#usecases)
 2. [Installation](#installation)
-3. [Quick Start OCI containers](#oci)
-4. [Quick Start FireCracker VMs](#fire)
-    1. [Use FireCracker VM image from components](#components)
-    2. [Networking](#networking)
-5. [Application Setup](#setup)
-6. [How To Build Your Own App Images](#images)
+3. [Examples](#examples)
+    1. [Register Amazon's SDK utility as a container app named: aws](#one)
+    2. [Register an editor app as a delta container named: joe](#two)
+    3. [Register gemini AI as a container app named: ok-google](#three)
+    4. [Register a shell as a firecracker VM app named: fireshell](#four)
+    5. [Register claude AI as firecracker VM app named: claude](#five)
+        1. [Firecracker Networking](#networking)
+4. [Application Setup](#setup)
+5. [How To Build Your Own App Images](#images)
 
 ## Introduction <a name="introduction"/>
 
 Flake Pilot is software to register, provision, and launch applications
 that are actually provided inside a runtime environment like an
-OCI container or a Firecracker VM. There are two main components:
+OCI container or a Firecracker VM.
+
+![](images/architecture.png)
+
+There are two main components:
 
 1. The launchers
 
@@ -31,18 +38,9 @@ OCI container or a Firecracker VM. There are two main components:
    ```flake-ctl``` is the management utility to list, register,
    remove, and more... flake applications on your host.
 
-The main idea for Flake Pilot was not only to launch isolated apps like
-native binaries but also to allow running a provisioning step prior to calling
-the application. This concept then allows running semi-transparent
-container/VM instances which can take information from other places
-prior to their execution. The following diagram visualizes this concept:
-
-![](images/transparency.png)
-
-As a result, we see some interesting use cases described in the following
-section.
-
 ### Use Cases <a name="usecases"/>
+
+* Running AI workloads in isolated environments.
 
 * Delta containers used together with a base container such that
   only small delta containers are pulled to the registry, used with
@@ -50,8 +48,7 @@ section.
 
 * Include arbitrary data without harming host integrity, e.g., custom
   binaries, proprietary software not following package guidelines and
-  standards (e.g., automotive industry processes which we will not be
-  able to change in this life).
+  standards.
 
 * Layering of several containers, e.g., deltas on top of a base. Building
   a solution stack, e.g., base + python + python-app.
@@ -64,27 +61,16 @@ section.
 * Isolating applications that require different library versions
   than those the host provides, e.g., old legacy applications.
 
-* Running AI workloads in isolated environments.
-
-Actually, some of the above use cases are immaterial if proper packaging,
-release, and maintenance of the application are possible. However, I have
-learned the world is not an ideal place, and there might be a spot for
-this project to be useful, supporting users with "special" needs and
-adding an adaptive feature to the OS.
-
-For demo purposes and to showcase the mentioned use cases, some
-example images were created. See [How To Build Your Own App Images](#images)
-for further details
+* and maybe more...
 
 ## Installation <a name="installation"/>
 
-Flake Pilot components are written in Rust and are available as packages
-for SUSE as follows:
+Flake Pilot components are written in Rust and are available as
+packages here: https://build.opensuse.org/package/show/Virtualization:Appliances:Builder/flake-pilot. Install the following packages:
 
-```bash
-zypper addrepo https://download.opensuse.org/repositories/home:/marcus.schaefer:/EOS/TW/
-zypper install flake-pilot flake-pilot-podman flake-pilot-firecracker
-```
+* flake-pilot
+* flake-pilot-podman
+* flake-pilot-firecracker
 
 Manual compilation and installation can be done as follows:
 
@@ -92,202 +78,121 @@ Manual compilation and installation can be done as follows:
 make build && make install
 ```
 
-## Quick Start OCI containers <a name="oci"/>
+## Examples <a name="examples"/>
 
-To start, let's register an application named ```aws``` which is
-connected to the ```aws-cli``` container provided by Amazon on
-```docker.io/amazon```.
+To get started with flake-pilot, try running one or more of these examples.
+All apps will be registered in the users home directory. Therefore it's
+handy to add that path to the environment:
 
-1. Pull the container
+```bash
+export PATH=$PATH:$HOME
+```
 
-   ```bash
-   flake-ctl podman pull --uri docker.io/amazon/aws-cli
-   ```
+### Register Amazon's SDK utility as a container app named: aws <a name="one"/>
 
-2. Register the ```aws``` application
+```bash
+flake-ctl podman --user register \
+     --container docker.io/amazon/aws-cli --app $HOME/aws --target /
 
-   ```bash
-   flake-ctl podman register --container amazon/aws-cli --app /usr/bin/aws --target /
-   ```
+aws ec2 help
+```
 
-   This creates ```/usr/bin/aws``` on your host, which actually
-   launches the ```amazon/aws-cli``` container. The default entry
-   point of the container was configured by Amazon to launch their
-   cloud API application. Thus, the target program to call inside
-   the container doesn't need to be explicitly configured in
-   the registration and is therefore just set to ```/```.
+This creates ```$HOME/aws``` on your host, which actually
+launches the ```amazon/aws-cli``` container. The default entry
+point of the container was configured by Amazon to launch their
+cloud API application. Thus, the target program to call inside
+the container doesn't need to be explicitly configured in
+the registration and is therefore just set to ```/```.
+The call of ```aws ec2 help``` launches an instance of the
+container via rootless podman and shows the help text for
+the ```ec2``` subcommand.
 
-3. Launch the application
+### Register an editor app as a delta container named: joe <a name="two"/>
 
-   To run ```aws```, just call, for example:
+```bash
+flake-ctl podman register \
+    --app /usr/bin/joe \
+    --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
+    --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
+    --target $HOME/joe
 
-   ```bash
-   aws ec2 help
-   ```
+joe
+```
 
-Let's register an editor application next. The following example uses
-the ```joe``` editor flake, which was produced as a delta container
-against the ```basesystem``` container.
+### Register gemini AI as a container app named: ok-google <a name="three"/>
 
-1. Register the ```joe``` application
+```bash
+mkdir -p ~/ai
 
-   ```bash
-   flake-ctl podman register \
-       --app /usr/bin/joe \
-       --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
-       --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
-       --target /usr/bin/joe
-   ```
+flake-ctl podman --user register \
+    --app $HOME/ok-google \
+    --target /usr/local/bin/gemini \
+    --container public.ecr.aws/b9k1j9y6/ai/gemini:latest \
+    --resume \
+    --opt "\--net host" \
+    --opt "\--interactive" \
+    --opt "\--workdir /root/ai" \
+    --opt "\--volume %HOME/ai:/root/ai" \
+    --opt "\-e GEMINI_API_KEY=YOUR_KEY_HERE"
 
-2. Launch the application
+ok-google "What is the capital of Germany?"
+```
 
-   To run the ```joe``` editor, just call:
+This pulls the gemini container from the ai space of a public ECR
+which we use to offer nightly builds of the most popular AI tools.
+The gemini API key can be added as an environment option to this
+container such that on startup the authentication is already in
+place. The app registration uses the mounted volume to store its
+data persistently on the hosts ```~/ai``` directory.
 
-   ```bash
-   joe
-   ```
+**_NOTE:_** for deeper isolation consider to use ```krun``` instead
+of the default podman runtime. To activate krun pass the option
+```--opt "\--runtime=krun"``` to the flake registration. krun uses
+KVM virtualization and therefore provides a deeper isolation than the
+default namespaces-based isolation of podman.
 
-This example also shows that it's not required to explicitly pull the
-required containers. At launch time, missing containers will be pulled
-automatically.
+### Register a shell as a firecracker VM app named: fireshell <a name="four"/>
 
-Let's register an AI application next. The following example uses
-a gemini-cli container which was produced as a standalone container
-via the KIWI appliance builder and hosted on AWS ECR Public.
+```bash
+sudo flake-ctl firecracker pull --name leap \
+    --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images_leap/firecracker-basesystem.$(uname -m).tar.xz
 
-1. Create an AI space in your home directory
+flake-ctl firecracker register --vm leap \
+    --app $HOME/fireshell --target /bin/bash --overlay-size 20GiB
 
-   ```bash
-   mkdir -p ~/ai
-   ```
+fireshell
+```
 
-2. Register the ```ok-google``` application
+This registers an app named ```fireshell``` to the system. Once called, a
+Firecracker VM, based on the pulled ```leap``` image, is started and
+drops you into a bash shell. In addition, some write space of 20GB is
+added to the instance.
 
-   ```bash
-   flake-ctl podman --user register \
-       --app /home/$USER/ok-google \
-       --target /usr/local/bin/gemini \
-       --container public.ecr.aws/b9k1j9y6/ai/gemini:latest \
-       --resume \
-       --opt "\--net host" \
-       --opt "\--interactive" \
-       --opt "\--workdir /root/ai" \
-       --opt "\--volume %HOME/ai:/root/ai" \
-       --opt "\-e GEMINI_API_KEY=YOUR_KEY_HERE"
-    ```
+**_NOTE:_** Data transfer from the virtual machine to the host
+is done through the serial console. Alternatively a vsock based
+communication can be used. To do this specify the
+option ```--force-vsock``` when registering the application.
 
-3. Launch the application
+### Register claude AI as firecracker VM app named: claude <a name="five"/>
 
-   To run ```ok-google```, just call, for example:
+```bash
+sudo flake-ctl firecracker pull --name claude \
+    --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/claude.x86_64-1.15.6-0.tar.xz
 
-   ```bash
-   ok-google "What is the capital of Germany?"
-   ```
+flake-ctl firecracker register --vm claude \
+    --app $HOME/claude --target /usr/local/bin/claude \
+    --overlay-size 20GiB --force-vsock --resume
 
-   This starts the gemini-cli application inside the container,
-   passing the question to it. The application uses the mounted
-   volume to store its data persistently in your home directory.
+claude --version
+```
 
-## Quick Start FireCracker VMs <a name="fire"/>
+This registers an app named ```claude``` to the system. Once called, a
+Firecracker VM, based on the pulled ```claude``` image, is started and
+executes the ```claude``` binary. The communication is vsock based and the
+VM instance is kept alive after the execution of the target program, which
+allows for further calls to the same instance.
 
-Using containers to isolate applications from the host system is a common
-approach. The limitation is at the kernel level. Each container
-shares the kernel with the host, and if an application requires to run
-privileged, requires direct access to device nodes or kernel interfaces
-like the device mapper, a deeper level of isolation may be needed.
-At this point, full virtual system instances running their own kernel, optional
-initrd, and processes inside provide a solution. The trade-off is performance,
-but projects like KVM and Firecracker offer a nice
-concept to run virtual machines accelerated through KVM as a competitive
-alternative to containers. Thus, Flake Pilot also implements support for the
-Firecracker engine.
-
-Start an application as a virtual machine (VM) instance as follows:
-
-1. Pull a Firecracker-compatible VM
-
-   ```bash
-   flake-ctl firecracker pull --name leap \
-       --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images_leap/firecracker-basesystem.$(uname -m).tar.xz
-   ```
-
-2. Register the ```mybash``` application
-
-   ```bash
-   flake-ctl firecracker register --vm leap \
-       --app /usr/bin/mybash --target /bin/bash --overlay-size 20GiB
-   ```
-
-   This registers an app named ```mybash``` to the system. Once called, a
-   Firecracker VM based on the pulled ```leap``` image is started, and
-   the ```/bin/bash``` program is called inside the VM instance.
-   In addition, some write space of 20GB is added to the instance.
-
-3. Launch the application
-
-   To run ```mybash```, just call, for example:
-
-   ```bash
-   mybash
-   ```
-
-   This drops you into a bash shell inside the VM.
-
-   **_NOTE:_** Data transfer from the virtual machine to the host
-   is done through the serial console. As the process of calling the
-   application includes the boot of the virtual machine, kernel messages
-   may be intermixed with the output of the application.
-   Our default setting prevents kernel messages from being printed to
-   the console as much as possible, but there are messages that can hardly
-   be prevented or require a customized kernel build to be suppressed.
-   If this is unwanted, use the
-
-   ```bash
-   --force-vsock
-   ```
-
-   option when registering the application.
-
-   There are still limitations, such as no differentiation between **stdout**
-   and **stderr** anymore, and the exit code of the VM call does not match
-   the exit code of the application call.
-
-
-### Use Firecracker VM image from components <a name="components"/>
-
-In the quickstart for Firecracker, a special image type called ```kis-image```
-was used. This image type is specific to the KIWI appliance builder, and
-it provides the required components to boot up a Firecracker VM in one
-archive. However, it's also possible to pull a Firecracker VM image from
-its single components. Mandatory components are the kernel image and the
-rootfs image, whereas the initrd is optional. The Firecracker project
-itself provides its images in single components, and you can use them
-as follows:
-
-1. Pull a firecracker compatible VM
-
-   ```bash
-   flake-ctl firecracker pull --name firecore \
-       --rootfs https://s3.amazonaws.com/spec.ccfc.min/ci-artifacts/disks/$(uname -m)/ubuntu-18.04.ext4 \
-       --kernel https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/$(uname -m)/kernels/vmlinux.bin
-    ```
-
-2. Register the ```fireshell``` application
-
-   ```bash
-   flake-ctl firecracker register \
-       --app /usr/bin/fireshell --target /bin/bash --vm firecore --no-net
-   ```
-
-3. Launch the application
-
-   To run ```fireshell``` just call for example:
-
-   ```bash
-   fireshell -c "'ls -l'"
-   ```
-
-### Networking <a name="networking"/>
+#### Firecracker Networking <a name="networking"/>
 
 As of today, Firecracker supports networking only through TUN/TAP devices.
 As a consequence, it is the user's responsibility to set up the routing on the
@@ -329,11 +234,11 @@ The proposed example works within the following requirements:
 
 3. Set up network configuration in the flake setup
 
-   The flake configuration for the registered ```mybash``` app from
+   The flake configuration for the registered ```claude``` app from
    above can be found at:
 
    ```bash
-   vi /usr/share/flakes/mybash.yaml
+   vi /usr/share/flakes/claude.yaml
    ```
 
    The default network setup is based on DHCP because this is
@@ -360,13 +265,13 @@ The proposed example works within the following requirements:
    about ```ip=```.
 
 4. Create a TAP device matching the app registration. In the above example,
-   the app ```/usr/bin/mybash``` was registered. The Firecracker pilot
+   the app ```$HOME/claude``` was registered. The Firecracker pilot
    configures the VM instance to pass traffic on the TAP device named
-   ```tap-mybash```. If the application is called with an identifier like
-   ```mybash @id```, the TAP device name ```tap-mybash@id``` is used.
+   ```tap-claude```. If the application is called with an identifier like
+   ```claude @id```, the TAP device name ```tap-claude@id``` is used.
 
    ```bash
-   sudo ip tuntap add tap-mybash mode tap
+   sudo ip tuntap add tap-claude mode tap
    ```
 
    **_NOTE:_** If the TAP device does not exist, `firecracker-pilot` will
@@ -383,23 +288,14 @@ The proposed example works within the following requirements:
    **_NOTE:_** The settings here must match the flake configuration!
 
    ```bash
-   ip addr add 172.16.0.1/24 dev tap-mybash
-   ip link set tap-mybash up
+   ip addr add 172.16.0.1/24 dev tap-claude
+   ip link set tap-claude up
    ```
 
    Forward TAP to the outgoing interface
 
    ```bash
-   sudo iptables -A FORWARD -i tap-mybash -o eth0 -j ACCEPT
-   ```
-
-6. Start the application
-
-   ```bash
-   mybash
-
-   $ ip a
-   $ ping www.google.de
+   sudo iptables -A FORWARD -i tap-claude -o eth0 -j ACCEPT
    ```
 
    **_NOTE:_** The TAP device cannot be shared across multiple instances.
@@ -433,27 +329,17 @@ https://github.com/OSInside/flake-pilot/tree/main/doc
 ## How To Build Your Own App Images <a name="images"/>
 
 Building images as container or VM images can be done in different ways.
-One option is to use the **Open Build Service**, which is able to build
-software packages and images and therefore allows maintaining the
-complete application stack.
+One option is to use the **Open Build Service** with [KIWI](https://github.com/OSInside/kiwi),
+which is able to build software packages and images and therefore
+allows maintaining the complete application stack.
 
 For demonstration purposes and to showcase the mentioned [Use Cases](#usecases),
-some example images were created and could be considered a simple
-```flake store```. Please find them here:
+some example images were created and can serve as examples to build
+your own images as you see fit. Please find the image descriptions used
+in the context of this documentation here:
 
 * https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers
+* https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker
+* https://gallery.ecr.aws/b9k1j9y6?page=1
 
-Feel free to browse through the project and have some fun testing. There
-is a short description for each application on how to use them.
-
-**_NOTE:_** All images are built using the
-[KIWI](https://github.com/OSInside/kiwi) appliance builder, which is
-supported by the Open Build Service backend and allows building all the
-images in a maintainable way. KIWI uses an image description format
-to describe the image in a declarative way. Reading the above
-examples should give you an idea of how things fit together. If you have any questions
-regarding KIWI and the image builds, please contact us.
-
-Flake Pilot is a project in its early stages. Feedback
-is very much welcome.
-
+Feedback is very much welcome.

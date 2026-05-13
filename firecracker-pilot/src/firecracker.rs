@@ -281,13 +281,19 @@ fn run_creation(
             vm_overlay_file_fd.write_all(&[0])?;
 
             // Create filesystem
-            let mut mkfs = Command::new("mkfs.ext2");
+            let mut mkfs = Command::new("/usr/sbin/mkfs.ext2");
             mkfs.arg("-F")
                 .arg(&vm_overlay_file);
             if Lookup::is_debug() {
                 debug!("{:?} {:?}", mkfs.get_program(), mkfs.get_args());
             }
-            mkfs.perform()?;
+            match mkfs.perform() {
+                Ok(_) => { },
+                Err(error) => {
+                    error!("Failed to create overlay: {error:?}");
+                    fs::remove_file(&vm_overlay_file)?;
+                }
+            }
         }
     }
 

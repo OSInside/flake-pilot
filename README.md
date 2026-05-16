@@ -111,13 +111,19 @@ the ```ec2``` subcommand.
 
 ```bash
 flake-ctl podman register \
-    --app /usr/bin/joe \
+    --app $HOME/joe \
     --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
     --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
     --target $HOME/joe
 
 joe
 ```
+
+This creates ```$HOME/joe``` which is a simple but nice editor. The launch
+of the container requires a provision step in which the base container gets
+mounted and the delta container is layered on top of it. This action
+unfortunately requires root privileges and is forwarded to the system's
+```sudo``` binary.
 
 ### Register gemini AI as a container app named: ok-google <a name="three"/>
 

@@ -114,7 +114,7 @@ flake-ctl podman register \
     --app $HOME/joe \
     --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
     --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
-    --target $HOME/joe
+    --target /usr/bin/joe
 
 joe
 ```

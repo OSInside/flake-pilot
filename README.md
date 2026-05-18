@@ -152,10 +152,19 @@ place. The app registration uses the mounted volume to store its
 data persistently on the hosts ```~/ai``` directory.
 
 **_NOTE:_** for deeper isolation consider to use ```krun``` instead
-of the default podman runtime. To activate krun pass the option
-```--opt "\--runtime=krun"``` to the flake registration. krun uses
-KVM virtualization and therefore provides a deeper isolation than the
-default namespaces-based isolation of podman.
+of the default podman runtime. To activate krun create the file
+```/etc/containers/containers.conf``` for a system wide setup or
+```$HOME/.config/containers/containers.conf``` for a user specific
+setup and place the following content:
+
+```bash
+[engine]
+runtime = "krun"
+```
+
+krun uses KVM virtualization and therefore provides a deeper isolation
+than the default namespaces-based isolation of podman. krun as of today
+is packaged as part of the ```crun``` package.
 
 ### Register a shell as a firecracker VM app named: fireshell <a name="four"/>
 

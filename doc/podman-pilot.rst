@@ -144,9 +144,9 @@ OPTIONS
   This allows users to distribute the exact same program call to different
   instances when using a non resume based flake setup.
 
-%silent
+%progress
 
-  This stops the progress spinner to be displayed
+  Show a progress spinner as long as the pilot provisions
 
 %ignore_sync_error
 

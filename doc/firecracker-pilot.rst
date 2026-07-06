@@ -148,9 +148,9 @@ OPTIONS
   between guest and host in a resume based flake setup. By default
   firecracker-pilot calculates a port number itself.
 
-%silent
+%progress
 
-  This stops the progress spinner to be displayed
+  Show a progress spinner as long as the pilot provisions
 
 DEBUGGING
 ---------

@@ -223,7 +223,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     // Setup VM...
     let pilot_options = Lookup::get_pilot_run_options();
     let mut spinner = None;
-    if ! pilot_options.contains_key("%silent") {
+    if pilot_options.contains_key("%progress") {
         spinner = Some(
             Spinner::new_with_stream(
                 spinners::Line, "Launching flake...",

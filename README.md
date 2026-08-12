@@ -8,7 +8,7 @@
 3. [Examples](#examples)
     1. [Register Amazon's SDK utility as a container app named: aws](#one)
     2. [Register an editor app as a delta container named: joe](#two)
-    3. [Register gemini AI as a container app named: ok-google](#three)
+    3. [Register claude AI as a container app named: claude](#three)
     4. [Register a shell as a firecracker VM app named: fireshell](#four)
     5. [Register claude AI as firecracker VM app named: claude](#five)
         1. [Firecracker Networking](#networking)
@@ -125,35 +125,58 @@ mounted and the delta container is layered on top of it. This action
 unfortunately requires root privileges and is forwarded to the system's
 ```sudo``` binary.
 
-### Register gemini AI as a container app named: ok-google <a name="three"/>
+### Register claude AI as a container app named: claude <a name="three"/>
 
 ```bash
-mkdir -p ~/ai
+mkdir -p ~/ai ~/bin
+
+export PATH=$PATH:$HOME/bin
 
 flake-ctl podman --user register \
-    --app $HOME/ok-google \
-    --target /usr/local/bin/gemini \
-    --container public.ecr.aws/b9k1j9y6/ai/gemini:latest \
+    --app $HOME/bin/claude \
+    --target /bin/bash \
+    --container public.ecr.aws/b9k1j9y6/ai/claude:latest \
     --resume \
     --opt "\--net host" \
-    --opt "\--interactive" \
-    --opt "\--workdir /root/ai" \
-    --opt "\--volume %HOME/ai:/root/ai" \
-    --opt "\-e GEMINI_API_KEY=YOUR_KEY_HERE"
+    --opt "\-ti" \
+    --opt "\--workdir %HOME/ai" \
+    --opt "\--volume %HOME/ai:%HOME/ai" \
+    --opt "\-e HOME=%HOME"
 
-ok-google "What is the capital of Germany?"
+claude
 ```
 
-This pulls the gemini container from the ai space of a public ECR
+This pulls the claude container from the ai space of a public ECR
 which we use to offer nightly builds of the most popular AI tools.
-The gemini API key can be added as an environment option to this
-container such that on startup the authentication is already in
-place. The app registration uses the mounted volume to store its
-data persistently on the hosts ```~/ai``` directory.
+The registered flake just starts an isolated shell if you call: claude.
+further calls of claude will run in the same container instance due to
+the --resume option. The ai directory is the only path shared from the
+host with the container.
 
-**_NOTE:_** for deeper isolation consider to use ```krun``` instead
-of the default podman runtime. To activate krun pass the option
-```--opt "\--runtime=krun"``` to the flake registration.
+**_NOTE:_** For deeper isolation based on a VM you can either use
+the firecracker pilot from flake-pilot or the krun runtime with podman
+which gives isolation based on KVM and should be preferred for AI workloads.
+Please make sure to install the ```crun``` package which also provides krun.
+The krun OCI handler however, does not support the exec command. This
+limitation exists because libkrun runs workloads inside isolated microVMs,
+and there is no built-in mechanism or agent inside the lightweight
+virtual machine to spawn and inject new secondary processes. Because
+of this a krun based app registration cannot use the **resume** feature
+and looks as follows:
+
+```bash
+flake-ctl podman --user register \
+    --app $HOME/bin/claude \
+    --target /bin/bash \
+    --container public.ecr.aws/b9k1j9y6/ai/claude:latest \
+    --opt "\--net host" \
+    --opt "\--runtime=krun" \
+    --opt "\-ti" \
+    --opt "\--workdir %HOME/ai" \
+    --opt "\--volume %HOME/ai:%HOME/ai" \
+    --opt "\-e HOME=%HOME"
+```
+
 To switch the podman runtime in a user or system wide scope create the file
 ```/etc/containers/containers.conf``` for a system wide setup or
 ```$HOME/.config/containers/containers.conf``` for a user specific
@@ -163,10 +186,6 @@ setup and place the following content:
 [engine]
 runtime = "krun"
 ```
-
-krun uses KVM virtualization and therefore provides a deeper isolation
-than the default namespaces-based isolation of podman. krun as of today
-is packaged as part of the ```crun``` package.
 
 ### Register a shell as a firecracker VM app named: fireshell <a name="four"/>
 

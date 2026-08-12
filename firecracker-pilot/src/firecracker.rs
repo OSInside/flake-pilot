@@ -742,7 +742,7 @@ pub fn create_firecracker_config(
         firecracker_config.machine_config.vcpu_count = vcpu_count;
     }
     if Lookup::is_debug() {
-        debug!("{}", &serde_json::to_string(&firecracker_config)?);
+        debug!("{}", serde_json::to_string(&firecracker_config)?);
     }
     serde_json::to_writer(
         config_file, &firecracker_config
@@ -990,7 +990,7 @@ pub fn mount_vm(
         .arg("overlayfs")
         .arg("-o")
         .arg(format!("lowerdir={},upperdir={}/{},workdir={}/{}",
-            &image_mount_point,
+            image_mount_point,
             sub_dir, defaults::OVERLAY_UPPER,
             sub_dir, defaults::OVERLAY_WORK
         ))
@@ -1017,7 +1017,7 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
         let mut umount = user.run("umount");
         umount.stderr(Stdio::null());
         umount.stdout(Stdio::null());
-        umount.arg(format!("{}/{}", &sub_dir, &mount_point));
+        umount.arg(format!("{}/{}", sub_dir, mount_point));
         if Lookup::is_debug() {
             debug!("{:?} {:?}", umount.get_program(), umount.get_args());
         }

@@ -248,9 +248,9 @@ pub fn print_container_info(container: &str) {
     if Path::new(&info_file).exists() {
         match fs::read_to_string(&info_file) {
             Ok(data) => {
-                println!("{}", &String::from_utf8_lossy(
-                    data.as_bytes()
-                ).to_string());
+                println!(
+                    "{}", String::from_utf8_lossy(data.as_bytes())
+                );
             },
             Err(error) => {
                 // info_file file exists but could not be read

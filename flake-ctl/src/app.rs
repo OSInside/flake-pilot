@@ -61,7 +61,7 @@ pub fn register(
     match fs::create_dir_all(host_app_dir) {
         Ok(dir) => dir,
         Err(error) => {
-            error!("Failed creating: {}: {:?}", &host_app_dir, error);
+            error!("Failed creating: {}: {:?}", host_app_dir, error);
             return false;
         }
     };
@@ -70,7 +70,7 @@ pub fn register(
         Err(error) => {
             error!(
                 "Error while creating symlink \"{} -> {}\": {:?}",
-                host_app_path, &engine, error
+                host_app_path, engine, error
             );
             return false;
         }
@@ -83,12 +83,12 @@ pub fn register(
         .to_str()
         .unwrap();
     let app_config_dir = format!(
-        "{}/{}.d", get_flakes_dir(usermode), &app_basename
+        "{}/{}.d", get_flakes_dir(usermode), app_basename
     );
     match fs::create_dir_all(&app_config_dir) {
         Ok(dir) => dir,
         Err(error) => {
-            error!("Failed creating: {}: {:?}", &app_config_dir, error);
+            error!("Failed creating: {}: {:?}", app_config_dir, error);
             return false;
         }
     }
@@ -135,7 +135,7 @@ pub fn create_container_config(
         .to_str()
         .unwrap();
     let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
     );
     match app_config::AppConfig::save_container(
         Path::new(&app_config_file),
@@ -190,7 +190,7 @@ pub fn create_vm_config(
         .to_str()
         .unwrap();
     let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(false), &app_basename
+        "{}/{}.yaml", get_flakes_dir(false), app_basename
     );
     match app_config::AppConfig::save_vm(
         Path::new(&app_config_file),
@@ -236,10 +236,10 @@ pub fn remove(
     // sanity checks
     let app_basename = basename(&app.to_string());
     let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), &app_basename
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
     );
     let app_config_dir = format!(
-        "{}/{}.d", get_flakes_dir(usermode), &app_basename
+        "{}/{}.d", get_flakes_dir(usermode), app_basename
     );
     let config_file_exists = Path::new(&config_file).exists();
     let app_config_dir_exists = Path::new(&app_config_dir).exists();

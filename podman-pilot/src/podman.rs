@@ -646,7 +646,7 @@ pub fn sync_host(
     host to the target path
     !*/
     let mut removed_files_contents = String::new();
-    let files_from = format!("{}/{}", &target, from);
+    let files_from = format!("{}/{}", target, from);
     let mut temp_files_from = NamedTempFile::new()?;
     removed_files.seek(SeekFrom::Start(0))?;
     removed_files.read_to_string(&mut removed_files_contents)?;
@@ -667,7 +667,7 @@ pub fn sync_host(
     }
     call.arg("--files-from").arg(&files_from)
         .arg("/")
-        .arg(format!("{}/", &target));
+        .arg(format!("{}/", target));
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
@@ -842,7 +842,7 @@ pub fn build_system_dependencies(
     contains code to build up a list of files that needs
     to be provisioned from the host
     !*/
-    let system_deps = format!("{}/{}", &target, dependency_file);
+    let system_deps = format!("{}/{}", target, dependency_file);
     if exists(&system_deps, User::ROOT)? {
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
@@ -892,7 +892,7 @@ pub fn update_removed_files(
     Take the contents of the given removed_file and append it
     to the accumulated_file
     !*/
-    let host_deps = format!("{}/{}", &target, defaults::HOST_DEPENDENCIES);
+    let host_deps = format!("{}/{}", target, defaults::HOST_DEPENDENCIES);
     if exists(&host_deps, User::ROOT)? {
         if Lookup::is_debug() {
             debug!("Adding host deps from {host_deps}");

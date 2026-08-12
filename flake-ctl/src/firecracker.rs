@@ -70,7 +70,7 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
                             Err(error) => {
                                 error!(
                                     "Failed to set 0o777 bits: {} {}",
-                                    &subdir, error
+                                    subdir, error
                                 );
                                 ok = false
                             }
@@ -78,14 +78,14 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
                     },
                     Err(error) => {
                         error!(
-                            "Failed to fetch attributes: {} {}", &subdir, error
+                            "Failed to fetch attributes: {} {}", subdir, error
                         );
                         ok = false
                     }
                 }
             },
             Err(error) => {
-                error!("Error creating directory {}: {}", &subdir, error);
+                error!("Error creating directory {}: {}", subdir, error);
                 ok = false
             }
         }

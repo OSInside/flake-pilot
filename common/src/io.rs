@@ -47,10 +47,10 @@ impl IO {
             );
             let output = call.perform()?;
             FlakeLog::debug(
-                &format!("{}", &String::from_utf8_lossy(&output.stdout))
+                &format!("{}", String::from_utf8_lossy(&output.stdout))
             );
             FlakeLog::debug(
-                &format!("{}", &String::from_utf8_lossy(&output.stderr))
+                &format!("{}", String::from_utf8_lossy(&output.stderr))
             );
         }
         for path in path_includes {
@@ -80,10 +80,10 @@ impl IO {
         );
         let output = call.output()?;
         FlakeLog::debug(
-            &format!("{}", &String::from_utf8_lossy(&output.stdout))
+            &format!("{}", String::from_utf8_lossy(&output.stdout))
         );
         FlakeLog::debug(
-            &format!("{}", &String::from_utf8_lossy(&output.stderr))
+            &format!("{}", String::from_utf8_lossy(&output.stderr))
         );
         if !output.status.success() {
             return Err(FlakeError::SyncFailed)

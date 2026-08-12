@@ -398,12 +398,12 @@ fn main() {
         // run regular command and close vm
         if do_exec {
             // replace ourselves
-            debug(&format!("EXEC: {} -> {:?}", &args[0], call.get_args()));
+            debug(&format!("EXEC: {} -> {:?}", args[0], call.get_args()));
             let _ = call.exec();
         } else {
             // call a command and keep control
             debug(&format!(
-                "SCI CALL: {} -> {:?}", &args[0], call.get_args()
+                "SCI CALL: {} -> {:?}", args[0], call.get_args()
             ));
             let _ = call.status();
         }

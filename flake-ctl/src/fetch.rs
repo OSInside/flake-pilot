@@ -20,6 +20,7 @@
 //
 use std::io::{Error, ErrorKind};
 use std::cmp::min;
+use std::env;
 use std::fs::File;
 use std::io::Write;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -76,8 +77,28 @@ pub async fn send_request(
 ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     /*!
     Send GET request to the specified url and return response object
+
+    The data fetched here becomes the rootfs and the kernel of a
+    VM. Downloading it over a transport that provides no integrity
+    and no authenticity of the server allows an attacker on the
+    network path to replace it. Therefore only https is used unless
+    the caller explicitly asks for something else by setting the
+    FLAKE_ALLOW_INSECURE_TRANSPORT environment variable
     !*/
+    let allow_insecure = env::var("FLAKE_ALLOW_INSECURE_TRANSPORT").is_ok();
+    if ! allow_insecure && ! url.starts_with("https://") {
+        return Err(
+            Box::new(Error::new(ErrorKind::InvalidInput, format!(
+                "Refusing to fetch '{url}' over an insecure transport. \
+                Use an https URL or set FLAKE_ALLOW_INSECURE_TRANSPORT \
+                if the source can be trusted"
+            )))
+        )
+    }
     let client = reqwest::Client::builder()
+        // also applies to redirects, an https URL must not be
+        // redirected to a plain http location
+        .https_only(! allow_insecure)
         .build()?;
 
     let response = client

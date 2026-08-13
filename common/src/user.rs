@@ -61,8 +61,29 @@ impl User<'_> {
     }
 
     pub fn run<S: AsRef<OsStr>>(&self, command: S) -> Command {
+        /*!
+        Call command via sudo
+
+        The environment of the caller is not passed along. Handing
+        the environment of an unprivileged caller to a program
+        running as root allows to influence that program in ways
+        the sudo rule for it never intended
+        !*/
+        self.run_with_env(command, &[])
+    }
+
+    pub fn run_with_env<S: AsRef<OsStr>>(
+        &self, command: S, keep_env: &[&str]
+    ) -> Command {
+        /*!
+        Call command via sudo, preserving the given environment
+        variables. Only variables the called program really needs
+        should be listed here
+        !*/
         let mut c = Command::new("sudo");
-        c.arg("--preserve-env");
+        if ! keep_env.is_empty() {
+            c.arg(format!("--preserve-env={}", keep_env.join(",")));
+        }
         if let Some(name) = self.name {
             c.arg("--user").arg(name);
         }

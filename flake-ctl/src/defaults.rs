@@ -42,6 +42,8 @@ pub const FIRECRACKER_KERNEL_NAME:&str =
     "kernel";
 pub const FIRECRACKER_ROOTFS_NAME:&str =
     "rootfs";
+pub const FIRECRACKER_CHECKSUM_NAME:&str =
+    "checksum";
 pub const FIRECRACKER_SCI:&str =
     "/usr/lib/flake-pilot/sci";
 pub const PODMAN_ENGINE:&str =
@@ -54,3 +56,5 @@ pub const FLAKE_LIST_COLUMN_SPACING:&str =
     "  ";
 pub const FLAKE_LIST_NO_VALUE:&str =
     "-";
+pub const SHA256_TOOL:&str =
+    "sha256sum";

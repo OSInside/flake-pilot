@@ -64,6 +64,22 @@ impl Lookup {
         run
     }
 
+    pub fn is_safe_instance_name(name: &str) -> bool {
+        /*!
+        Check the given @NAME pilot argument
+
+        The instance name becomes part of file names, socket names
+        and network device names. Therefore only characters which
+        are safe to be used in these names are allowed
+        !*/
+        if name.is_empty() || name.len() > 64 || ! name.starts_with('@') {
+            return false
+        }
+        name.chars().all(
+            |c| c.is_ascii_alphanumeric() || matches!(c, '@' | '=' | '_' | '-')
+        )
+    }
+
     pub fn get_pilot_run_options() -> HashMap<String, String> {
         /*!
         read runtime options which are only meant to be used for the

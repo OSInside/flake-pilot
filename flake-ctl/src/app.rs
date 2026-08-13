@@ -365,13 +365,35 @@ pub fn app_names(usermode: bool) -> Vec<String> {
                         app_name.push_str(value);
                         flakes.push(app_name);
                     }
-                    None => error!("Ignoring invalid config_file format: {base_config_file}"),
+                    None => error!(
+                        "Ignoring invalid config_file: {base_config_file}"
+                    ),
                 }
             }
-            Err(error) => error!("Error while traversing flakes folder: {error:?}"),
+            Err(error) => error!(
+                "Error while traversing flakes folder: {error:?}"
+            ),
         }
     }
     flakes
+}
+
+pub fn app_details(app: &str, usermode: bool) -> app_config::AppConfig {
+    /*!
+    Read app config for given app base name
+    !*/
+    let config_file = format!("{}/{}.yaml", get_flakes_dir(usermode), app);
+    match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
+        Ok(app_conf) => {
+            app_conf
+        },
+        Err(error) => {
+            panic!(
+                "Failed reading app config file: {}: {:?}",
+                config_file, error
+            );
+        }
+    }
 }
 
 pub fn purge(app: &str, engine: &str, usermode: bool) {

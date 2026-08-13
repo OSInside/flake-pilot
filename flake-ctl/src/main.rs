@@ -62,7 +62,19 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 println!("No application(s) registered");
             } else {
                 for app in app_names {
-                    println!("- {app}");
+                    let config = format!(
+                        "{}/{}.yaml", get_flakes_dir(user), app      
+                    );
+                    let details = app::app_details(&app, user);
+                    if let Some(ref container_conf) = details.container {
+                        let host_app_path = &container_conf.host_app_path;
+                        println!("- {app}|{config}|{host_app_path}|podman");
+                    } else if let Some(ref vm_conf) = details.vm {
+                        let host_app_path = &vm_conf.host_app_path;
+                        println!("- {app}|{config}|{host_app_path}|firecracker");
+                    } else {
+                        println!("- {app}|{config}");
+                    }
                 }
             }
         },

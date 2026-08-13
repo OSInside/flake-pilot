@@ -307,13 +307,25 @@ impl AppConfig {
         config_file: &Path
     ) -> Result<AppConfig, GenericError> {
         /*!
-        new creates the new AppConfig class by reading and
+        Returns an instance of AppConfig by reading and
         deserializing the data from a given yaml configuration
         !*/
-        let config = std::fs::File::open(config_file)
-            .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
+        let base_config = std::fs::read_to_string(config_file);
+        let mut config_dir = config_file.display().to_string();
+        config_dir = config_dir.replace(".yaml", ".d");
+        let mut extra_yamls: Vec<_> = std::fs::read_dir(config_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|x| x.path()).collect();
+        extra_yamls.sort();
+        let full_yaml: String = base_config.into_iter().chain(
+            extra_yamls.into_iter().flat_map(std::fs::read_to_string)
+        ).collect();
         let yaml_config: AppConfig =
-            serde_yaml::from_reader(config).expect("Failed to import config file");
+            serde_yaml::from_str(&full_yaml).expect(
+                "Failed to import config file"
+            );
         Ok(yaml_config)
     }
 }

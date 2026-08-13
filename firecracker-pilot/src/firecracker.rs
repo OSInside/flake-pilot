@@ -36,6 +36,8 @@ use std::path::Path;
 use std::process::{Stdio, id};
 use std::env;
 use std::fs;
+use std::fs::DirBuilder;
+use std::os::unix::fs::DirBuilderExt;
 use crate::config::{config, RuntimeSection, EngineSection};
 use tempfile::{NamedTempFile, tempdir};
 use std::io::{self, Write, SeekFrom, Seek};
@@ -182,9 +184,30 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
             )
         })
     }
+    // Read and check optional @NAME pilot arguments. The instance
+    // name is used to construct file, socket and network device
+    // names and is therefore only allowed to contain characters
+    // which are safe to be used in such names
+    for instance_name in env::args().skip(1).filter(
+        |arg| arg.starts_with('@')
+    ) {
+        if ! Lookup::is_safe_instance_name(&instance_name) {
+            return Err(FlakeError::IOError {
+                kind: "Invalid instance name".to_string(),
+                message: format!(
+                    "The instance name {instance_name} contains characters \
+                    which are not allowed"
+                )
+            })
+        }
+    }
+
+    // Make sure meta dirs exists
+    init_meta_dirs()?;
+
     // setup VM ID file name
     let vm_id_file_path = get_meta_file_name(
-        program_name, &get_firecracker_ids_dir(false), "vmid"
+        program_name, &get_ids_dir()?, "vmid"
     );
 
     // get flake config sections
@@ -196,9 +219,6 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     let tar_includes = config().tars();
     let path_includes = config().paths();
     let has_includes = !tar_includes.is_empty() || !path_includes.is_empty();
-
-    // Make sure meta dirs exists
-    init_meta_dirs()?;
 
     // Check early return condition
     if Path::new(&vm_id_file_path).exists() && gc_meta_files(
@@ -259,17 +279,12 @@ fn run_creation(
     has_includes: bool
 ) -> Result<(String, String), FlakeError> {
     // Create initial vm_id_file with process ID set to 0
-    std::fs::File::create(vm_id_file_path)?.write_all("0".as_bytes())?;
+    IO::create_meta_file(vm_id_file_path)?.write_all("0".as_bytes())?;
     let result = ("0".to_owned(), vm_id_file_path.to_owned());
 
     // Setup root overlay if configured
     let vm_overlay_file = get_meta_file_name(
-        program_name,
-        &format!("{}/{}",
-            env::var("HOME").unwrap_or("/tmp".to_string()),
-            defaults::FIRECRACKER_OVERLAY_DIR
-        ),
-        "ext2"
+        program_name, &get_overlay_dir()?, "ext2"
     );
     if let Some(overlay_size) = engine_section.overlay_size {
         let overlay_size = overlay_size.parse::<ByteUnit>().expect(
@@ -371,7 +386,7 @@ pub fn start(
 }
 
 pub fn call_instance(
-    config_file: &NamedTempFile, vm_id_file: &String, is_blocking: bool
+    config_file: &NamedTempFile, vm_id_file: &str, is_blocking: bool
 ) -> Result<(), FlakeError> {
     /*!
     Run firecracker with specified configuration
@@ -397,7 +412,7 @@ pub fn call_instance(
     if Lookup::is_debug() {
         debug!("PID {pid}")
     }
-    File::create(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
+    IO::create_meta_file(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
     if is_blocking {
         handle_output(child.wait_with_output(), firecracker.get_args())?;
     }
@@ -428,12 +443,10 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
     Check if instance connection is OK
     !*/
     let mut retry_count = 0;
-    let vsock_uds_path = format!(
-        "{}{}.sock",
-        defaults::FIRECRACKER_VSOCK_PREFIX,
-        get_meta_name(program_name)
-    );
-    chmod(&vsock_uds_path, "777", User::ROOT)?;
+    let vsock_uds_path = get_vsock_uds_path(program_name)?;
+    // The socket provides command execution inside of the VM.
+    // Only the owner of the VM instance is allowed to talk to it
+    chmod(&vsock_uds_path, "600", User::ROOT)?;
     loop {
         if retry_count == defaults::RETRIES {
             if Lookup::is_debug() {
@@ -477,7 +490,9 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
     }
 }
 
-pub fn send_command_to_instance(program_name: &String, exec_port: u32) -> i32 {
+pub fn send_command_to_instance(
+    program_name: &str, vsock_uds_path: &str, exec_port: u32
+) -> i32 {
     /*!
     Send command to the VM via a vsock
     !*/
@@ -486,11 +501,6 @@ pub fn send_command_to_instance(program_name: &String, exec_port: u32) -> i32 {
     let mut run: Vec<String> = vec![get_target_app_path(program_name)];
 
     run = Lookup::get_run_cmdline(run, false);
-    let vsock_uds_path = format!(
-        "{}{}.sock",
-        defaults::FIRECRACKER_VSOCK_PREFIX,
-        get_meta_name(program_name)
-    );
     loop {
         status_code = 1;
         if retry_count == defaults::RETRIES {
@@ -499,7 +509,7 @@ pub fn send_command_to_instance(program_name: &String, exec_port: u32) -> i32 {
             }
             return status_code
         }
-        match UnixStream::connect(&vsock_uds_path) {
+        match UnixStream::connect(vsock_uds_path) {
             Ok(mut stream) => {
                 stream.write_all(
                     format!("CONNECT {}\n", defaults::VM_PORT).as_bytes()
@@ -556,10 +566,7 @@ pub fn execute_command_at_instance(
     Send command to a vsock connected to a running instance
     !*/
     let mut retry_count = 0;
-    let vsock_uds_path = format!(
-        "{}{}.sock",
-        defaults::FIRECRACKER_VSOCK_PREFIX, get_meta_name(program_name)
-    );
+    let vsock_uds_path = get_vsock_uds_path(program_name)?;
 
     // wait for UDS socket to appear
     loop {
@@ -588,9 +595,10 @@ pub fn execute_command_at_instance(
     // spawn the listener and wait for sci to run the command
     let exec_port = get_exec_port();
     let command_socket = &format!("{vsock_uds_path}_{exec_port}");
+    IO::no_symlink(command_socket)?;
     let thread_handle = stream_listener(command_socket);
 
-    send_command_to_instance(program_name, exec_port);
+    send_command_to_instance(program_name, &vsock_uds_path, exec_port);
 
     let _ = thread_handle.join();
     Ok(())
@@ -672,12 +680,7 @@ pub fn create_firecracker_config(
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {
         let vm_overlay_file = get_meta_file_name(
-            program_name,
-            &format!("{}/{}",
-                env::var("HOME").unwrap_or("/tmp".to_string()),
-                defaults::FIRECRACKER_OVERLAY_DIR
-            ),
-            "ext2"
+            program_name, &get_overlay_dir()?, "ext2"
         );
 
         let cache_type =
@@ -726,11 +729,7 @@ pub fn create_firecracker_config(
 
     // set vsock name
     firecracker_config.vsock.guest_cid = defaults::VM_CID;
-    firecracker_config.vsock.uds_path = format!(
-        "{}{}.sock",
-        defaults::FIRECRACKER_VSOCK_PREFIX,
-        get_meta_name(program_name)
-    );
+    firecracker_config.vsock.uds_path = get_vsock_uds_path(program_name)?;
 
     // set mem_size_mib
     if let Some(mem_size_mib) = engine_section.mem_size_mib {
@@ -763,16 +762,65 @@ pub fn get_target_app_path(program_name: &str) -> String {
 
 }
 
-pub fn init_meta_dirs() -> Result<(), CommandError> {
-    [
-        &format!("{}/{}",
-            env::var("HOME").unwrap_or("/tmp".to_string()),
-            defaults::FIRECRACKER_OVERLAY_DIR
+pub fn get_ids_dir() -> Result<String, FlakeError> {
+    /*!
+    Provide the private directory of the calling user to store
+    the VM ID files and the sockets to talk to the VM instances
+    !*/
+    IO::private_dir(&get_firecracker_ids_dir(false), User::ROOT)
+}
+
+pub fn get_overlay_dir() -> Result<String, FlakeError> {
+    /*!
+    Provide the directory to store the VM overlay images
+
+    The overlay images are stored in the home directory of the
+    calling user. If there is no home directory the private
+    meta data directory of the user is used. A directory shared
+    with other users must not be used because the overlay image
+    becomes the root filesystem of the VM
+    !*/
+    match env::var("HOME") {
+        Ok(home) => Ok(
+            format!("{}/{}", home, defaults::FIRECRACKER_OVERLAY_DIR)
         ),
-        &get_firecracker_ids_dir(false)
-    ].iter()
-        .filter(|path| !Path::new(path).is_dir())
-        .try_for_each(|path| mkdir(path, "777", User::ROOT))
+        Err(_) => Ok(
+            format!("{}/{}", get_ids_dir()?, defaults::FIRECRACKER_STORAGE_DIR)
+        )
+    }
+}
+
+pub fn get_vsock_uds_path(program_name: &String) -> Result<String, FlakeError> {
+    /*!
+    Provide the path of the socket used to talk to the VM instance
+
+    The socket allows to run commands inside of the VM and is
+    therefore placed in the private directory of the calling user
+    !*/
+    Ok(format!(
+        "{}/{}{}.sock",
+        get_ids_dir()?,
+        defaults::FIRECRACKER_VSOCK_PREFIX,
+        get_meta_name(program_name)
+    ))
+}
+
+pub fn init_meta_dirs() -> Result<(), FlakeError> {
+    /*!
+    Create meta data directory structure
+
+    The directories are created for and owned by the calling user.
+    Meta data of one user must not be modifiable by another user
+    !*/
+    get_ids_dir()?;
+    let overlay_dir = get_overlay_dir()?;
+    if ! Path::new(&overlay_dir).is_dir() {
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&overlay_dir)?;
+    }
+    Ok(())
 }
 
 pub fn vm_running(vmid: &String) -> Result<bool, FlakeError> {
@@ -846,11 +894,7 @@ pub fn gc_meta_files(
                         error!("Failed to remove VMID: {error:?}")
                     }
                 }
-                let vsock_uds_path = format!(
-                    "{}{}.sock",
-                    defaults::FIRECRACKER_VSOCK_PREFIX,
-                    get_meta_name(program_name)
-                );
+                let vsock_uds_path = get_vsock_uds_path(program_name)?;
                 if Path::new(&vsock_uds_path).exists() {
                     if Lookup::is_debug() {
                         debug!("Deleting {vsock_uds_path}");
@@ -859,10 +903,7 @@ pub fn gc_meta_files(
                 }
                 let vm_overlay_file = format!(
                     "{}/{}",
-                    &format!("{}/{}",
-                        env::var("HOME").unwrap_or("/tmp".to_string()),
-                        defaults::FIRECRACKER_OVERLAY_DIR
-                    ),
+                    get_overlay_dir()?,
                     Path::new(&vm_id_file)
                         .file_name()
                         .and_then(OsStr::to_str)
@@ -895,7 +936,7 @@ pub fn gc(program_name: &String) -> Result<(), FlakeError> {
     /*!
     Garbage collect VMID files for which no VM exists anymore
     !*/
-    let vmid_file_names: Vec<_> = fs::read_dir(get_firecracker_ids_dir(false))?
+    let vmid_file_names: Vec<_> = fs::read_dir(get_ids_dir()?)?
         .filter_map(|entry| entry.ok())
         .filter_map(|x| x.path()
             .to_str()
@@ -918,14 +959,15 @@ pub fn gc(program_name: &String) -> Result<(), FlakeError> {
 
 pub fn delete_file(filename: &String) -> bool {
     /*!
-    Delete file via sudo
+    Delete file
+
+    The deletion is done in process. Calling out to rm would
+    resolve the program through the callers PATH
     !*/
-    let mut call = Command::new("rm");
-    call.arg("-f").arg(filename);
-    match call.status() {
+    match fs::remove_file(filename) {
         Ok(_) => { },
         Err(error) => {
-            error!("Failed to rm: {filename}: {error:?}");
+            error!("Failed to remove: {filename}: {error:?}");
             return false
         }
     }

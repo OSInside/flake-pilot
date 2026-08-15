@@ -224,8 +224,13 @@ pub fn create(
     // Garbage collect occasionally
     gc(user)?;
 
+    let pilot_options = Lookup::get_pilot_run_options();
+
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
+    let volume_pattern = Regex::new(
+        r"(?:^|\s)(?:--volume|-v)(?:\s*=\s*|\s+)([^\s:]+)"
+    ).unwrap();
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
         let mut arg_value = arg.to_string();
         // The value of a variable can contain another %VAR reference.
@@ -255,7 +260,22 @@ pub fn create(
                 );
             }
         }
-        app.arg(arg_value);
+        let mut use_option = true;
+        if pilot_options.contains_key("%ignore_missing_volume_path") {
+            if let Some(capture) = volume_pattern.captures(&arg_value.clone()) {
+                let host_volume_path = &capture.get(1).unwrap().as_str();
+                if ! Path::new(&host_volume_path).exists() {
+                    if Lookup::is_debug() {
+                        debug!("Volume path {} not found", host_volume_path);
+                        debug!("Call option {} skipped", arg_value);
+                    }
+                    use_option = false
+                }
+            }
+        }
+        if use_option {
+            app.arg(arg_value);
+        }
     };
 
     // set default runtime arguments if none configured
@@ -305,7 +325,6 @@ pub fn create(
     if Lookup::is_debug() {
         debug!("{:?} {:?}", app.get_program(), app.get_args());
     }
-    let pilot_options = Lookup::get_pilot_run_options();
     let mut spinner = None;
     if pilot_options.contains_key("%progress") {
         spinner = Some(

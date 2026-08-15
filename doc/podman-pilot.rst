@@ -156,6 +156,15 @@ OPTIONS
   even if there are files missing. This can lead to a non functional
   instance of course, you have been warned.
 
+%ignore_missing_volume_path
+
+  When provisioning a container with a shared volume setup
+  like --volume /host/path:/container/path or -v /host/path:/container/path,
+  the default action is to stop with an error when the host path does
+  not exist. This option allows to continue even if the host path is
+  missing. This can lead to a non functional instance of course, you
+  have been warned.
+
 %interactive
 
   Force interactive call style for processes like a shell.

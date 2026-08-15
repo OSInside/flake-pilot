@@ -173,6 +173,13 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %doc /usr/share/man/man8/flake-ctl.8.gz
 %doc /usr/share/man/man8/flake-ctl-list.8.gz
 
+%post
+if [ -d /tmp/flakes ];then
+    # make sure to move an eventually existing
+    # tmp flakes dir to sticky bit permissions
+    chmod 1777 /tmp/flakes
+fi
+
 %files -n flake-pilot-podman
 %config /etc/flakes/container-flake.yaml
 %config /etc/flakes/storage.conf

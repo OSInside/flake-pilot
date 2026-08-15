@@ -275,7 +275,14 @@ pub fn setup_podman_call(usermode: bool) -> Command {
     env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
     env::set_var("XDG_RUNTIME_DIR", &container_runroot);
     let mut call = Command::new("sudo");
-    call.arg("--preserve-env");
+    // Only the variables set above are handed over to the podman
+    // call. Passing the complete environment of the caller to a
+    // process running as root allows to influence that process in
+    // ways the sudo rule for it never intended
+    call.arg(format!(
+        "--preserve-env={}",
+        ["CONTAINERS_STORAGE_CONF", "XDG_RUNTIME_DIR"].join(",")
+    ));
     if usermode {
         call.arg("--user").arg(calling_user_name);
     }

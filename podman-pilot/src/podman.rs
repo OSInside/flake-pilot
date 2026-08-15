@@ -137,6 +137,17 @@ pub fn create(
     // https://rust-random.github.io/book/guide-seeding.html#fresh-entropy
     let (name_value, _): (Vec<_>, Vec<_>) = env::args()
         .skip(1).partition(|arg| arg.starts_with('@'));
+    for instance_name in &name_value {
+        if ! Lookup::is_safe_instance_name(instance_name) {
+            return Err(FlakeError::IOError {
+                kind: "Invalid instance name".to_string(),
+                message: format!(
+                    "The instance name {instance_name} contains characters \
+                    which are not allowed"
+                )
+            })
+        }
+    }
     let name = name_value.first().map(String::as_str).unwrap_or("");
     let suffix = if name.is_empty() && ! (resume || attach) {
         let mut rng = ChaCha20Rng::from_os_rng();
@@ -173,32 +184,33 @@ pub fn create(
         root.status()?;
     }
 
-    let container_cid_file = format!(
-        "{}/{}{}_{}.cid",
-        get_podman_ids_dir(usermode), program_name, suffix,
-        calling_user_name.to_str().unwrap()
-    );
-
     // read podman storage setup
     let storage = read_storage_conf(usermode)?;
 
     // create storage paths
-    mkdir(storage.get("graphroot").unwrap(), "777", user)?;
+    mkdir(storage.get("graphroot").unwrap(), "755", user)?;
     let container_runroot = format!(
         "{}/{}",
         storage.get("runroot").unwrap(),
         calling_user_name.to_str().unwrap()
     );
-    mkdir(&container_runroot, "777", user)?;
+    mkdir(&container_runroot, "700", user)?;
+
+    // Make sure CID dir exists
+    let container_ids_dir = init_cid_dir(user)?;
+
+    let container_cid_file = format!(
+        "{}/{}{}_{}.cid",
+        container_ids_dir, program_name, suffix,
+        calling_user_name.to_str().unwrap()
+    );
+    IO::no_symlink(&container_cid_file)?;
 
     // init podman creation call
     let mut app = setup_podman_call(usermode);
     app.arg("create")
         .arg("--pull=newer")
         .arg("--cidfile").arg(&container_cid_file);
-
-    // Make sure CID dir exists
-    init_cid_dir(user)?;
 
     // Check early return condition in resume mode
     if Path::new(&container_cid_file).exists() &&
@@ -216,7 +228,21 @@ pub fn create(
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
         let mut arg_value = arg.to_string();
+        // The value of a variable can contain another %VAR reference.
+        // Expansion is therefore done repeatedly but only up to a
+        // fixed limit. Without it a variable value referencing itself
+        // would keep this loop running forever
+        let mut expansion_count = 0;
         while var_pattern.captures(&arg_value.clone()).is_some() {
+            expansion_count += 1;
+            if expansion_count > defaults::VAR_EXPANSION_LIMIT {
+                return Err(FlakeError::IOError {
+                    kind: "Invalid runtime option".to_string(),
+                    message: format!(
+                        "Too many variable expansions in: {arg}"
+                    )
+                })
+            }
             for capture in var_pattern.captures_iter(&arg_value.clone()) {
                 // replace %VAR placeholder(s) with the respective
                 // environment variable value if possible.
@@ -695,15 +721,13 @@ pub fn sync_host(
     Ok(())
 }
 
-pub fn init_cid_dir(user: User) -> Result<(), FlakeError> {
+pub fn init_cid_dir(user: User) -> Result<String, FlakeError> {
     /*!
-    Create meta data directory structure
+    Create meta data directory structure and return the private
+    directory of the calling user to store the CID files in
     !*/
     let usermode = user.get_name() != "root";
-    if ! Path::new(&get_podman_ids_dir(usermode)).is_dir() {
-        mkdir(&get_podman_ids_dir(usermode), "777", user)?;
-    }
-    Ok(())
+    IO::private_dir(&get_podman_ids_dir(usermode), user)
 }
 
 pub fn container_exists(cid: &str) -> Result<bool, FlakeError> {
@@ -841,6 +865,11 @@ pub fn build_system_dependencies(
     Check if container provides a /systemfiles script which
     contains code to build up a list of files that needs
     to be provisioned from the host
+
+    Note: The script is part of the container and is called
+    with the privileges needed to provision the container.
+    Registering a delta container therefore means to trust
+    the code that comes with it
     !*/
     let system_deps = format!("{}/{}", target, dependency_file);
     if exists(&system_deps, User::ROOT)? {
@@ -918,6 +947,7 @@ pub fn gc_cid_file(container_cid_file: &String) -> Result<bool, FlakeError> {
     if no longer present. Return a true value if the container
     exists, in any other case return false.
     !*/
+    IO::no_symlink(container_cid_file)?;
     let cid = fs::read_to_string(container_cid_file)?;
 
     if container_exists(&cid)? {
@@ -936,14 +966,14 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
     let paths;
-    let usermode = user.get_name() != "root";
-    match fs::read_dir(get_podman_ids_dir(usermode)) {
+    let container_ids_dir = init_cid_dir(user)?;
+    match fs::read_dir(&container_ids_dir) {
         Ok(result) => { paths = result },
         Err(error) => {
             return Err(FlakeError::IOError {
                 kind: format!("{:?}", error.kind()),
                 message: format!("fs::read_dir failed on {}: {}",
-                    get_podman_ids_dir(usermode), error
+                    container_ids_dir, error
                 )
             })
         }
@@ -972,7 +1002,14 @@ pub fn setup_podman_call(usermode: bool) -> Command {
     env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
     env::set_var("XDG_RUNTIME_DIR", &container_runroot);
     let mut call = Command::new("sudo");
-    call.arg("--preserve-env");
+    // Only the variables set above are handed over to the podman
+    // call. Passing the complete environment of the caller to a
+    // process running as root allows to influence that process in
+    // ways the sudo rule for it never intended
+    call.arg(format!(
+        "--preserve-env={}",
+        ["CONTAINERS_STORAGE_CONF", "XDG_RUNTIME_DIR"].join(",")
+    ));
     if usermode {
         call.arg("--user").arg(calling_user_name);
     } else {

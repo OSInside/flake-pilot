@@ -74,6 +74,18 @@ OPTIONS
 
   Single rootfs image to pull into local image store
 
+ENVIRONMENT
+-----------
+
+FLAKE_ALLOW_INSECURE_TRANSPORT
+
+  The images pulled here provide the root filesystem and the kernel
+  of a virtual machine. They are therefore only fetched via https.
+  If the image can only be reached through a transport that provides
+  no integrity and no authenticity of the server, e.g plain http,
+  setting this variable allows to use it. Only do this if the
+  connection to the image source can be trusted.
+
 EXAMPLE
 -------
 

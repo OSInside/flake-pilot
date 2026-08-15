@@ -24,12 +24,14 @@
 //
 use flakes::config::get_flakes_dir;
 use std::ffi::OsStr;
+use std::io::{self, Read};
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tempfile::tempdir;
 use std::path::Path;
 use std::borrow::Cow;
 use std::fs;
+use std::fs::File;
 
 use crate::defaults;
 use crate::{app, app_config};
@@ -64,12 +66,15 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
                 match fs::metadata(&subdir) {
                     Ok(attr) => {
                         let mut permissions = attr.permissions();
-                        permissions.set_mode(0o777);
+                        // The images in this directory are the root
+                        // filesystem and the kernel of a VM. They must
+                        // not be modifiable by everybody
+                        permissions.set_mode(0o755);
                         match fs::set_permissions(&subdir, permissions) {
                             Ok(_) => { },
                             Err(error) => {
                                 error!(
-                                    "Failed to set 0o777 bits: {} {}",
+                                    "Failed to set 0o755 bits: {} {}",
                                     subdir, error
                                 );
                                 ok = false
@@ -314,13 +319,18 @@ pub async fn pull_kis_image(
                     return result
                 }
             }
-            let mut kis_ok = 4;
+            let mut kis_ok = 3;
             for path in fs::read_dir(&work_dir).unwrap() {
                 let path = path.unwrap().path();
                 let extension = path.extension().unwrap();
-                if extension == OsStr::new("append") || extension == OsStr::new("md5") {
-                    fs::remove_file(&path).unwrap();
+                if extension == OsStr::new("sha256") {
+                    fs::rename(&path, format!("{}/{}",
+                        work_dir, defaults::FIRECRACKER_CHECKSUM_NAME
+                    )).unwrap();
                     kis_ok -= 1;
+                } else if extension == OsStr::new("append") {
+                    fs::remove_file(&path).unwrap();
+                    // unused
                 } else if extension == OsStr::new("initrd") {
                     fs::rename(&path, format!("{}/{}",
                         work_dir, defaults::FIRECRACKER_INITRD_NAME
@@ -343,6 +353,20 @@ pub async fn pull_kis_image(
                 return result
             }
 
+            // Verify the rootfs image against the checksum record
+            // that came with the archive
+            info!("Verifying image checksum...");
+            let image_checksum = fs::read_to_string(
+                format!("{}/{}", work_dir, defaults::FIRECRACKER_CHECKSUM_NAME)
+            ).unwrap_or_default().trim().to_string();
+            if ! verify_checksum(
+                &format!("{}/{}", work_dir, defaults::FIRECRACKER_ROOTFS_NAME),
+                &image_checksum
+            ) {
+                error!("Image checksum verification failed");
+                return result
+            }
+
             // Move to final firecracker image store
             if ! mv(&work_dir, &image_dir, "root") {
                 return result
@@ -354,6 +378,110 @@ pub async fn pull_kis_image(
         }
     }
     result
+}
+
+pub fn verify_checksum(image: &str, checksum_record: &str) -> bool {
+    /*!
+    Verify the given image against the sha256 checksum record
+    shipped inside of the KIS archive
+
+    The record is created by kiwi and has the format:
+
+        <sha256> <blocks> <blocksize>
+
+    A record which cannot be read or a missing checksum program
+    is reported but does not fail the operation. A checksum
+    which does not match the image does
+    !*/
+    let mut record = checksum_record.split_whitespace();
+    let expected_sum = match record.next() {
+        Some(expected_sum) => expected_sum,
+        None => {
+            warn!("No checksum record found, skipping verification");
+            return true
+        }
+    };
+    // If the record provides a block count the checksum was
+    // created over that amount of data and not over the
+    // complete file
+    let size = match (record.next(), record.next()) {
+        (Some(blocks), Some(blocksize)) => {
+            match (blocks.parse::<u64>(), blocksize.parse::<u64>()) {
+                (Ok(blocks), Ok(blocksize)) => Some(blocks * blocksize),
+                _ => None
+            }
+        },
+        _ => None
+    };
+    match checksum(image, size) {
+        Some(image_sum) => {
+            if image_sum != expected_sum {
+                error!(
+                    "Checksum mismatch for {image}: \
+                    expected {expected_sum}, got {image_sum}"
+                );
+                return false
+            }
+        },
+        None => {
+            warn!("Could not calculate checksum, skipping verification");
+        }
+    }
+    true
+}
+
+fn checksum(image: &str, size: Option<u64>) -> Option<String> {
+    /*!
+    Calculate the sha256 sum of the first size bytes of image.
+    If no size is given the complete file is read
+    !*/
+    let tool = defaults::SHA256_TOOL;
+    let file = match File::open(image) {
+        Ok(file) => file,
+        Err(error) => {
+            error!("Failed to open {image}: {error:?}");
+            return None
+        }
+    };
+    let mut reader: Box<dyn Read> = match size {
+        Some(size) => Box::new(file.take(size)),
+        None => Box::new(file)
+    };
+    let mut call = match Command::new(tool)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+    {
+        Ok(call) => call,
+        Err(error) => {
+            error!("Failed to execute {tool}: {error:?}");
+            return None
+        }
+    };
+
+    {
+        let mut stdin = call.stdin.take()?;
+        if let Err(error) = io::copy(&mut reader, &mut stdin) {
+            error!("Failed to send {image} to {tool}: {error:?}");
+            // the pipe is closed by the drop of stdin below,
+            // this lets the checksum tool terminate
+        }
+    }
+
+    match call.wait_with_output() {
+        Ok(output) => {
+            if ! output.status.success() {
+                error!("{tool} failed: {:?}", output.status);
+                return None
+            }
+            String::from_utf8_lossy(&output.stdout)
+                .split_whitespace().next().map(ToOwned::to_owned)
+        },
+        Err(error) => {
+            error!("Failed to read {tool} output: {error:?}");
+            None
+        }
+    }
 }
 
 pub fn mkdir(dirname: &String, user: &str) -> bool {

@@ -46,7 +46,9 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 
     let args = cli::parse_args();
 
-    mkdir(&get_flakes_dir(false), "777", User::ROOT)?;
+    // The flake registry is read by the pilots to learn how to run
+    // an application. It is therefore only writable by root
+    mkdir(&get_flakes_dir(false), "755", User::ROOT)?;
 
     match &args.command {
         // list

@@ -14,6 +14,7 @@
         1. [Firecracker Networking](#networking)
 4. [Application Setup](#setup)
 5. [How To Build Your Own App Images](#images)
+6. [Known Issues](#issues)
 
 ## Introduction <a name="introduction"/>
 
@@ -377,5 +378,26 @@ in the context of this documentation here:
 * https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers
 * https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker
 * https://github.com/OSInside/flake-pilot/tree/main/appstore/podman (https://gallery.ecr.aws/b9k1j9y6?page=1)
+
+## Known Issues <a name="issues"/>
+
+### selinux
+
+The security profiles of selinux often prevents operations
+done by the pilots. In case of trouble and to check if selinux
+might be the cause, try to temporarily disable selinux as follows:
+
+```bash
+sudo setenforce 0
+```
+
+For container based flakes, the selinux context of the container image
+might also be the cause of problems. In this case, try to run the container
+with the ```--security-opt label=disable``` option. This can be done by
+passing the following option to the flake registration command:
+
+```bash
+--opt "\--security-opt label=disable"
+```
 
 Feedback is very much welcome.

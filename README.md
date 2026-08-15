@@ -110,7 +110,7 @@ the ```ec2``` subcommand.
 ### Register an editor app as a delta container named: joe <a name="two"/>
 
 ```bash
-flake-ctl podman register \
+flake-ctl podman --user register \
     --app $HOME/joe \
     --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
     --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \

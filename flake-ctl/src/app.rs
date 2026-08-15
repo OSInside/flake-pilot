@@ -431,8 +431,10 @@ pub fn app_list(usermode: bool) -> Vec<FlakeInfo> {
             );
         } else if let Some(ref vm_conf) = details.vm {
             flake.engine = Some(defaults::FIRECRACKER_ENGINE.to_string());
-            flake.target = Some(vm_conf.name.to_string());
-            flake.host_app_path = Some(vm_conf.host_app_path.to_string());
+            flake.target = Some(vm_conf.target_app_path.to_string());
+            flake.host_app_path = Some(
+                vm_conf.host_app_path.to_string()
+            );
         }
         flakes.push(flake);
     }

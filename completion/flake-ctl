@@ -41,7 +41,12 @@ __flake_ctl_help() {
 }
 
 __flake_ctl_list() {
-    __comp_reply_unused "--help"
+    declare prev="${prev}"
+    if [ "${prev}" = "--format" ];then
+        __comp_reply "table json csv"
+        return 0
+    fi
+    __comp_reply_unused "--format --user --help"
 }
 
 __flake_ctl_podman_pull() {
@@ -133,14 +138,15 @@ __flake_ctl_main() {
                 ;;
             podman_*)
                 command="podman" && __comp_reply "
-                    help load pull register remove
+                    help load pull register remove --user
                 " && return 0
                 ;;
             help_*)
                 command="help" && __comp_reply "" && return 0
                 ;;
             list_*)
-                command="list" && __comp_reply "" && return 0
+                command="list" && __flake_ctl_complete_command "list" \
+                    && return 0
                 ;;
             esac
         done

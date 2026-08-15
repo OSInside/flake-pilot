@@ -22,7 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use clap::{AppSettings, Parser, Subcommand, ArgGroup};
+use clap::{AppSettings, ArgEnum, Parser, Subcommand, ArgGroup};
 
 /// flake-ctl - Manage Flake Applications
 #[derive(Parser)]
@@ -55,7 +55,23 @@ pub enum Commands {
         /// Pull into user specific podman registry
         #[clap(long)]
         user: bool,
+
+        /// Output format. The table format is meant for humans,
+        /// the json and csv formats are meant to be parsed by
+        /// scripts and other programs
+        #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
+        format: ListFormat,
     }
+}
+
+#[derive(ArgEnum, Clone, Copy, Debug, PartialEq)]
+pub enum ListFormat {
+    /// Human readable table with a headline
+    Table,
+    /// Machine readable JSON list of flake records
+    Json,
+    /// Machine readable comma separated values with a header line
+    Csv,
 }
 
 #[derive(Subcommand)]

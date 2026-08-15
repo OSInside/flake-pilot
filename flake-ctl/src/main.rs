@@ -50,33 +50,13 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 
     match &args.command {
         // list
-        cli::Commands::List { mut user } => {
-            info!("Registered applications:");
+        cli::Commands::List { mut user, format } => {
             let calling_user_name = get_current_username().unwrap();
             if calling_user_name == "root" {
                 // if --user is used for the root user, we ignore it
                 user = false
             }
-            let app_names = app::app_names(user);
-            if app_names.is_empty() {
-                println!("No application(s) registered");
-            } else {
-                for app in app_names {
-                    let config = format!(
-                        "{}/{}.yaml", get_flakes_dir(user), app      
-                    );
-                    let details = app::app_details(&app, user);
-                    if let Some(ref container_conf) = details.container {
-                        let host_app_path = &container_conf.host_app_path;
-                        println!("- {app}|{config}|{host_app_path}|podman");
-                    } else if let Some(ref vm_conf) = details.vm {
-                        let host_app_path = &vm_conf.host_app_path;
-                        println!("- {app}|{config}|{host_app_path}|firecracker");
-                    } else {
-                        println!("- {app}|{config}");
-                    }
-                }
-            }
+            app::list(user, *format);
         },
         // firecracker engine
         cli::Commands::Firecracker { command } => {

@@ -44,3 +44,13 @@ pub const FIRECRACKER_ROOTFS_NAME:&str =
     "rootfs";
 pub const FIRECRACKER_SCI:&str =
     "/usr/lib/flake-pilot/sci";
+pub const PODMAN_ENGINE:&str =
+    "podman";
+pub const FIRECRACKER_ENGINE:&str =
+    "firecracker";
+pub const FLAKE_LIST_COLUMNS:[&str; 5] =
+    ["NAME", "ENGINE", "TARGET APP PATH", "HOST APP PATH", "CONFIG"];
+pub const FLAKE_LIST_COLUMN_SPACING:&str =
+    "  ";
+pub const FLAKE_LIST_NO_VALUE:&str =
+    "-";

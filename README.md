@@ -192,7 +192,7 @@ runtime = "krun"
 
 ```bash
 sudo flake-ctl firecracker pull --name leap \
-    --kis-image https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images_leap/firecracker-basesystem.$(uname -m).tar.xz
+    --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
 flake-ctl firecracker register --vm leap \
     --app $HOME/fireshell --target /bin/bash --overlay-size 20GiB

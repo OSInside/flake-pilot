@@ -163,6 +163,59 @@ install -m 755 %{buildroot}/usr/sbin/sci \
 mkdir -p %{buildroot}/etc
 install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 
+%pre
+# Permissions changed from previous versions, handle the transition
+if [ $1 -gt 1 ]; then
+    flakes_dir="/tmp/flakes/"
+    if [ -d "$flakes_dir/" ]; then
+        flakes_perm=$(/usr/bin/stat -c "%a" "$flakes_dir")
+        if [ "$flakes_perm" -ne "1777" ]; then
+            /usr/bin/chmod +t $flakes_dir
+            # If the permissions were not already set we also need to worry
+            # about the content.
+            # For podman we need a copy of the .cid file in the new hierarchy
+            # so flake-pilot knows which Container ID to use to tell podman to
+            # shut the container down. podman cleans up the original cid file
+            # the copy remains and eventually gets garbage collected by
+            # flake pilot
+            # For microVMs the .mid file needs to get moved and renamed to
+            # allow flake-pilot to clean up
+            for filepath in "$flakes_dir"/*; do
+                [ -f "$filepath" ] || continue
+
+                filename=$(basename "$filepath")
+
+                # Match format: prefix_username.extension
+                # Extract username (part after first '_' and before last '.')
+                username=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $2}')
+                # Extract the command name
+                cmdname=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $1}')
+                if [ -n "$username" ]; then
+                    # Look up UID for the extracted username
+                    if uid=$(id -u "$username" 2>/dev/null); then
+                        user_dir="$flakes_dir/$uid"
+                        # Create user directory if it doesn't exist
+                        if [ ! -d "$user_dir" ]; then
+                            mkdir -p "$user_dir"
+                        fi
+                        if [[ "$filename" == *".vmid"* ]]; then
+                            mv "$filepath" "$user_dir/$cmdname.vmid"
+                        else
+                            # We need the .cid files in 2 places
+                            cp "$filepath" "$user_dir/$cmdname.cid"
+                        fi
+                    fi
+                    # Fix the directory permissions
+                    chown "$uid" "$user_dir"
+                    chgrp "$uid" "$user_dir"
+                    chmod 700 "$user_dir"
+                fi
+            done
+        fi
+    fi
+fi
+
+
 %files
 %defattr(-,root,root)
 %dir /etc/flakes

@@ -68,6 +68,9 @@ fn main() {
 
     env::set_var("PS1", "\\[\\]\\u@\\h: >\n");
 
+    // provide a terminal type for the command call
+    setup_terminal_environment();
+
     // print user space env
     for (key, value) in env::vars() {
         debug(&format!("{key}: {value}"));
@@ -430,6 +433,106 @@ fn redirect_command(command: &str, stream: vsock::VsockStream) {
     }
 }
 
+fn setup_terminal_environment() {
+    /*!
+    Provide a terminal type in the environment
+
+    The environment of sci is created from the kernel commandline
+    and therefore normally does not provide a TERM setting. Shells
+    like bash switch off their line editor (readline) if the
+    terminal type is unset or set to 'dumb'. Without the line
+    editor there is no tab completion and no history handling for
+    the caller. The terminal type of the caller can be handed over
+    through the sci_term=... boot parameter and defaults to
+    defaults::TERM_TYPE
+    !*/
+    let term = env::var("TERM").unwrap_or_default();
+    if term.is_empty() {
+        let mut term_type = env::var("sci_term").unwrap_or_default();
+        if term_type.is_empty() {
+            term_type = defaults::TERM_TYPE.to_string()
+        }
+        debug(&format!("Setting terminal type to: {term_type}"));
+        env::set_var("TERM", term_type);
+    }
+}
+
+fn set_interactive_terminal_flags(fd: i32) {
+    /*!
+    Setup the given terminal for interactive use
+
+    Keep the standard line discipline of the terminal switched on
+    such that the line editor of an interactive command, e.g the
+    tab completion of a shell, stays in control of the input
+    handling and echoes back what it has read. The terminal of the
+    caller is switched to raw mode by the pilot, thus every single
+    key stroke, including TAB, arrives here unmodified
+    !*/
+    match Termios::from_fd(fd) {
+        Ok(mut termios) => {
+            termios.c_lflag |= ECHO | ECHOE | ECHOK | ICANON | ISIG | IEXTEN;
+            termios.c_iflag |= ICRNL;
+            termios.c_oflag |= OPOST | ONLCR;
+            match tcsetattr(fd, TCSANOW, &termios) {
+                Ok(_) => {}
+                Err(error) => {
+                    debug(&format!("tcsetattr failed with: {error}"));
+                }
+            }
+        },
+        Err(error) => {
+            debug(&format!(
+                "Term I/O failed with: {error}"
+            ));
+        }
+    }
+    set_terminal_size(fd)
+}
+
+fn set_terminal_size(fd: i32) {
+    /*!
+    Set the window size of the given terminal
+
+    A newly allocated pseudo terminal comes with no window size
+    assigned. The line editor needs the size of the caller's
+    terminal to be able to redraw the input line and to arrange
+    the list of tab completion matches in columns. The size of the
+    caller's terminal can be handed over through the sci_lines=...
+    and sci_columns=... boot parameters and defaults to
+    defaults::TERM_LINES x defaults::TERM_COLUMNS
+    !*/
+    let window_size = libc::winsize {
+        ws_row: get_terminal_size_value(
+            "sci_lines", defaults::TERM_LINES
+        ),
+        ws_col: get_terminal_size_value(
+            "sci_columns", defaults::TERM_COLUMNS
+        ),
+        ws_xpixel: 0,
+        ws_ypixel: 0
+    };
+    let result = unsafe {
+        libc::ioctl(
+            fd, libc::TIOCSWINSZ as _, &window_size as *const libc::winsize
+        )
+    };
+    if result == -1 {
+        debug(&format!(
+            "Failed to set terminal size: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+}
+
+fn get_terminal_size_value(name: &str, default_value: u16) -> u16 {
+    // Read a terminal geometry value from the given environment
+    // variable and fall back to the given default value
+    match env::var(name).unwrap_or_default().parse::<u16>() {
+        Ok(value) if value > 0 => value,
+        _ => default_value
+    }
+}
+
 fn set_output_terminal_flags(fd: i32) {
     // Disable echo and canonical mode on stdout
     match Termios::from_fd(fd) {
@@ -480,7 +583,7 @@ fn redirect_command_to_raw_channels(
             set_output_terminal_flags(stdout_fd);
 
             // main send/recv loop
-            let mut buffer = [0_u8; 100];
+            let mut buffer = [0_u8; 1];
             loop {
                 // prepare file descriptors to be watched for by select()
                 let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
@@ -549,6 +652,15 @@ fn redirect_command_to_raw_channels(
                             debug("EOF detected on stream");
                             break;
                         }
+                        // On raw channels there is no terminal which
+                        // could echo back the input. As the caller's
+                        // terminal is in raw mode and no longer echoes
+                        // locally, send the input back to make typing
+                        // visible
+                        if stream.write_all(&buffer[0..sz_r]).is_err() {
+                            debug("write failure on stream");
+                            break;
+                        }
                         if stdin.write_all(&buffer[0..sz_r]).is_err() {
                             debug("write failure on stdin");
                             break;
@@ -576,10 +688,14 @@ fn redirect_command_to_pty(
         let stdout_fd = master.as_raw_fd();
         let stream_fd = stream.as_raw_fd();
 
-        set_output_terminal_flags(stdout_fd);
+        // Keep the line discipline of the pseudo terminal active.
+        // The command in the terminal, e.g a shell, takes care for
+        // reading and echoing the input which is the precondition
+        // for features like tab completion to work
+        set_interactive_terminal_flags(stdout_fd);
 
         // main send/recv loop
-        let mut buffer = [0_u8; 100];
+        let mut buffer = [0_u8; 1];
         loop {
             // prepare file descriptors to be watched for by select()
             let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
@@ -606,7 +722,7 @@ fn redirect_command_to_pty(
             // try to handle what happened on the file descriptors
             if unsafe { libc::FD_ISSET(stdout_fd, &fdset) } {
                 // something new happened on master,
-                // try to receive some bytes an send them through the stream
+                // try to receive some bytes and send them through the stream
                 if let Ok(sz_r) = master.read(&mut buffer) {
                     if sz_r == 0 {
                         debug("EOF detected on stdout");

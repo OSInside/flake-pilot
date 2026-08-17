@@ -36,6 +36,10 @@ pub const SYSTEMD_NETWORK_RESOLV_CONF: &str = "/run/systemd/resolve/resolv.conf"
 pub const VM_QUIT: &str = "sci_quit";
 pub const VHOST_TRANSPORT: &str = "vmw_vsock_virtio_transport";
 pub const TERM_TYPE: &str = "xterm";
+pub const TERM_TYPE_FALLBACK: [&str; 3] = ["xterm", "vt100", "linux"];
+pub const TERMINFO_DIRS: [&str; 3] = [
+    "/etc/terminfo", "/lib/terminfo", "/usr/share/terminfo"
+];
 pub const TERM_LINES: u16 = 24;
 pub const TERM_COLUMNS: u16 = 80;
 pub const VM_PORT: u32 = 52;

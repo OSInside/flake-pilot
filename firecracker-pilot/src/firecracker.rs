@@ -1011,7 +1011,9 @@ pub fn gc(program_name: &String) -> Result<(), FlakeError> {
         // The cleanup of overlay images from resume type instances
         // must be done by an explicit user action to avoid deleting
         // user data in overlay images eventually preserved for later.
-        gc_meta_files(&vm_id_file, program_name, true).ok();
+        if Path::new(&vm_id_file).exists() {
+            gc_meta_files(&vm_id_file, program_name, true).ok();
+        }
     }
     Ok(())
 }

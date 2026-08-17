@@ -604,6 +604,60 @@ pub fn execute_command_at_instance(
     Ok(())
 }
 
+pub fn get_terminal_boot_args() -> Vec<String> {
+    /*!
+    Provide the terminal setup of the caller as kernel boot params
+
+    The terminal type is required in the guest to switch on the
+    line editor of interactive commands, e.g the tab completion of
+    a shell. The window size is required to let that line editor
+    redraw the input line and to arrange the tab completion matches
+    in columns
+    !*/
+    let mut terminal_boot_args: Vec<String> = Vec::new();
+    if let Ok(term) = env::var("TERM") {
+        // Only pass along a terminal name which cannot be used to
+        // smuggle further parameters into the kernel commandline
+        let is_terminal_name = ! term.is_empty()
+            && term.len() <= defaults::TERM_NAME_MAX_LEN
+            && term.chars().all(
+                |char| char.is_ascii_alphanumeric() || "-_.+".contains(char)
+            );
+        if is_terminal_name {
+            terminal_boot_args.push(format!("sci_term={term}"))
+        } else if Lookup::is_debug() {
+            debug!("Unsupported TERM name, not passed to the instance");
+        }
+    }
+    if let Some((lines, columns)) = get_terminal_size() {
+        terminal_boot_args.push(format!("sci_lines={lines}"));
+        terminal_boot_args.push(format!("sci_columns={columns}"));
+    }
+    terminal_boot_args
+}
+
+pub fn get_terminal_size() -> Option<(u16, u16)> {
+    /*!
+    Provide the window size of the caller's terminal
+    !*/
+    let mut window_size = std::mem::MaybeUninit::<libc::winsize>::uninit();
+    let result = unsafe {
+        libc::ioctl(
+            io::stdin().as_raw_fd(),
+            libc::TIOCGWINSZ as _,
+            window_size.as_mut_ptr()
+        )
+    };
+    if result == -1 {
+        return None
+    }
+    let window_size = unsafe { window_size.assume_init() };
+    if window_size.ws_row == 0 || window_size.ws_col == 0 {
+        return None
+    }
+    Some((window_size.ws_row, window_size.ws_col))
+}
+
 pub fn create_firecracker_config(
     program_name: &String,
     config_file: &NamedTempFile
@@ -642,6 +696,11 @@ pub fn create_firecracker_config(
     if engine_section.overlay_size.is_some() {
         boot_args.push("overlay_root=/dev/vdb".to_string());
     }
+    // hand over the setup of the caller's terminal. sci uses this
+    // information to setup the pseudo terminal of the command such
+    // that interactive commands, e.g a shell, can provide features
+    // like tab completion
+    boot_args.append(&mut get_terminal_boot_args());
     for boot_option in engine_section.boot_args
     {
         if (resume || force_vsock)
@@ -1069,6 +1128,69 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
     x.into_iter().collect()
 }
 
+pub struct TerminalMode {
+    fd: i32,
+    saved: Option<libc::termios>
+}
+
+impl TerminalMode {
+    pub fn raw(fd: i32) -> Self {
+        /*!
+        Switch the given terminal into raw mode
+
+        In raw mode the terminal driver no longer buffers the input
+        until the line is complete and no longer echoes what was
+        typed. Every single key stroke is passed on unmodified and
+        the echo is left to the command on the other end of the
+        connection. Output post processing stays switched on such
+        that output which only provides a line feed is still
+        displayed correctly. The original terminal setup is
+        restored when the returned object is dropped.
+
+        If the given file descriptor is not a terminal, e.g if the
+        input is piped, nothing is changed
+        !*/
+        if unsafe { libc::isatty(fd) } != 1 {
+            return TerminalMode { fd, saved: None }
+        }
+        let mut terminal = std::mem::MaybeUninit::<libc::termios>::uninit();
+        if unsafe { libc::tcgetattr(fd, terminal.as_mut_ptr()) } != 0 {
+            if Lookup::is_debug() {
+                debug!(
+                    "tcgetattr failed with: {}", io::Error::last_os_error()
+                );
+            }
+            return TerminalMode { fd, saved: None }
+        }
+        let saved = unsafe { terminal.assume_init() };
+        let mut raw = saved;
+        raw.c_lflag &= !(
+            libc::ECHO | libc::ECHONL | libc::ICANON |
+            libc::ISIG | libc::IEXTEN
+        );
+        raw.c_iflag &= !(libc::ICRNL | libc::IXON);
+        raw.c_cc[libc::VMIN] = 1;
+        raw.c_cc[libc::VTIME] = 0;
+        if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } != 0 {
+            if Lookup::is_debug() {
+                debug!(
+                    "tcsetattr failed with: {}", io::Error::last_os_error()
+                );
+            }
+            return TerminalMode { fd, saved: None }
+        }
+        TerminalMode { fd, saved: Some(saved) }
+    }
+}
+
+impl Drop for TerminalMode {
+    fn drop(&mut self) {
+        if let Some(saved) = self.saved {
+            unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &saved) };
+        }
+    }
+}
+
 pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
     let mut socket = String::new();
     socket.push_str(socket_path);
@@ -1101,8 +1223,18 @@ pub fn stream_io(mut stream: UnixStream) {
     let stream_fd = stream.as_raw_fd();
     let stdin_fd = stdin.as_raw_fd();
     let stdout_fd = stdout.as_raw_fd();
+
+    // Switch the caller's terminal into raw mode for the time of
+    // the session. Only in raw mode a single key stroke, e.g the
+    // TAB key, is passed on to the guest instead of being buffered
+    // until the line is complete. This is the precondition for the
+    // line editor of an interactive command in the guest, e.g a
+    // shell, to provide tab completion. The original terminal
+    // setup is restored when this function returns
+    let _terminal_mode = TerminalMode::raw(stdin_fd);
+
     // main send/recv loop
-    let mut buffer = [0_u8; 100];
+    let mut buffer = [0_u8; 1];
     loop {
         // prepare file descriptors to be watched for by select()
         let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
@@ -1148,6 +1280,7 @@ pub fn stream_io(mut stream: UnixStream) {
                     }
                     break;
                 }
+                let _ = stdout.flush();
             } else {
                 if Lookup::is_debug() {
                     debug!("read failure on stdin");
@@ -1157,7 +1290,7 @@ pub fn stream_io(mut stream: UnixStream) {
         }
         if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
             // something new happened on the stream
-            // try to receive some bytes an send them to stdout
+            // try to receive some bytes and send them to stdout
             if let Ok(sz_r) = stream.read(&mut buffer) {
                 if sz_r == 0 {
                     if Lookup::is_debug() {
@@ -1171,6 +1304,7 @@ pub fn stream_io(mut stream: UnixStream) {
                     }
                     break;
                 }
+                let _ = stdout.flush();
             } else {
                 if Lookup::is_debug() {
                     debug!("read failure on stream");

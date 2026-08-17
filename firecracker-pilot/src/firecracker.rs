@@ -941,6 +941,11 @@ pub fn gc_meta_files(
     exists, in any other case return false.
     !*/
     let mut vmid_status = false;
+    let metadata = fs::metadata(vm_id_file)?;
+    let file_type = metadata.file_type();
+    if ! file_type.is_file() {
+        return Ok(vmid_status)
+    }
     match fs::read_to_string(vm_id_file) {
         Ok(vmid) => {
             if ! vm_running(&vmid)? {
@@ -985,7 +990,7 @@ pub fn gc_meta_files(
             }
         },
         Err(error) => {
-            error!("Error reading VMID: {error:?}");
+            error!("Error reading VMID {vm_id_file}: {error:?}");
         }
     }
     Ok(vmid_status)

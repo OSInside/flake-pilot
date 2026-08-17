@@ -399,6 +399,13 @@ fn main() {
         }
     } else {
         // run regular command and close vm
+        //
+        // Without a vsock the command talks to the console of the
+        // instance. Setup this terminal such that the line editor of
+        // an interactive command can move the cursor correctly
+        if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
+            set_interactive_terminal_flags(libc::STDIN_FILENO)
+        }
         if do_exec {
             // replace ourselves
             debug(&format!("EXEC: {} -> {:?}", args[0], call.get_args()));
@@ -452,9 +459,62 @@ fn setup_terminal_environment() {
         if term_type.is_empty() {
             term_type = defaults::TERM_TYPE.to_string()
         }
+        term_type = get_supported_terminal_type(&term_type);
         debug(&format!("Setting terminal type to: {term_type}"));
         env::set_var("TERM", term_type);
     }
+}
+
+fn get_supported_terminal_type(term_type: &str) -> String {
+    /*!
+    Provide a terminal type the guest has a terminfo entry for
+
+    The line editor of e.g a shell reads the capabilities of the
+    terminal from the terminfo database to be able to move the
+    cursor. If the guest image does not provide an entry for the
+    terminal type of the caller, keys like the cursor keys are
+    still read but the cursor can no longer be placed correctly.
+    In this case fall back to a simpler terminal type the guest
+    provides an entry for
+    !*/
+    if has_terminfo_entry(term_type) {
+        return term_type.to_string()
+    }
+    for fallback_term_type in defaults::TERM_TYPE_FALLBACK.iter() {
+        if has_terminfo_entry(fallback_term_type) {
+            debug(&format!(
+                "No terminfo entry for {term_type}, using {fallback_term_type}"
+            ));
+            return fallback_term_type.to_string()
+        }
+    }
+    // No terminfo database in the guest, stay with the caller's setting
+    debug("No terminfo database found");
+    term_type.to_string()
+}
+
+fn has_terminfo_entry(term_type: &str) -> bool {
+    // Check if the terminfo database of the guest provides an entry
+    // for the given terminal type. Entries are stored in a directory
+    // named after the first character of the terminal type, either
+    // as the character itself or as its hex representation
+    let first_char = match term_type.chars().next() {
+        Some(first_char) => first_char,
+        None => return false
+    };
+    let entry_dirs = [
+        first_char.to_string(), format!("{:x}", first_char as u32)
+    ];
+    for terminfo_dir in defaults::TERMINFO_DIRS.iter() {
+        for entry_dir in entry_dirs.iter() {
+            let entry = format!("{terminfo_dir}/{entry_dir}/{term_type}");
+            if Path::new(&entry).exists() {
+                debug(&format!("Found terminfo entry: {entry}"));
+                return true
+            }
+        }
+    }
+    false
 }
 
 fn set_interactive_terminal_flags(fd: i32) {
@@ -551,6 +611,21 @@ fn set_output_terminal_flags(fd: i32) {
             ));
         }
     }
+}
+
+fn get_echo_data(data: &[u8]) -> Vec<u8> {
+    /*!
+    Provide the readable part of the given input data
+
+    On raw channels there is no terminal and no line editor which
+    could interpret the input. Control sequences, e.g the ones sent
+    by the cursor keys, would show up as unreadable characters if
+    they were echoed back. Thus only printable characters and the
+    line break are echoed to make typing visible
+    !*/
+    data.iter().filter(|byte|
+        matches!(**byte, b'\r' | b'\n' | b'\t' | 0x20..=0x7e)
+    ).cloned().collect()
 }
 
 fn redirect_command_to_raw_channels(
@@ -655,9 +730,10 @@ fn redirect_command_to_raw_channels(
                         // On raw channels there is no terminal which
                         // could echo back the input. As the caller's
                         // terminal is in raw mode and no longer echoes
-                        // locally, send the input back to make typing
-                        // visible
-                        if stream.write_all(&buffer[0..sz_r]).is_err() {
+                        // locally, send the readable input back to
+                        // make typing visible
+                        let echo_data = get_echo_data(&buffer[0..sz_r]);
+                        if stream.write_all(&echo_data).is_err() {
                             debug("write failure on stream");
                             break;
                         }

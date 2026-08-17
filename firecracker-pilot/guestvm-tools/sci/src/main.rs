@@ -66,7 +66,7 @@ fn main() {
     let mut do_exec = false;
     let mut ok = true;
 
-    env::set_var("PS1", "\\[\\]\\u@\\h: >\n");
+    env::set_var("PS1", defaults::PROMPT);
 
     // provide a terminal type for the command call
     setup_terminal_environment();

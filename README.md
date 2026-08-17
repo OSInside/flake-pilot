@@ -325,8 +325,8 @@ The proposed example works within the following requirements:
    **_NOTE:_** The settings here must match the flake configuration!
 
    ```bash
-   ip addr add 172.16.0.1/24 dev tap-claude
-   ip link set tap-claude up
+   sudo ip addr add 172.16.0.1/24 dev tap-claude
+   sudo ip link set tap-claude up
    ```
 
    Forward TAP to the outgoing interface

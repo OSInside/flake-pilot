@@ -75,6 +75,8 @@
         <package name="cargo"/>
         <package name="vim"/>
         <package name="which"/>
+        <package name="shadow"/>
+        <package name="procps"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

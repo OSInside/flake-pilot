@@ -48,6 +48,8 @@ pub const RETRIES: u32 =
     60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =
     1000;
+pub const REAP_INTERVAL_MSEC: u64 =
+    250;
 
 pub fn debug(message: &str) {
     if env::var("PILOT_DEBUG").is_ok() {

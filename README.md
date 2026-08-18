@@ -86,14 +86,15 @@ All apps will be registered in the users home directory. Therefore it's
 handy to add that path to the environment:
 
 ```bash
-export PATH=$PATH:$HOME
+mkdir -p ~/bin
+export PATH=$PATH:$HOME/bin
 ```
 
 ### Register Amazon's SDK utility as a container app named: aws <a name="one"/>
 
 ```bash
 flake-ctl podman --user register \
-     --container docker.io/amazon/aws-cli --app $HOME/aws --target /
+     --container docker.io/amazon/aws-cli --app $HOME/bin/aws --target /
 
 aws ec2 help
 ```
@@ -112,7 +113,7 @@ the ```ec2``` subcommand.
 
 ```bash
 flake-ctl podman --user register \
-    --app $HOME/joe \
+    --app $HOME/bin/joe \
     --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
     --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
     --target /usr/bin/joe
@@ -129,9 +130,7 @@ unfortunately requires root privileges and is forwarded to the system's
 ### Register claude AI as a container app named: claude <a name="three"/>
 
 ```bash
-mkdir -p ~/ai ~/bin
-
-export PATH=$PATH:$HOME/bin
+mkdir -p ~/ai
 
 flake-ctl podman --user register \
     --app $HOME/bin/claude \
@@ -195,7 +194,7 @@ sudo flake-ctl firecracker pull --name leap \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
 flake-ctl firecracker register --vm leap \
-    --app $HOME/fireshell --target /bin/bash --overlay-size 20GiB
+    --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
 fireshell
 ```
@@ -217,7 +216,7 @@ sudo flake-ctl firecracker pull --name claude \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/claude.x86_64-1.15.6-0.tar.xz
 
 flake-ctl firecracker register --vm claude \
-    --app $HOME/claude --target /usr/local/bin/claude \
+    --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
 
 claude --version
@@ -225,9 +224,17 @@ claude --version
 
 This registers an app named ```claude``` to the system. Once called, a
 Firecracker VM, based on the pulled ```claude``` image, is started and
-executes the ```claude``` binary. The communication is vsock based and the
+executes the ```bash``` shell. The communication is vsock based and the
 VM instance is kept alive after the execution of the target program, which
-allows for further calls to the same instance.
+allows for further calls to the same instance. In the shell, you can
+setup access to claude AI for example through Google Vertex AI as follows:
+
+```bash
+export ANTHROPIC_VERTEX_PROJECT_ID=YOUR_PROJECT_ID
+gcloud auth application-default login --project $ANTHROPIC_VERTEX_PROJECT_ID
+
+claude
+```
 
 #### Firecracker Networking <a name="networking"/>
 

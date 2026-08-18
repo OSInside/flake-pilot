@@ -219,7 +219,7 @@ flake-ctl firecracker register --vm claude \
     --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
 
-claude --version
+claude
 ```
 
 This registers an app named ```claude``` to the system. Once called, a
@@ -309,7 +309,7 @@ The proposed example works within the following requirements:
    about ```ip=```.
 
 4. Create a TAP device matching the app registration. In the above example,
-   the app ```$HOME/claude``` was registered. The Firecracker pilot
+   the app ```$HOME/bin/claude``` was registered. The Firecracker pilot
    configures the VM instance to pass traffic on the TAP device named
    ```tap-claude```. If the application is called with an identifier like
    ```claude @id```, the TAP device name ```tap-claude@id``` is used.

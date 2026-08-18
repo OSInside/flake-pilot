@@ -58,3 +58,7 @@ pub const FLAKE_LIST_NO_VALUE:&str =
     "-";
 pub const SHA256_TOOL:&str =
     "sha256sum";
+pub const TEMP_DIR:&str =
+    "/var/tmp";
+pub const TEMP_PREFIX:&str =
+    "flake-ctl-";

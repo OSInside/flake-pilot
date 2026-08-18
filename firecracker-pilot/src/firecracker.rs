@@ -1224,11 +1224,10 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
 }
 
 pub fn stream_io(mut stream: UnixStream) {
-    let mut stdin = io::stdin();
     let mut stdout = io::stdout();
 
     let stream_fd = stream.as_raw_fd();
-    let stdin_fd = stdin.as_raw_fd();
+    let stdin_fd = libc::STDIN_FILENO;
     let stdout_fd = stdout.as_raw_fd();
 
     // Switch the caller's terminal into raw mode for the time of
@@ -1274,26 +1273,41 @@ pub fn stream_io(mut stream: UnixStream) {
         if unsafe { libc::FD_ISSET(stdin_fd, &fdset) } {
             // something new happened on stdin,
             // try to receive some bytes and send them through the stream
-            if let Ok(sz_r) = stdin.read(&mut buffer) {
-                if sz_r == 0 {
-                    if Lookup::is_debug() {
-                        debug!("EOF detected on stdin");
-                    }
-                    break;
-                }
-                if stream.write_all(&buffer[0..sz_r]).is_err() {
-                    if Lookup::is_debug() {
-                        debug!("write failure on stream");
-                    }
-                    break;
-                }
-                let _ = stdout.flush();
-            } else {
+            //
+            // Read from the terminal device itself and not through the
+            // buffered stdin of the standard library. The buffered
+            // reader fetches as much as the device provides but hands
+            // out only the requested amount of bytes. The rest stays
+            // in its buffer where select() cannot see it and would
+            // only be delivered on the next key stroke. Keys like the
+            // cursor keys send a multi byte escape sequence and would
+            // therefore arrive at the guest in pieces or not at all
+            let sz_r = unsafe {
+                libc::read(
+                    stdin_fd,
+                    buffer.as_mut_ptr() as *mut libc::c_void,
+                    buffer.len()
+                )
+            };
+            if sz_r == -1 {
                 if Lookup::is_debug() {
-                    debug!("read failure on stdin");
+                    debug!("read failure on stdin: {}", io::Error::last_os_error());
                 }
                 break;
             }
+            if sz_r == 0 {
+                if Lookup::is_debug() {
+                    debug!("EOF detected on stdin");
+                }
+                break;
+            }
+            if stream.write_all(&buffer[0..sz_r as usize]).is_err() {
+                if Lookup::is_debug() {
+                    debug!("write failure on stream");
+                }
+                break;
+            }
+            let _ = stdout.flush();
         }
         if unsafe { libc::FD_ISSET(stream_fd, &fdset) } {
             // something new happened on the stream

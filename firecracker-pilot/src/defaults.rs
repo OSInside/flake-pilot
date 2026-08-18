@@ -43,7 +43,7 @@ pub const FIRECRACKER_TEMPLATE:&str =
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
     "sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
-pub const GC_THRESHOLD: usize = 20;
+pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
 pub const VM_CID: u32 = 3;
 pub const VM_PORT: u32 =

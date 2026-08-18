@@ -200,9 +200,7 @@ pub fn create(
     let container_ids_dir = init_cid_dir(user)?;
 
     let container_cid_file = format!(
-        "{}/{}{}_{}.cid",
-        container_ids_dir, program_name, suffix,
-        calling_user_name.to_str().unwrap()
+        "{}/{}{}.cid", container_ids_dir, program_name, suffix
     );
     IO::no_symlink(&container_cid_file)?;
 
@@ -964,8 +962,12 @@ pub fn gc_cid_file(container_cid_file: &String) -> Result<bool, FlakeError> {
     Check if container exists according to the specified
     container_cid_file. Garbage cleanup the container_cid_file
     if no longer present. Return a true value if the container
-    exists, in any other case return false.
+    exists or the given file is not a CID file(ignored),
+    in any other case return false.
     !*/
+    if ! container_cid_file.ends_with(".cid") {
+        return Ok(true);
+    }
     IO::no_symlink(container_cid_file)?;
     let cid = fs::read_to_string(container_cid_file)?;
 

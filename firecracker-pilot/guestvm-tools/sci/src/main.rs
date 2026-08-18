@@ -46,7 +46,14 @@ use std::io::Write;
 use pty::prelude::Fork;
 use termios::*;
 
+use std::sync::{Mutex, MutexGuard};
+use std::process::{Child, ExitStatus};
+
 use crate::defaults::debug;
+
+// Process IDs of the child processes sci waits for on its own.
+// The reaper must not read the exit status of these processes
+static OWNED_CHILDREN: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 
 fn main() {
     /*!
@@ -248,6 +255,9 @@ fn main() {
     // start sshd if present
     start_sshd();
 
+    // take care for processes which got re-parented to sci
+    start_child_reaper();
+
     // Setup command call parameters
     for arg in &args[1..] {
         call.arg(arg);
@@ -264,7 +274,7 @@ fn main() {
         debug(&format!(
             "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
         ));
-        match modprobe.status() {
+        match run_child(&mut modprobe) {
             Ok(_) => { },
             Err(error) => {
                 debug(&format!(
@@ -415,11 +425,142 @@ fn main() {
             debug(&format!(
                 "SCI CALL: {} -> {:?}", args[0], call.get_args()
             ));
-            let _ = call.status();
+            let _ = run_child(&mut call);
         }
     }
     // Close firecracker session
     do_reboot(ok)
+}
+
+fn start_child_reaper() {
+    /*!
+    Start reaping of terminated child processes
+
+    sci runs as process ID 1 in the instance. Any process whose
+    parent has terminated gets re-parented to sci and stays in the
+    process list as a defunct(zombie) process until someone reads
+    its exit status. As sci has not spawned these processes it
+    also does not wait for them and it is therefore up to the
+    reaper to clean them up.
+
+    The reaper looks for terminated processes on a regular base.
+    It deliberately does not use SIGCHLD to get informed about
+    them. Receiving the signal synchronously would require to
+    block it, but the signal mask is inherited by all processes
+    started from here and would e.g. break the job control of a
+    shell in the instance. Handling the signal asynchronously in
+    turn would interrupt the data transfer loops with EINTR
+    !*/
+    thread::spawn(|| {
+        let reap_interval = time::Duration::from_millis(
+            defaults::REAP_INTERVAL_MSEC
+        );
+        loop {
+            reap_child_processes();
+            thread::sleep(reap_interval)
+        }
+    });
+}
+
+fn reap_child_processes() {
+    /*!
+    Read the exit status of terminated child processes
+
+    Processes for which sci waits somewhere else are left alone,
+    their exit status is expected to be read by that place. Such a
+    process stays in the list of terminated processes and hides
+    the ones behind it. Therefore this run ends when a process
+    shows up again and the hidden ones are taken care of by one
+    of the next runs
+    !*/
+    let mut checked_pids: Vec<i32> = Vec::new();
+    while let Some(pid) = get_terminated_child() {
+        if checked_pids.contains(&pid) {
+            break
+        }
+        checked_pids.push(pid);
+        if is_owned_child(pid) {
+            continue
+        }
+        // Reading the exit status removes the process from
+        // the process list
+        if unsafe {
+            libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG)
+        } > 0 {
+            debug(&format!("Reaped process: {pid}"));
+        }
+    }
+}
+
+fn get_terminated_child() -> Option<i32> {
+    /*!
+    Provide the process ID of a terminated child process
+
+    The exit status of the process is explicitly not read such
+    that the process is still available to be waited for
+    !*/
+    let mut process_info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+    let result = unsafe {
+        libc::waitid(
+            libc::P_ALL, 0, process_info.as_mut_ptr(),
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT
+        )
+    };
+    if result == -1 {
+        // No child processes at all
+        return None
+    }
+    let process_info = unsafe { process_info.assume_init() };
+    let pid = unsafe { process_info.si_pid() };
+    if pid == 0 {
+        // No child process has terminated
+        return None
+    }
+    Some(pid)
+}
+
+fn spawn_child(call: &mut Command) -> std::io::Result<Child> {
+    /*!
+    Spawn the given command as a child process of sci
+
+    The process is created while the list of the child processes
+    sci waits for is locked. This makes sure the reaper cannot
+    read the exit status of the new process before it is
+    registered in that list
+    !*/
+    let mut owned_children = lock_owned_children();
+    let child = call.spawn();
+    if let Ok(child) = &child {
+        owned_children.push(child.id() as i32)
+    }
+    child
+}
+
+fn run_child(call: &mut Command) -> std::io::Result<ExitStatus> {
+    /*!
+    Run the given command and wait for it to terminate
+    !*/
+    let mut child = spawn_child(call)?;
+    let status = child.wait();
+    disown_child(child.id() as i32);
+    status
+}
+
+fn lock_owned_children() -> MutexGuard<'static, Vec<i32>> {
+    // Provide access to the list of child processes sci waits for.
+    // A poisoned lock is taken over because the list stays usable
+    OWNED_CHILDREN.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+fn disown_child(pid: i32) {
+    // Delete the given process ID from the list of child
+    // processes sci waits for
+    lock_owned_children().retain(|owned_pid| *owned_pid != pid)
+}
+
+fn is_owned_child(pid: i32) -> bool {
+    // Check if sci waits for the given process ID somewhere
+    lock_owned_children().contains(&pid)
 }
 
 fn redirect_command(command: &str, stream: vsock::VsockStream) {
@@ -427,7 +568,20 @@ fn redirect_command(command: &str, stream: vsock::VsockStream) {
     // or on raw channels if no pseudo terminal can be allocated
     // connect its standard channels to the stream
     // transfer all channel data when there is data as long as the child exists
-    match Fork::from_ptmx() {
+    //
+    // The terminal fork is done while the list of the child
+    // processes sci waits for is locked. This makes sure the
+    // reaper cannot read the exit status of the new process
+    // before it is registered in that list
+    let fork_result = {
+        let mut owned_children = lock_owned_children();
+        let fork_result = Fork::from_ptmx();
+        if let Ok(Fork::Parent(pid, _)) = fork_result {
+            owned_children.push(pid)
+        }
+        fork_result
+    };
+    match fork_result {
         Ok(fork) => {
             redirect_command_to_pty(command, stream, fork)
         },
@@ -644,7 +798,7 @@ fn redirect_command_to_raw_channels(
     debug(&format!(
         "SCI CALL: {} -> {:?}", program, call.get_args()
     ));
-    match call.spawn() {
+    match spawn_child(&mut call) {
         Ok(mut child) => {
             // access useful I/O and file descriptors
             let stdin = child.stdin.as_mut().unwrap();
@@ -748,6 +902,7 @@ fn redirect_command_to_raw_channels(
                 }
             }
             let _ = child.wait();
+            disown_child(child.id() as i32);
         },
         Err(error) => {
             debug(&format!(
@@ -761,6 +916,10 @@ fn redirect_command_to_pty(
     command: &str, mut stream: vsock::VsockStream, pty_fork: Fork
 ) {
     if let Ok(mut master) = pty_fork.is_parent() {
+        let mut child_pid = -1;
+        if let Fork::Parent(pid, _) = &pty_fork {
+            child_pid = *pid
+        }
         let stdout_fd = master.as_raw_fd();
         let stream_fd = stream.as_raw_fd();
 
@@ -832,6 +991,7 @@ fn redirect_command_to_pty(
             }
         }
         let _ = pty_fork.wait();
+        disown_child(child_pid);
     } else {
         let mut call_args: Vec<&str> = command.split(' ').collect();
         let program = call_args.remove(0);

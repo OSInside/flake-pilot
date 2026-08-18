@@ -22,7 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-pub const GC_THRESHOLD: i32 = 20;
+pub const GC_THRESHOLD: i32 = 1;
 pub const VAR_EXPANSION_LIMIT: i32 = 10;
 pub const HOST_DEPENDENCIES: &str = "removed";
 pub const SYSTEM_HOST_DEPENDENCIES: &str = "systemfiles";

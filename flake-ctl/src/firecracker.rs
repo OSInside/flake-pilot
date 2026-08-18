@@ -27,7 +27,7 @@ use std::ffi::OsStr;
 use std::io::{self, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
-use tempfile::tempdir;
+use tempfile::{Builder, TempDir};
 use std::path::Path;
 use std::borrow::Cow;
 use std::fs;
@@ -96,6 +96,22 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
         }
     }
     ok
+}
+
+fn tempdir() -> io::Result<TempDir> {
+    /*!
+    Create a temporary directory below defaults::TEMP_DIR
+
+    Image data is downloaded to a temporary location before it is
+    moved to its final destination in the registry. The system
+    default temporary directory /tmp is in most cases backed by a
+    memory filesystem which is too small to hold an image. Thus
+    the temporary data is placed in defaults::TEMP_DIR which is
+    expected to be persistent storage
+    !*/
+    Builder::new()
+        .prefix(defaults::TEMP_PREFIX)
+        .tempdir_in(defaults::TEMP_DIR)
 }
 
 pub async fn pull_component_image(
@@ -242,7 +258,9 @@ pub async fn pull_component_image(
             }
         },
         Err(error) => {
-            error!("Failed to create tempdir: {error}");
+            error!(
+                "Failed to create tempdir in {}: {}", defaults::TEMP_DIR, error
+            );
             return result
         }
     }
@@ -373,7 +391,9 @@ pub async fn pull_kis_image(
             }
         },
         Err(error) => {
-            error!("Failed to create tempdir: {error}");
+            error!(
+                "Failed to create tempdir in {}: {}", defaults::TEMP_DIR, error
+            );
             return result
         }
     }

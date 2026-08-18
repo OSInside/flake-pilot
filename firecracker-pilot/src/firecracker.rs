@@ -24,6 +24,7 @@
 //
 use std::ffi::OsStr;
 use std::{thread, time};
+use glob::glob;
 use flakes::io::IO;
 use std::process::Command;
 use flakes::command::{CommandError, handle_output, CommandExtTrait};
@@ -965,6 +966,25 @@ pub fn gc_meta_files(
                     }
                     delete_file(&vsock_uds_path);
                 }
+                let vsock_uds_path_call_sockets = vsock_uds_path + "_*";
+                for call_socket in glob(&vsock_uds_path_call_sockets).expect(
+                    "Failed to read call socket glob pattern"
+                ) {
+                    match call_socket {
+                        Ok(path) => {
+                            if Lookup::is_debug() {
+                                debug!("Deleting {path:?}");
+                            }
+                            delete_file(&path.display().to_string());
+                        },
+                        Err(ref error) => {
+                            error!(
+                                "Failed to remove {call_socket:?}: {error:?}"
+                            );
+                        }
+                    }
+                }
+
                 let vm_overlay_file = format!(
                     "{}/{}",
                     get_overlay_dir()?,

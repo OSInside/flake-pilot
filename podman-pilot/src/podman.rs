@@ -200,9 +200,7 @@ pub fn create(
     let container_ids_dir = init_cid_dir(user)?;
 
     let container_cid_file = format!(
-        "{}/{}{}_{}.cid",
-        container_ids_dir, program_name, suffix,
-        calling_user_name.to_str().unwrap()
+        "{}/{}{}.cid", container_ids_dir, program_name, suffix
     );
     IO::no_symlink(&container_cid_file)?;
 

@@ -28,7 +28,10 @@ registration. If the registered application is requested as
 Consequently calling **myapp** will effectively call **firecracker-pilot**.
 firecracker-pilot now reads the calling program basename, which is **myapp**
 and looks up all the registration metadata stored in
-`/usr/share/flakes`
+`/usr/share/flakes`. If there is no system wide registration
+for the given application name, the registration directory of
+the calling user, `~/.config/flakes`, is used as created by
+**flake-ctl firecracker --user register**
 
 Below `/usr/share/flakes` each application is registered
 with the following layout:
@@ -169,6 +172,9 @@ FILES
 * /var/lib/firecracker/images
 * /var/lib/firecracker/storage
 * /etc/flakes
+* ~/.config/flakes
+* ~/.config/flakes/firecracker/images
+* ~/.config/flakes/firecracker/storage
 
 AUTHOR
 ------

@@ -133,7 +133,7 @@ __flake_ctl_main() {
                 ;;
             firecracker_*)
                 command="firecracker" && __comp_reply "
-                    help pull register remove
+                    help pull register remove --user
                 " && return 0
                 ;;
             podman_*)

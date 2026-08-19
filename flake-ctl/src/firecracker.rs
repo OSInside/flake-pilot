@@ -38,6 +38,51 @@ use crate::{app, app_config};
 
 use crate::fetch::{fetch_file, send_request};
 
+pub fn get_registry_dir(usermode: bool) -> String {
+    /*!
+    Provide the toplevel firecracker registry directory
+
+    In user mode the registry is a private directory of the
+    calling user below its flakes directory. In all other
+    cases the system wide registry is used
+    !*/
+    if usermode {
+        format!(
+            "{}/{}", get_flakes_dir(true), defaults::FIRECRACKER_REGISTRY_NAME
+        )
+    } else {
+        defaults::FIRECRACKER_REGISTRY_DIR.to_string()
+    }
+}
+
+pub fn get_images_dir(usermode: bool) -> String {
+    /*!
+    Provide the directory the firecracker images are stored in
+    !*/
+    format!(
+        "{}/{}", get_registry_dir(usermode), defaults::FIRECRACKER_IMAGES_NAME
+    )
+}
+
+pub fn get_image_dir(name: &str, usermode: bool) -> String {
+    /*!
+    Provide the directory of the image registered as name
+    !*/
+    format!("{}/{}", get_images_dir(usermode), name)
+}
+
+pub fn registry_user(usermode: bool) -> &'static str {
+    /*!
+    Provide the user owning the firecracker registry
+
+    The system wide registry belongs to root whereas the user
+    registry belongs to the calling user itself. The latter is
+    expressed as an empty user which means no privilege change
+    is needed to operate on the registry
+    !*/
+    if usermode { "" } else { "root" }
+}
+
 pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
     /*!
     Create firecracker registry directory layout
@@ -55,8 +100,12 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
         }
     }
     let mut subdirs: Vec<String> = Vec::new();
-    subdirs.push(format!("{real_registry_dir}/images"));
-    subdirs.push(format!("{real_registry_dir}/storage"));
+    subdirs.push(format!(
+        "{}/{}", real_registry_dir, defaults::FIRECRACKER_IMAGES_NAME
+    ));
+    subdirs.push(format!(
+        "{}/{}", real_registry_dir, defaults::FIRECRACKER_STORAGE_NAME
+    ));
     for subdir in subdirs {
         if Path::new(&subdir).exists() {
             continue
@@ -115,21 +164,21 @@ fn tempdir() -> io::Result<TempDir> {
 }
 
 pub async fn pull_component_image(
-    name: &String, rootfs_uri: Option<&String>, kernel_uri: Option<&String>,
-    initrd_uri: Option<&String>, force: bool
+    name: &str, rootfs_uri: Option<&String>, kernel_uri: Option<&String>,
+    initrd_uri: Option<&String>, force: bool, usermode: bool
 ) -> i32 {
     /*!
     Fetch components image consisting out of rootfs, kernel and
     optional initrd.
     !*/
     let mut result = 255;
-    let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, name);
+    let image_dir = get_image_dir(name, usermode);
     struct Component<'a> {
         uri: String,
         file: Cow<'a, str>
     }
     info!("Fetching Component image...");
-    if ! pull_new(name, force) {
+    if ! pull_new(name, force, usermode) {
         return result
     }
     match tempdir() {
@@ -253,7 +302,7 @@ pub async fn pull_component_image(
             }
 
             // Move to final firecracker image store
-            if ! mv(&tmp_dir_path, &image_dir, "root") {
+            if ! mv(&tmp_dir_path, &image_dir, registry_user(usermode)) {
                 return result
             }
         },
@@ -268,7 +317,7 @@ pub async fn pull_component_image(
 }
 
 pub async fn pull_kis_image(
-    name: &String, uri: Option<&String>, force: bool
+    name: &str, uri: Option<&String>, force: bool, usermode: bool
 ) -> i32 {
     /*!
     Fetch the data provided in uri and treat it as a KIWI
@@ -277,11 +326,11 @@ pub async fn pull_kis_image(
     components; rootfs-image, kernel and optional initrd
     !*/
     let mut result = 255;
-    let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, name);
+    let image_dir = get_image_dir(name, usermode);
 
     info!("Fetching KIS image...");
 
-    if ! pull_new(name, force) {
+    if ! pull_new(name, force, usermode) {
         return result
     }
 
@@ -386,7 +435,7 @@ pub async fn pull_kis_image(
             }
 
             // Move to final firecracker image store
-            if ! mv(&work_dir, &image_dir, "root") {
+            if ! mv(&work_dir, &image_dir, registry_user(usermode)) {
                 return result
             }
         },
@@ -504,15 +553,28 @@ fn checksum(image: &str, size: Option<u64>) -> Option<String> {
     }
 }
 
+fn run_as(program: &str, user: &str) -> Command {
+    /*!
+    Create a call of the given program
+
+    An empty user indicates that the program is called with the
+    privileges of the caller. In all other cases the call is
+    passed to sudo to run it as the specified user
+    !*/
+    if user.is_empty() {
+        return Command::new(program)
+    }
+    let mut call = Command::new("sudo");
+    call.arg("--user").arg(user).arg(program);
+    call
+}
+
 pub fn mkdir(dirname: &String, user: &str) -> bool {
     /*!
-    Make directory via sudo
+    Make directory
     !*/
-    let mut call = Command::new("sudo");
-    if ! user.is_empty() {
-        call.arg("--user").arg(user);
-    }
-    call.arg("mkdir").arg("-p").arg(dirname);
+    let mut call = run_as("mkdir", user);
+    call.arg("-p").arg(dirname);
     match call.status() {
         Ok(_) => { },
         Err(error) => {
@@ -525,13 +587,10 @@ pub fn mkdir(dirname: &String, user: &str) -> bool {
 
 pub fn mv(source: &str, target: &String, user: &str) -> bool {
     /*!
-    Move file via sudo
+    Move file
     !*/
-    let mut call = Command::new("sudo");
-    if ! user.is_empty() {
-        call.arg("--user").arg(user);
-    }
-    call.arg("mv").arg(source).arg(target);
+    let mut call = run_as("mv", user);
+    call.arg(source).arg(target);
     match call.status() {
         Ok(_) => { },
         Err(error) => {
@@ -544,13 +603,10 @@ pub fn mv(source: &str, target: &String, user: &str) -> bool {
 
 pub fn copy(source: &str, target: &String, user: &str) -> bool {
     /*!
-    Copy file via sudo
+    Copy file
     !*/
-    let mut call = Command::new("sudo");
-    if ! user.is_empty() {
-        call.arg("--user").arg(user);
-    }
-    call.arg("cp").arg(source).arg(target);
+    let mut call = run_as("cp", user);
+    call.arg(source).arg(target);
     match call.status() {
         Ok(_) => { },
         Err(error) => {
@@ -567,11 +623,8 @@ pub fn mount_fs_image(
     /*!
     Mount filesystem image
     !*/
-    let mut call = Command::new("sudo");
-    if ! user.is_empty() {
-        call.arg("--user").arg(user);
-    }
-    call.arg("mount").arg(fs_name).arg(mount_point);
+    let mut call = run_as("mount", user);
+    call.arg(fs_name).arg(mount_point);
     match call.status() {
         Ok(_) => { },
         Err(error) => {
@@ -586,11 +639,8 @@ pub fn umount(mount_point: &str, user: &str) -> bool {
     /*!
     Umount given mount_point
     !*/
-    let mut call = Command::new("sudo");
-    if ! user.is_empty() {
-        call.arg("--user").arg(user);
-    }
-    call.arg("umount").arg(mount_point);
+    let mut call = run_as("umount", user);
+    call.arg(mount_point);
     match call.status() {
         Ok(_) => { },
         Err(error) => {
@@ -602,14 +652,14 @@ pub fn umount(mount_point: &str, user: &str) -> bool {
 }
 
 
-pub fn pull_new(name: &String, force: bool) -> bool {
+pub fn pull_new(name: &str, force: bool, usermode: bool) -> bool {
     /*!
     Initialize new pull
     !*/
-    if ! init_toplevel_image_dir(defaults::FIRECRACKER_REGISTRY_DIR) {
+    if ! init_toplevel_image_dir(&get_registry_dir(usermode)) {
         return false
     }
-    let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, name);
+    let image_dir = get_image_dir(name, usermode);
     if force && Path::new(&image_dir).exists() {
         match fs::remove_dir_all(&image_dir) {
             Ok(_) => { },
@@ -626,15 +676,15 @@ pub fn pull_new(name: &String, force: bool) -> bool {
     true
 }
 
-pub fn purge_vm(vm: &str) {
+pub fn purge_vm(vm: &str, usermode: bool) {
     /*!
     Iterate over all yaml config files and find those connected
     to the VM. Delete all app registrations for this
     VM and also delete the VM from the local registry
     !*/
-    for app_name in app::app_names(false) {
+    for app_name in app::app_names(usermode) {
         let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(false), app_name
+            "{}/{}.yaml", get_flakes_dir(usermode), app_name
         );
         match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
             Ok(app_conf) => {
@@ -642,7 +692,7 @@ pub fn purge_vm(vm: &str) {
                     if vm == vm_conf.name {
                         app::remove(
                             &vm_conf.host_app_path,
-                            defaults::FIRECRACKER_PILOT, false, false, false
+                            defaults::FIRECRACKER_PILOT, usermode, false, false
                         );
                     }
                 }
@@ -654,7 +704,7 @@ pub fn purge_vm(vm: &str) {
             }
         };
     }
-    let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, vm);
+    let image_dir = get_image_dir(vm, usermode);
     match fs::remove_dir_all(&image_dir) {
         Ok(_) => { },
         Err(error) => {

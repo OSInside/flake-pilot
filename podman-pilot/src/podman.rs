@@ -704,7 +704,7 @@ pub fn sync_host(
     cp(temp_files_from.path().to_str().unwrap(), &files_from, User::ROOT)?;
 
     let mut call = user.run("rsync");
-    call.arg("-av");
+    call.args(flakes::defaults::RSYNC_OPTIONS);
     if ignore_missing {
         call.arg("--ignore-missing-args");
     }

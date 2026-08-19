@@ -56,11 +56,12 @@ FILES
   To setup a user specific configuration for running flake applications
   perform the following steps:
 
-  1. Create the directory $HOME/.config if not already present
+  1. Create a custom directory structure below $HOME/.config/flakes as follows:
 
      .. code:: sh
 
-        mkdir -p $HOME/.config
+        mkdir -p $HOME/.config/flakes/podman
+        mkdir -p $HOME/.config/flakes/firecracker
 
   2. Create a copy of the system wide configuration file /etc/flakes.yml
      to $HOME/.config/flakes.yml and adjust the configuration as desired.
@@ -70,21 +71,21 @@ FILES
 
          generic:
            flakes_dir: /home/USERNAME/.config/flakes
-           podman_storage_conf: /home/USERNAME/.config/flakes/storage.conf
+           podman_storage_conf: /home/USERNAME/.config/flakes/podman/storage.conf
            podman_ids_dir: /tmp/flakes
            firecracker_ids_dir: /tmp/flakes
 
-  3. Create a copy of the system wide flake storage configuration file
-     /etc/flakes/storage.conf to $HOME/.config/flakes/storage.conf
+  3. Create a copy of the system wide flakes podman storage configuration file
+     /etc/flakes/storage.conf to $HOME/.config/flakes/podman/storage.conf
      and adjust the storage configuration as desired. For example:
 
       .. code:: ini
 
          [storage]
          driver = "overlay"
-         graphroot = "/home/USERNAME/.config/flakes/storage"
-         runroot= "/home/USERNAME/.config/flakes/storage/runroot"
-         rootless_storage_path = "/home/USERNAME/.config/flakes/storage"
+         graphroot = "/home/USERNAME/.config/flakes/podman/storage"
+         rootless_storage_path = "/home/USERNAME/.config/flakes/podman/storage"
+         runroot= "/home/USERNAME/.config/flakes/podman/storage/runroot"
 
 AUTHOR
 ------

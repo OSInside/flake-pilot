@@ -53,39 +53,21 @@ FILES
        # flake storage location.
        podman_storage_conf: /etc/flakes/storage.conf
 
-  To setup a user specific configuration for running flake applications
-  perform the following steps:
+  The user specific configuration for running flake applications
+  is created by the following command:
 
-  1. Create a custom directory structure below $HOME/.config/flakes as follows:
+  .. code:: sh
 
-     .. code:: sh
+     flake-ctl init --user
 
-        mkdir -p $HOME/.config/flakes/podman
-        mkdir -p $HOME/.config/flakes/firecracker
+  For details see:
 
-  2. Create a copy of the system wide configuration file /etc/flakes.yml
-     to $HOME/.config/flakes.yml and adjust the configuration as desired.
-     For example:
+  - man flake-ctl-init
 
-      .. code:: yaml
+SEE ALSO
+--------
 
-         generic:
-           flakes_dir: /home/USERNAME/.config/flakes
-           podman_storage_conf: /home/USERNAME/.config/flakes/podman/storage.conf
-           podman_ids_dir: /tmp/flakes
-           firecracker_ids_dir: /tmp/flakes
-
-  3. Create a copy of the system wide flakes podman storage configuration file
-     /etc/flakes/storage.conf to $HOME/.config/flakes/podman/storage.conf
-     and adjust the storage configuration as desired. For example:
-
-      .. code:: ini
-
-         [storage]
-         driver = "overlay"
-         graphroot = "/home/USERNAME/.config/flakes/podman/storage"
-         rootless_storage_path = "/home/USERNAME/.config/flakes/podman/storage"
-         runroot= "/home/USERNAME/.config/flakes/podman/storage/runroot"
+flake-ctl(8), flake-ctl-init(8), podman-pilot(8), firecracker-pilot(8)
 
 AUTHOR
 ------

@@ -54,6 +54,17 @@ pub enum Commands {
         #[clap(subcommand)]
         command: Firecracker,
     },
+    /// Create the setup to run flake applications
+    Init {
+        /// Create the setup for the calling user, rootless mode
+        #[clap(long)]
+        user: bool,
+
+        /// Create the configuration files from scratch, even if
+        /// they already exist. Existing files are overwritten
+        #[clap(long)]
+        force: bool,
+    },
     /// List registered flake applications
     List {
         /// Pull into user specific podman registry

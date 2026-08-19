@@ -53,6 +53,10 @@ __flake_ctl_help() {
     __comp_reply ""
 }
 
+__flake_ctl_init() {
+    __comp_reply_unused "--force --user --help"
+}
+
 __flake_ctl_list() {
     declare prev="${prev}"
     if [ "${prev}" = "--format" ];then
@@ -163,6 +167,10 @@ __flake_ctl_main() {
             help_*)
                 command="help" && __comp_reply "" && return 0
                 ;;
+            init_*)
+                command="init" && __flake_ctl_complete_command "init" \
+                    && return 0
+                ;;
             list_*)
                 command="list" && __flake_ctl_complete_command "list" \
                     && return 0
@@ -177,6 +185,7 @@ __flake_ctl_main() {
             --version
             firecracker
             help
+            init
             list
             podman
         "

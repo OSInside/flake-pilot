@@ -20,6 +20,7 @@ SYNOPSIS
 
    SUBCOMMANDS:
        help         Print this message or the help of the given subcommand(s)
+       init         Create the setup to run flake applications
        list         List registered container applications
        podman       Load and register OCI applications
        firecracker  Load and register VM applications
@@ -41,7 +42,7 @@ registration process.
 SEE ALSO
 --------
 
-podman-pilot(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8)
+podman-pilot(8), flake-ctl-init(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8)
 
 AUTHOR
 ------

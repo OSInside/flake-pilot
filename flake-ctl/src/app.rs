@@ -176,6 +176,7 @@ pub fn create_vm_config(
     force_vsock: bool,
     includes_tar: Option<Vec<String>>,
     includes_path: Option<Vec<String>>,
+    usermode: bool,
 ) -> bool {
     /*!
     Create app configuration for the firecracker engine.
@@ -192,7 +193,7 @@ pub fn create_vm_config(
         .to_str()
         .unwrap();
     let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(false), app_basename
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
     );
     match app_config::AppConfig::save_vm(
         Path::new(&app_config_file),
@@ -206,6 +207,7 @@ pub fn create_vm_config(
         force_vsock,
         includes_tar,
         includes_path,
+        usermode,
     ) {
         Ok(_) => true,
         Err(error) => {
@@ -574,7 +576,7 @@ pub fn purge(app: &str, engine: &str, usermode: bool) {
         podman::purge_container(app, usermode)
     }
     if engine == defaults::FIRECRACKER_PILOT {
-        firecracker::purge_vm(app)
+        firecracker::purge_vm(app, usermode)
     }
 }
 

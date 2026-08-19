@@ -23,6 +23,10 @@
 //
 pub const FLAKES_CONFIG: &str = "/etc/flakes.yml";
 pub const FLAKES_DIR: &str = "/usr/share/flakes";
+// User specific locations, relative to the home directory
+// of the user calling the program
+pub const FLAKES_CONFIG_USER: &str = ".config/flakes.yml";
+pub const FLAKES_DIR_USER: &str = ".config/flakes";
 pub const PODMAN_IDS_DIR: &str = "/tmp/flakes";
 pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
 pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";

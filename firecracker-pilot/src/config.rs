@@ -24,7 +24,7 @@
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use strum::Display;
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::Path, path::PathBuf};
 use flakes::config::get_flakes_dir;
 
 lazy_static! {
@@ -55,11 +55,28 @@ fn load_config() -> Config<'static> {
     and attached to the master program_name.yaml file. The result
     is send to the Yaml parser
     !*/
+    // first try to find system wide config
+    let mut usermode = false;
+
     let base_path = get_base_path();
     let base_path = base_path.file_name().unwrap().to_str().unwrap();
-    let base_yaml = fs::read_to_string(config_file(base_path));
+    let mut base_file = config_file(base_path, usermode);
 
-    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path))
+    if ! Path::new(&base_file).exists() {
+        // no system wide config found, try user specific
+        usermode = true;
+        base_file = config_file(base_path, usermode);
+        if ! Path::new(&base_file).exists() {
+            panic!(
+                "No user/system wide flake registration found for: {}",
+                base_path
+            )
+        }
+    }
+
+    let base_yaml = fs::read_to_string(&base_file);
+
+    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path, usermode))
         .into_iter()
         .flatten()
         .flatten()
@@ -91,12 +108,12 @@ pub fn config_from_str(input: &str) -> Config<'static> {
     serde_yaml::from_str(content).unwrap()
 }
 
-pub fn config_file(program: &str) -> String {
-    format!("{}/{}.yaml", get_flakes_dir(false), program)
+pub fn config_file(program: &str, usermode: bool) -> String {
+    format!("{}/{}.yaml", get_flakes_dir(usermode), program)
 }
 
-fn config_dir(program: &str) -> String {
-    format!("{}/{}.d", get_flakes_dir(false), program)
+fn config_dir(program: &str, usermode: bool) -> String {
+    format!("{}/{}.d", get_flakes_dir(usermode), program)
 }
 
 #[derive(Deserialize)]

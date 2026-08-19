@@ -55,12 +55,30 @@ pub fn basename(program_path: &String) -> String {
     program_name
 }
 
+fn program_flakes_dir(program_basename: &String) -> String {
+    /*!
+    Provide the flakes directory containing the registration
+    of the given program_basename
+
+    A system wide registration is preferred. If it does not exist
+    the registration directory of the calling user is used
+    !*/
+    let config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(false), program_basename
+    );
+    if Path::new(&config_file).exists() {
+        get_flakes_dir(false)
+    } else {
+        get_flakes_dir(true)
+    }
+}
+
 pub fn program_config_file(program_basename: &String) -> String {
     /*!
     Provide expected config file path for the given program_basename
     !*/
     let config_file = &format!(
-        "{}/{}.yaml", get_flakes_dir(false), program_basename
+        "{}/{}.yaml", program_flakes_dir(program_basename), program_basename
     );
     config_file.to_string()
 }
@@ -70,7 +88,7 @@ pub fn program_config_dir(program_basename: &String) -> String {
     Provide expected config directory for the given program_basename
     !*/
     let config_dir = &format!(
-        "{}/{}.d", get_flakes_dir(false), program_basename
+        "{}/{}.d", program_flakes_dir(program_basename), program_basename
     );
     config_dir.to_string()
 }

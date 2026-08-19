@@ -354,6 +354,15 @@ After an application is registered, it can be listed via:
 flake-ctl list
 ```
 
+The instances created from the registered applications can be
+listed per engine via:
+
+```bash
+flake-ctl podman show
+
+flake-ctl firecracker show
+```
+
 Each application provides a configuration below ```/usr/share/flakes/```.
 The term ```flake``` is a short name for an application running inside an isolated environment.
 For our above registered ```aws``` flake, the config file structure

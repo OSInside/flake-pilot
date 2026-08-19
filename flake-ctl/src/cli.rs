@@ -202,6 +202,14 @@ pub enum Firecracker {
         #[clap(long)]
         force: bool,
     },
+    /// Show VM instances
+    Show {
+        /// Output format. The table format is meant for humans,
+        /// the json and csv formats are meant to be parsed by
+        /// scripts and other programs
+        #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
+        format: ListFormat,
+    },
     /// Remove application registration or entire VM
     #[clap(group(
         ArgGroup::new("remove").required(true).args(&["vm", "app"]),
@@ -235,6 +243,14 @@ pub enum Podman {
         /// image if there is a match
         #[clap(long)]
         oci: String,
+    },
+    /// Show container instances
+    Show {
+        /// Output format. The table format is meant for humans,
+        /// the json and csv formats are meant to be parsed by
+        /// scripts and other programs
+        #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
+        format: ListFormat,
     },
     /// Remove application registration or entire container
     #[clap(group(

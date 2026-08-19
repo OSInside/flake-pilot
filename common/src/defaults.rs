@@ -32,3 +32,11 @@ pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
 pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";
 pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
+// Options used for all rsync calls. Next to the archive mode
+// the ACLs (-A) and the extended attributes (-X) of the synced
+// data are preserved. The extended attributes also carry the
+// file capabilities and the security labels of a file. Without
+// them a program like ping, which relies on a capability
+// instead of the setuid permission, no longer works after
+// it was synced
+pub const RSYNC_OPTIONS: [&str; 4] = ["-a", "-v", "-A", "-X"];

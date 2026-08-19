@@ -30,6 +30,7 @@ use std::path::Path;
 
 use uzers::get_current_uid;
 
+use crate::defaults;
 use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
 use crate::user::{User, mkdir};
@@ -176,7 +177,7 @@ impl IO {
         Sync data from source path to target path
         !*/
         let mut call = user.run("rsync");
-        call.arg("-av");
+        call.args(defaults::RSYNC_OPTIONS);
         for option in options {
             call.arg(option);
         }

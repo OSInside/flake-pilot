@@ -90,6 +90,13 @@ mkdir -p ~/bin
 export PATH=$PATH:$HOME/bin
 ```
 
+The examples register the apps for the calling user. The setup
+for this rootless mode is created once via:
+
+```bash
+flake-ctl init --user
+```
+
 ### Register Amazon's SDK utility as a container app named: aws <a name="one"/>
 
 ```bash

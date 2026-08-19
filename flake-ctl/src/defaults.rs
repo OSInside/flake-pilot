@@ -52,6 +52,18 @@ pub const FIRECRACKER_CHECKSUM_NAME:&str =
     "checksum";
 pub const FIRECRACKER_SCI:&str =
     "/usr/lib/flake-pilot/sci";
+// Name of the podman setup directory inside of the flakes
+// directory of the calling user. Used in user mode only
+pub const PODMAN_REGISTRY_NAME:&str =
+    "podman";
+pub const PODMAN_STORAGE_CONF_NAME:&str =
+    "storage.conf";
+pub const PODMAN_STORAGE_NAME:&str =
+    "storage";
+pub const PODMAN_STORAGE_RUNROOT_NAME:&str =
+    "runroot";
+pub const PODMAN_STORAGE_DRIVER:&str =
+    "overlay";
 pub const PODMAN_ENGINE:&str =
     "podman";
 pub const FIRECRACKER_ENGINE:&str =

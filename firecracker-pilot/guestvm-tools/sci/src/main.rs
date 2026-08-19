@@ -333,56 +333,79 @@ fn main() {
                             debug(&format!(
                                 "SCI CALL RAW BUF: {call_str:?}"
                             ));
-                            let mut call_stack: Vec<&str> =
-                                call_str.split(' ').collect();
-                            let exec_port = call_stack.pop().unwrap();
-                            let exec_cmd = call_stack.join(" ");
+                            // The call string consists of the command to
+                            // execute followed by the port the caller
+                            // listens on. The command is split into its
+                            // arguments like a shell does it. Thus an
+                            // argument can be quoted with ' or " to keep
+                            // the whitespace and the quoting characters
+                            // it contains
+                            let mut exec_cmd: Vec<String> = Vec::new();
                             let mut exec_port_num = 0;
-                            match exec_port.parse::<u32>() {
-                                Ok(num) => { exec_port_num = num },
+                            match shell_words::split(&call_str) {
+                                Ok(mut call_stack) => {
+                                    let exec_port = call_stack.pop()
+                                        .unwrap_or_default();
+                                    match exec_port.parse::<u32>() {
+                                        Ok(num) => { exec_port_num = num },
+                                        Err(error) => {
+                                            debug(&format!(
+                                                "Failed to parse port: {exec_port}: {error}"
+                                            ));
+                                            ok = false
+                                        }
+                                    }
+                                    exec_cmd = call_stack
+                                },
                                 Err(error) => {
                                     debug(&format!(
-                                        "Failed to parse port: {exec_port}: {error}"
+                                        "Failed to parse {call_str}: {error}"
                                     ));
                                     ok = false
                                 }
                             }
+                            if exec_cmd.is_empty() {
+                                debug("No command to execute received");
+                                ok = false
+                            }
                             debug(&format!(
-                                "CALL SCI: string:'{exec_cmd}' u32:{exec_port_num}"
+                                "CALL SCI: {exec_cmd:?} u32:{exec_port_num}"
                             ));
 
                             // Establish a VSOCK connection with the farend
-                            let thread_handle = thread::spawn(move || {
-                                let mut retry_count = 0;
-                                loop {
-                                    if retry_count == defaults::RETRIES {
-                                        break
-                                    }
-                                    match VsockStream::connect_with_cid_port(
-                                        2, exec_port_num
-                                    ) {
-                                        Ok(vsock_stream) => {
-                                            redirect_command(
-                                                &exec_cmd, vsock_stream
-                                            );
+                            if ok {
+                                let thread_handle = thread::spawn(move || {
+                                    let mut retry_count = 0;
+                                    loop {
+                                        if retry_count == defaults::RETRIES {
                                             break
-                                        },
-                                        Err(error) => {
-                                            debug(&format!(
-                                                "[{retry_count}] VSOCK-CONNECT failed with: {error}"
-                                            ));
-                                            let some_time = time::Duration::from_millis(
-                                                defaults::VM_WAIT_TIMEOUT_MSEC
-                                            );
-                                            thread::sleep(some_time);
                                         }
+                                        match VsockStream::connect_with_cid_port(
+                                            2, exec_port_num
+                                        ) {
+                                            Ok(vsock_stream) => {
+                                                redirect_command(
+                                                    &exec_cmd, vsock_stream
+                                                );
+                                                break
+                                            },
+                                            Err(error) => {
+                                                debug(&format!(
+                                                    "[{retry_count}] VSOCK-CONNECT failed with: {error}"
+                                                ));
+                                                let some_time = time::Duration::from_millis(
+                                                    defaults::VM_WAIT_TIMEOUT_MSEC
+                                                );
+                                                thread::sleep(some_time);
+                                            }
+                                        }
+                                        retry_count += 1
                                     }
-                                    retry_count += 1
+                                });
+                                if ! resume {
+                                    // Wait for the thread to finish if not in resume mode
+                                    let _ = thread_handle.join();
                                 }
-                            });
-                            if ! resume {
-                                // Wait for the thread to finish if not in resume mode
-                                let _ = thread_handle.join();
                             }
                         },
                         Err(error) => {
@@ -563,7 +586,7 @@ fn is_owned_child(pid: i32) -> bool {
     lock_owned_children().contains(&pid)
 }
 
-fn redirect_command(command: &str, stream: vsock::VsockStream) {
+fn redirect_command(command: &[String], stream: vsock::VsockStream) {
     // start the given command as a child process in a new PTY
     // or on raw channels if no pseudo terminal can be allocated
     // connect its standard channels to the stream
@@ -783,18 +806,21 @@ fn get_echo_data(data: &[u8]) -> Vec<u8> {
 }
 
 fn redirect_command_to_raw_channels(
-    command: &str, mut stream: vsock::VsockStream
+    command: &[String], mut stream: vsock::VsockStream
 ) {
-    let mut call_args: Vec<&str> = command.split(' ').collect();
-    let program = call_args.remove(0);
+    let (program, call_args) = match command.split_first() {
+        Some(call) => call,
+        None => {
+            debug("No command to execute specified");
+            return
+        }
+    };
     let mut call = Command::new(program);
     call
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    for arg in call_args {
-        call.arg(arg);
-    }
+    call.args(call_args);
     debug(&format!(
         "SCI CALL: {} -> {:?}", program, call.get_args()
     ));
@@ -913,7 +939,7 @@ fn redirect_command_to_raw_channels(
 }
 
 fn redirect_command_to_pty(
-    command: &str, mut stream: vsock::VsockStream, pty_fork: Fork
+    command: &[String], mut stream: vsock::VsockStream, pty_fork: Fork
 ) {
     if let Ok(mut master) = pty_fork.is_parent() {
         let mut child_pid = -1;
@@ -993,12 +1019,15 @@ fn redirect_command_to_pty(
         let _ = pty_fork.wait();
         disown_child(child_pid);
     } else {
-        let mut call_args: Vec<&str> = command.split(' ').collect();
-        let program = call_args.remove(0);
+        let (program, call_args) = match command.split_first() {
+            Some(call) => call,
+            None => {
+                debug("No command to execute specified");
+                return
+            }
+        };
         let mut call = Command::new(program);
-        for arg in call_args {
-            call.arg(arg);
-        }
+        call.args(call_args);
         debug(&format!(
             "SCI CALL: {} -> {:?}", program, call.get_args()
         ));
@@ -1121,3 +1150,4 @@ fn setup_logger() {
 
     env_logger::init_from_env(env);
 }
+

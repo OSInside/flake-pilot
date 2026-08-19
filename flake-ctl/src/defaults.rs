@@ -62,6 +62,30 @@ pub const FLAKE_LIST_COLUMN_SPACING:&str =
     "  ";
 pub const FLAKE_LIST_NO_VALUE:&str =
     "-";
+pub const FLAKE_SHOW_COLUMNS:[&str; 6] =
+    ["NAME", "USER", "ID", "STATUS", "IMAGE", "CONFIG"];
+// Number of characters of the instance ID shown in the table
+// format. Like podman does, the table shows the container ID
+// abbreviated. The machine readable formats show it complete
+pub const FLAKE_SHOW_ID_LEN: usize =
+    12;
+// File name extensions of the meta data files the pilots
+// create for their instances
+pub const PODMAN_ID_EXTENSION:&str =
+    "cid";
+pub const FIRECRACKER_ID_EXTENSION:&str =
+    "vmid";
+// Name of the process a firecracker VM ID file points to
+pub const FIRECRACKER_PROCESS_NAME:&str =
+    "firecracker";
+pub const PROC_DIR:&str =
+    "/proc";
+pub const INSTANCE_RUNNING:&str =
+    "running";
+pub const INSTANCE_STOPPED:&str =
+    "stopped";
+pub const INSTANCE_UNKNOWN:&str =
+    "unknown";
 pub const SHA256_TOOL:&str =
     "sha256sum";
 pub const TEMP_DIR:&str =

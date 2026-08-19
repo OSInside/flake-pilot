@@ -224,9 +224,8 @@ fi
 /usr/share/bash-completion/completions/flake-ctl
 %doc /usr/share/man/man8/flake-pilot.8.gz
 %doc /usr/share/man/man8/flake-ctl.8.gz
+%doc /usr/share/man/man8/flake-ctl-init.8.gz
 %doc /usr/share/man/man8/flake-ctl-list.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-show.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-show.8.gz
 
 %post
 if [ -d /tmp/flakes ];then
@@ -244,6 +243,7 @@ fi
 %doc /usr/share/man/man8/flake-ctl-podman-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-register.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-remove.8.gz
+%doc /usr/share/man/man8/flake-ctl-podman-show.8.gz
 %doc /usr/share/man/man8/podman-pilot.8.gz
 
 %files -n flake-pilot-firecracker
@@ -263,6 +263,7 @@ fi
 %doc /usr/share/man/man8/flake-ctl-firecracker-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-remove.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-register.8.gz
+%doc /usr/share/man/man8/flake-ctl-firecracker-show.8.gz
 /usr/bin/firecracker-pilot
 %doc /usr/share/man/man8/firecracker-pilot.8.gz
 /usr/lib/flake-pilot/sci

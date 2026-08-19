@@ -37,6 +37,7 @@ pub mod defaults;
 pub mod fetch;
 pub mod instance;
 pub mod output;
+pub mod setup;
 
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
@@ -52,15 +53,25 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
     // In user mode only resources of the calling user are touched
     let user = usermode(&args);
 
-    init_flakes_dir(user)?;
-
     match &args.command {
+        // init
+        cli::Commands::Init { force, .. } => {
+            // The setup this command creates is a precondition
+            // for the other commands. It is therefore created
+            // before the flake registry directory is expected
+            // to exist
+            if ! setup::init(user, *force) {
+                return Ok(ExitCode::FAILURE)
+            }
+        },
         // list
         cli::Commands::List { format, .. } => {
+            init_flakes_dir(user)?;
             app::list(user, *format);
         },
         // firecracker engine
         cli::Commands::Firecracker { command, .. } => {
+            init_flakes_dir(user)?;
             match &command {
                 // pull
                 cli::Firecracker::Pull {
@@ -158,6 +169,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
         },
         // podman engine
         cli::Commands::Podman { command, .. } => {
+            init_flakes_dir(user)?;
             match &command {
                 // pull
                 cli::Podman::Pull { uri } => {
@@ -258,6 +270,7 @@ fn usermode(args: &cli::Cli) -> bool {
     a --user request from root is ignored
     !*/
     let usermode = match &args.command {
+        cli::Commands::Init { user, .. } => *user,
         cli::Commands::List { user, .. } => *user,
         cli::Commands::Firecracker { user, .. } => *user,
         cli::Commands::Podman { user, .. } => *user

@@ -34,8 +34,14 @@ pub const FLAKE_TEMPLATE_FIRECRACKER:&str =
     "/etc/flakes/firecracker-flake.yaml";
 pub const FIRECRACKER_REGISTRY_DIR:&str =
     "/var/lib/firecracker";
-pub const FIRECRACKER_IMAGES_DIR:&str =
-    "/var/lib/firecracker/images";
+// Name of the firecracker registry inside of the flakes
+// directory of the calling user. Used in user mode only
+pub const FIRECRACKER_REGISTRY_NAME:&str =
+    "firecracker";
+pub const FIRECRACKER_IMAGES_NAME:&str =
+    "images";
+pub const FIRECRACKER_STORAGE_NAME:&str =
+    "storage";
 pub const FIRECRACKER_INITRD_NAME:&str =
     "initrd";
 pub const FIRECRACKER_KERNEL_NAME:&str =

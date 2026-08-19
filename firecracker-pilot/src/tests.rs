@@ -56,6 +56,6 @@ vm:
 
 #[test]
 fn test_program_config_file() {
-    let config_file = config_file("app");
+    let config_file = config_file("app", false);
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }

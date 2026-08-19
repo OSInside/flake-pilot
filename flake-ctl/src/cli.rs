@@ -47,6 +47,10 @@ pub enum Commands {
     },
     /// Load and register FireCracker VM applications
     Firecracker {
+        /// Use user specific registry, rootless mode
+        #[clap(long)]
+        user: bool,
+
         #[clap(subcommand)]
         command: Firecracker,
     },

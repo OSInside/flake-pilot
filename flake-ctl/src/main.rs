@@ -39,6 +39,7 @@ pub mod fetch;
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
 use uzers::get_current_username;
+use std::fs;
 
 #[tokio::main]
 async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
@@ -46,22 +47,18 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 
     let args = cli::parse_args();
 
-    // The flake registry is read by the pilots to learn how to run
-    // an application. It is therefore only writable by root
-    mkdir(&get_flakes_dir(false), "755", User::ROOT)?;
+    // In user mode only resources of the calling user are touched
+    let user = usermode(&args);
+
+    init_flakes_dir(user)?;
 
     match &args.command {
         // list
-        cli::Commands::List { mut user, format } => {
-            let calling_user_name = get_current_username().unwrap();
-            if calling_user_name == "root" {
-                // if --user is used for the root user, we ignore it
-                user = false
-            }
+        cli::Commands::List { format, .. } => {
             app::list(user, *format);
         },
         // firecracker engine
-        cli::Commands::Firecracker { command } => {
+        cli::Commands::Firecracker { command, .. } => {
             match &command {
                 // pull
                 cli::Firecracker::Pull {
@@ -70,14 +67,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     if ! kis_image.is_none() {
                         exit(
                             firecracker::pull_kis_image(
-                                name, kis_image.as_ref(), *force
+                                name, kis_image.as_ref(), *force, user
                             ).await
                         );
                     } else {
                         exit(
                             firecracker::pull_component_image(
                                 name, rootfs.as_ref(), kernel.as_ref(),
-                                initrd.as_ref(), *force
+                                initrd.as_ref(), *force, user
                             ).await
                         );
                     }
@@ -91,16 +88,16 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         app::remove(
                             app,
                             defaults::FIRECRACKER_PILOT,
-                            false,
+                            user,
                             true,
                             *force
                         );
                     }
-                    if app::init(Some(app), false) {
+                    if app::init(Some(app), user) {
                         let mut ok = app::register(
                             Some(app), target.as_ref(),
                             defaults::FIRECRACKER_PILOT,
-                            false
+                            user
                         );
                         if ok {
                             ok = app::create_vm_config(
@@ -114,12 +111,13 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 *force_vsock,
                                 include_tar.as_ref().cloned(),
                                 include_path.as_ref().cloned(),
+                                user,
                             );
                         }
                         if ! ok {
                             app::remove(
                                 app, defaults::FIRECRACKER_PILOT,
-                                false,
+                                user,
                                 true,
                                 *force
                             );
@@ -134,7 +132,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::FIRECRACKER_PILOT,
-                        false,
+                        user,
                         false,
                         false
                     ) {
@@ -144,19 +142,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         app::purge(
                             vm.as_ref().map(String::as_str).unwrap(),
                             defaults::FIRECRACKER_PILOT,
-                            false
+                            user
                         );
                     }
                 }
             }
         },
         // podman engine
-        cli::Commands::Podman { command, mut user } => {
-            let calling_user_name = get_current_username().unwrap();
-            if calling_user_name == "root" {
-                // if --user is used for the root user, we ignore it
-                user = false
-            }
+        cli::Commands::Podman { command, .. } => {
             match &command {
                 // pull
                 cli::Podman::Pull { uri } => {
@@ -244,6 +237,36 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
         },
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn usermode(args: &cli::Cli) -> bool {
+    /*!
+    Check if the command should operate on the resources of the
+    calling user only. For the root user there is no user mode,
+    a --user request from root is ignored
+    !*/
+    let usermode = match &args.command {
+        cli::Commands::List { user, .. } => *user,
+        cli::Commands::Firecracker { user, .. } => *user,
+        cli::Commands::Podman { user, .. } => *user
+    };
+    usermode && get_current_username().unwrap() != "root"
+}
+
+fn init_flakes_dir(usermode: bool) -> Result<(), Box<dyn std::error::Error>> {
+    /*!
+    Create the directory the flake registrations are stored in
+    !*/
+    if usermode {
+        // The user flake registry belongs to the calling user and
+        // is therefore created with the privileges of that user
+        fs::create_dir_all(get_flakes_dir(true))?;
+    } else {
+        // The flake registry is read by the pilots to learn how to
+        // run an application. It is therefore only writable by root
+        mkdir(&get_flakes_dir(false), "755", User::ROOT)?;
+    }
+    Ok(())
 }
 
 fn setup_logger() {

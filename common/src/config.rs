@@ -29,7 +29,8 @@ use std::process::exit;
 
 use lazy_static::lazy_static;
 
-use uzers::{get_current_username};
+use uzers::{get_current_username, get_user_by_name};
+use uzers::os::unix::UserExt;
 
 use ini::Ini;
 
@@ -46,18 +47,26 @@ lazy_static! {
 }
 
 pub fn get_flakes_dir(user: bool) -> String {
+    /*!
+    Provide the directory the flake registrations are stored in
+
+    If the directory is not configured the system wide default
+    location is used. In user mode the registrations belong to
+    the calling user and are stored in its home directory
+    !*/
     let GenericData { flakes_dir, .. } = &flakes_config(user).generic;
-    if flakes_dir.is_none() {
-        if ! user {
-            defaults::FLAKES_DIR.to_string()
-        } else {
-            error!("No flakes_dir configured");
-            error!("Please check {}", get_user_flakes_config());
-            error!("More details on rootless mode in 'man flake-pilot'");
-            exit(1);
+    match flakes_dir {
+        Some(flakes_dir) => flakes_dir.clone(),
+        None => {
+            if ! user {
+                defaults::FLAKES_DIR.to_string()
+            } else {
+                error!("No flakes_dir configured");
+                error!("Please check {}", get_user_flakes_config());
+                error!("More details on rootless mode in 'man flake-pilot'");
+                exit(1);
+            }
         }
-    } else {
-        flakes_dir.clone().unwrap()
     }
 }
 
@@ -114,12 +123,19 @@ fn flakes_config(user: bool) -> &'static FlakesConfig {
     }
 }
 
-fn get_user_flakes_config() -> String {
+fn get_user_home() -> String {
+    /*!
+    Home directory of the user calling the program
+    !*/
     let current_user = get_current_username().unwrap();
-    let flake_config_path = format!(
-        "/home/{}/.config/flakes.yml", current_user.to_str().unwrap()
-    );
-    flake_config_path
+    match get_user_by_name(&current_user) {
+        Some(user) => user.home_dir().to_string_lossy().to_string(),
+        None => format!("/home/{}", current_user.to_string_lossy())
+    }
+}
+
+fn get_user_flakes_config() -> String {
+    format!("{}/{}", get_user_home(), defaults::FLAKES_CONFIG_USER)
 }
 
 fn read_flakes_config_user() -> FlakesConfig {

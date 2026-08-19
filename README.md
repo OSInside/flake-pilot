@@ -190,10 +190,10 @@ runtime = "krun"
 ### Register a shell as a firecracker VM app named: fireshell <a name="four"/>
 
 ```bash
-sudo flake-ctl firecracker pull --name leap \
+flake-ctl firecracker --user pull --name leap \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker register --vm leap \
+flake-ctl firecracker --user register --vm leap \
     --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
 fireshell
@@ -212,10 +212,10 @@ option ```--force-vsock``` when registering the application.
 ### Register claude AI as firecracker VM app named: claude <a name="five"/>
 
 ```bash
-sudo flake-ctl firecracker pull --name claude \
+flake-ctl firecracker --user pull --name claude \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/claude.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker register --vm claude \
+flake-ctl firecracker --user register --vm claude \
     --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
 

@@ -27,6 +27,7 @@ use std::path::Path;
 use serde::{Serialize, Deserialize};
 use serde_yaml::{self};
 use crate::defaults;
+use crate::firecracker;
 
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -183,11 +184,12 @@ impl AppConfig {
         force_vsock: bool,
         includes_tar: Option<Vec<String>>,
         includes_path: Option<Vec<String>>,
+        usermode: bool,
     ) -> Result<(), GenericError> {
         /*!
         save stores an AppConfig to the given file
         !*/
-        let image_dir = format!("{}/{}", defaults::FIRECRACKER_IMAGES_DIR, vm);
+        let image_dir = firecracker::get_image_dir(vm, usermode);
         let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_FIRECRACKER)
             .unwrap_or_else(|_| panic!(
                 "Failed to open {}", defaults::FLAKE_TEMPLATE_FIRECRACKER)

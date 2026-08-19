@@ -36,6 +36,19 @@ __flake_ctl_firecracker_remove() {
     __comp_reply_unused "--app --vm --help"
 }
 
+__flake_ctl_firecracker_show() {
+    __flake_ctl_show
+}
+
+__flake_ctl_show() {
+    declare prev="${prev}"
+    if [ "${prev}" = "--format" ];then
+        __comp_reply "table json csv"
+        return 0
+    fi
+    __comp_reply_unused "--format --help"
+}
+
 __flake_ctl_help() {
     __comp_reply ""
 }
@@ -77,6 +90,10 @@ __flake_ctl_podman_register() {
 
 __flake_ctl_podman_remove() {
     __comp_reply_unused "--app --container --help"
+}
+
+__flake_ctl_podman_show() {
+    __flake_ctl_show
 }
 
 __flake_ctl_podman_load() {
@@ -125,20 +142,22 @@ __flake_ctl_main() {
             podman_pull| \
             podman_register| \
             podman_remove| \
+            podman_show| \
             firecracker_remove| \
             firecracker_help| \
             firecracker_pull| \
+            firecracker_show| \
             firecracker_register)
                 __flake_ctl_complete_command "${comp}" && return 0
                 ;;
             firecracker_*)
                 command="firecracker" && __comp_reply "
-                    help pull register remove --user
+                    help pull register remove show --user
                 " && return 0
                 ;;
             podman_*)
                 command="podman" && __comp_reply "
-                    help load pull register remove --user
+                    help load pull register remove show --user
                 " && return 0
                 ;;
             help_*)

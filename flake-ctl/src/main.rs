@@ -35,6 +35,8 @@ pub mod app;
 pub mod app_config;
 pub mod defaults;
 pub mod fetch;
+pub mod instance;
+pub mod output;
 
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
@@ -127,6 +129,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         return Ok(ExitCode::FAILURE)
                     }
                 },
+                // show
+                cli::Firecracker::Show { format } => {
+                    instance::show(
+                        defaults::FIRECRACKER_ENGINE, user, *format
+                    );
+                },
                 // remove
                 cli::Firecracker::Remove { vm, app } => {
                     if ! app.is_none() && ! app::remove(
@@ -213,6 +221,10 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             return Ok(ExitCode::FAILURE)
                         }
                     }
+                },
+                // show
+                cli::Podman::Show { format } => {
+                    instance::show(defaults::PODMAN_ENGINE, user, *format);
                 },
                 // remove
                 cli::Podman::Remove { container, app, force } => {

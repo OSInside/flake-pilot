@@ -23,7 +23,7 @@
 // SOFTWARE.
 //
 use crate::cli::ListFormat;
-use crate::{app_config, defaults, firecracker, podman};
+use crate::{app_config, defaults, firecracker, output, podman};
 use glob::glob;
 use serde::Serialize;
 use std::fs;
@@ -450,7 +450,7 @@ pub fn list(usermode: bool, format: ListFormat) {
     let flakes = app_list(usermode);
     match format {
         ListFormat::Table => list_as_table(&flakes, usermode),
-        ListFormat::Json => list_as_json(&flakes),
+        ListFormat::Json => output::print_json(&flakes),
         ListFormat::Csv => list_as_csv(&flakes),
     }
 }
@@ -467,104 +467,36 @@ fn list_as_table(flakes: &[FlakeInfo], usermode: bool) {
         println!("No application(s) registered");
         return;
     }
-    let headline: Vec<String> = defaults::FLAKE_LIST_COLUMNS
-        .iter().map(|column| column.to_string()).collect();
     let mut rows: Vec<Vec<String>> = Vec::new();
     for flake in flakes {
         rows.push(vec![
             flake.name.to_string(),
-            column_value(flake.engine.as_ref()),
-            column_value(flake.target.as_ref()),
-            column_value(flake.host_app_path.as_ref()),
+            output::column_value(flake.engine.as_ref()),
+            output::column_value(flake.target.as_ref()),
+            output::column_value(flake.host_app_path.as_ref()),
             flake.config.to_string(),
         ]);
     }
-    let mut widths: Vec<usize> = headline
-        .iter().map(|column| column.chars().count()).collect();
-    for row in &rows {
-        for (column, value) in row.iter().enumerate() {
-            widths[column] = widths[column].max(value.chars().count());
-        }
-    }
-    let ruler: Vec<String> = widths
-        .iter().map(|width| "-".repeat(*width)).collect();
-    print_table_row(&headline, &widths);
-    print_table_row(&ruler, &widths);
-    for row in &rows {
-        print_table_row(row, &widths);
-    }
-}
-
-fn print_table_row(row: &[String], widths: &[usize]) {
-    /*!
-    Print one table row, columns padded to the given widths.
-    The last column is not padded to avoid trailing blanks
-    !*/
-    let mut line = String::new();
-    for (column, value) in row.iter().enumerate() {
-        if column + 1 == row.len() {
-            line.push_str(value);
-        } else {
-            let padding = widths[column] - value.chars().count();
-            line.push_str(value);
-            line.push_str(&" ".repeat(padding));
-            line.push_str(defaults::FLAKE_LIST_COLUMN_SPACING);
-        }
-    }
-    println!("{line}");
-}
-
-fn column_value(value: Option<&String>) -> String {
-    /*!
-    Table representation of an optional value
-    !*/
-    match value {
-        Some(value) => value.to_string(),
-        None => defaults::FLAKE_LIST_NO_VALUE.to_string()
-    }
-}
-
-fn list_as_json(flakes: &[FlakeInfo]) {
-    /*!
-    Print flakes as JSON list, machine readable. Values which
-    could not be read from the flake config are set to null
-    !*/
-    match serde_json::to_string_pretty(&flakes) {
-        Ok(json) => println!("{json}"),
-        Err(error) => panic!("Failed to serialize flake list: {:?}", error)
-    }
+    output::print_table(&defaults::FLAKE_LIST_COLUMNS, &rows);
 }
 
 fn list_as_csv(flakes: &[FlakeInfo]) {
     /*!
-    Print flakes as comma separated values with a header line,
-    machine readable. Values which could not be read from the
-    flake config are printed as empty fields
+    Print flakes as comma separated values, machine readable.
+    Values which could not be read from the flake config are
+    printed as empty fields
     !*/
+    let mut rows: Vec<Vec<String>> = Vec::new();
     for flake in flakes {
-        let record = [
-            flake.name.as_str(),
-            flake.engine.as_deref().unwrap_or_default(),
-            flake.target.as_deref().unwrap_or_default(),
-            flake.host_app_path.as_deref().unwrap_or_default(),
-            flake.config.as_str(),
-        ];
-        let fields: Vec<String> = record
-            .iter().map(|field| csv_field(field)).collect();
-        println!("{}", fields.join(","));
+        rows.push(vec![
+            flake.name.to_string(),
+            flake.engine.as_deref().unwrap_or_default().to_string(),
+            flake.target.as_deref().unwrap_or_default().to_string(),
+            flake.host_app_path.as_deref().unwrap_or_default().to_string(),
+            flake.config.to_string(),
+        ]);
     }
-}
-
-fn csv_field(value: &str) -> String {
-    /*!
-    Quote a CSV field if it contains characters with a
-    special meaning in CSV data
-    !*/
-    if value.chars().any(|char| matches!(char, ',' | '"' | '\n' | '\r')) {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
+    output::print_csv(&rows);
 }
 
 pub fn purge(app: &str, engine: &str, usermode: bool) {

@@ -61,8 +61,8 @@ OPTIONS
 
   * ``table``: human readable table with a headline. Default
   * ``json``: machine readable list of flake records
-  * ``csv``: machine readable comma separated values with a
-    header line
+  * ``csv``: machine readable comma separated values without
+    a header line
 
 --user
 

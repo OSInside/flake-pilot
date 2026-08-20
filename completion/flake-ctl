@@ -33,7 +33,7 @@ __flake_ctl_firecracker_register() {
 }
 
 __flake_ctl_firecracker_remove() {
-    __comp_reply_unused "--app --vm --help"
+    __comp_reply_unused "--app --vm --help --force"
 }
 
 __flake_ctl_firecracker_show() {
@@ -93,7 +93,7 @@ __flake_ctl_podman_register() {
 }
 
 __flake_ctl_podman_remove() {
-    __comp_reply_unused "--app --container --help"
+    __comp_reply_unused "--app --container --help --force"
 }
 
 __flake_ctl_podman_show() {

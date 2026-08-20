@@ -235,6 +235,13 @@ pub enum Firecracker {
         /// Application absolute path to be removed from host
         #[clap(long)]
         app: Option<String>,
+
+        /// Force removing the registration, do not raise an
+        /// error if no registration exists. Do not apply
+        /// the check for a flake registered app and remove
+        /// when present. Use with care !
+        #[clap(long)]
+        force: bool,
     },
 }
 

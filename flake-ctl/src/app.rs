@@ -251,13 +251,17 @@ pub fn remove(
     if ! force {
         if ! config_file_exists {
             if !silent {
-                error!("No app config file found: {config_file}");
+                error!(
+                    "No app config file found: {config_file}, consider --force"
+                );
             }
             return false
         }
         if ! app_config_dir_exists {
             if !silent {
-                error!("No app directory found: {app_config_dir}");
+                error!(
+                    "No app directory found: {app_config_dir}, consider --force"
+                );
             }
             return false
         }

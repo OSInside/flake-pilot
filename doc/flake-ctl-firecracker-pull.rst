@@ -46,6 +46,9 @@ and shows a file structure like in the following example
         ├── kernel
         └── rootfs
 
+An image pulled with `--kis-image` carries an additional
+`source_checksum` file, see UPDATE CHECK below.
+
 UPDATE CHECK
 ------------
 

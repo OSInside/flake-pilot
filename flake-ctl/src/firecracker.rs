@@ -324,14 +324,42 @@ pub async fn pull_kis_image(
     built KIS image type. This means the file behind uri
     is expected to be a tarball containing the KIS
     components; rootfs-image, kernel and optional initrd
+
+    The archive must be accompanied by a checksum file of the
+    same name plus a '.sha256' suffix. That checksum verifies
+    the download and it is kept with the image such that a
+    later pull of the same name can tell whether the image in
+    the registry is still up to date. An image which is up to
+    date is not fetched again and does not fail the pull
     !*/
     let mut result = 255;
     let image_dir = get_image_dir(name, usermode);
+    let uri = uri.unwrap();
 
     info!("Fetching KIS image...");
 
-    if ! pull_new(name, force, usermode) {
-        return result
+    let pull_state = match pull_init(name, force, usermode) {
+        Some(pull_state) => pull_state,
+        None => return result
+    };
+
+    // Fetch the checksum record that belongs to the archive.
+    // Without it neither the download can be verified nor can
+    // an existing image be checked for an update
+    let source_checksum = match fetch_source_checksum(uri).await {
+        Some(source_checksum) => source_checksum,
+        None => return result
+    };
+
+    // An image of that name is already in the registry. Compare
+    // it against the checksum of its origin to find out whether
+    // there is anything to update
+    if pull_state == PullState::Update {
+        if image_is_current(&image_dir, &source_checksum) {
+            info!("Image '{name}' is up to date");
+            return 0
+        }
+        info!("Image '{name}' is out of date, pulling latest version...");
     }
 
     match tempdir() {
@@ -344,7 +372,7 @@ pub async fn pull_kis_image(
             // Download...
             match fs::create_dir_all(&work_dir) {
                 Ok(_) => {
-                    match send_request(uri.unwrap()).await {
+                    match send_request(uri).await {
                         Ok(response) => {
                             result = response.status().as_u16().into();
                             match fetch_file(response, &kis_tar).await {
@@ -357,8 +385,7 @@ pub async fn pull_kis_image(
                         },
                         Err(error) => {
                             error!(
-                                "Request to '{}' failed with: {}",
-                                uri.unwrap(), error
+                                "Request to '{}' failed with: {}", uri, error
                             );
                             return result
                         }
@@ -370,6 +397,14 @@ pub async fn pull_kis_image(
                     );
                     return result
                 }
+            }
+
+            // Verify the archive against the checksum record
+            // fetched from the server
+            info!("Verifying archive checksum...");
+            if ! verify_checksum(&kis_tar, &source_checksum) {
+                error!("Archive checksum verification failed");
+                return result
             }
 
             // Unpack and Rename...
@@ -434,7 +469,19 @@ pub async fn pull_kis_image(
                 return result
             }
 
-            // Move to final firecracker image store
+            // Keep the checksum of the origin with the image. It is
+            // the reference for the update check of a later pull
+            if ! write_source_checksum(&work_dir, &source_checksum) {
+                return result
+            }
+
+            // Move to final firecracker image store. An outdated
+            // image of the same name gets replaced
+            if pull_state == PullState::Update
+                && ! remove_image_dir(&image_dir)
+            {
+                return result
+            }
             if ! mv(&work_dir, &image_dir, registry_user(usermode)) {
                 return result
             }
@@ -447,6 +494,94 @@ pub async fn pull_kis_image(
         }
     }
     result
+}
+
+async fn fetch_source_checksum(uri: &String) -> Option<String> {
+    /*!
+    Fetch the checksum record that belongs to the given image URI
+
+    The record is expected at the same location as the image under
+    the name of the image plus a '.sha256' suffix. An image which
+    does not provide it cannot be verified and cannot take part in
+    the update check and is therefore rejected
+    !*/
+    let checksum_uri = format!("{uri}.sha256");
+    info!("Fetching checksum {checksum_uri}...");
+    let response = match send_request(&checksum_uri).await {
+        Ok(response) => response,
+        Err(error) => {
+            error!("Request to '{checksum_uri}' failed with: {error}");
+            error!(
+                "The image is expected to provide a checksum file named \
+                like the image plus a '.sha256' suffix"
+            );
+            return None
+        }
+    };
+    let checksum_record = match response.text().await {
+        Ok(checksum_record) => checksum_record,
+        Err(error) => {
+            error!("Failed to read '{checksum_uri}': {error}");
+            return None
+        }
+    };
+    if checksum_value(&checksum_record).is_none() {
+        error!("Checksum file '{checksum_uri}' provides no checksum");
+        return None
+    }
+    Some(checksum_record)
+}
+
+pub fn image_is_current(image_dir: &str, source_checksum: &str) -> bool {
+    /*!
+    Check the image in the registry against the checksum of its origin
+
+    An image without a stored record, e.g one that was pulled before
+    the record was written, is never considered current. Such an image
+    gets pulled again and by that receives the record needed for the
+    next update check
+    !*/
+    let record_file = format!(
+        "{}/{}", image_dir, defaults::FIRECRACKER_SOURCE_CHECKSUM_NAME
+    );
+    let stored_checksum = match fs::read_to_string(&record_file) {
+        Ok(stored_checksum) => stored_checksum,
+        Err(error) => {
+            info!("No checksum record at '{record_file}': {error}");
+            return false
+        }
+    };
+    match (checksum_value(&stored_checksum), checksum_value(source_checksum)) {
+        (Some(stored_sum), Some(source_sum)) => stored_sum == source_sum,
+        _ => false
+    }
+}
+
+pub fn write_source_checksum(image_dir: &str, source_checksum: &str) -> bool {
+    /*!
+    Store the checksum of the image origin along with the image data
+    !*/
+    let record_file = format!(
+        "{}/{}", image_dir, defaults::FIRECRACKER_SOURCE_CHECKSUM_NAME
+    );
+    match fs::write(&record_file, source_checksum) {
+        Ok(_) => true,
+        Err(error) => {
+            error!("Failed to write '{record_file}': {error}");
+            false
+        }
+    }
+}
+
+fn checksum_value(checksum_record: &str) -> Option<&str> {
+    /*!
+    Provide the plain checksum of a checksum record
+
+    Records come in the sha256sum format '<sum>  <file>' as well as
+    in the kiwi format '<sum> <blocks> <blocksize>'. Only the
+    checksum itself is of interest to compare two records
+    !*/
+    checksum_record.split_whitespace().next()
 }
 
 pub fn verify_checksum(image: &str, checksum_record: &str) -> bool {
@@ -652,28 +787,72 @@ pub fn umount(mount_point: &str, user: &str) -> bool {
 }
 
 
-pub fn pull_new(name: &str, force: bool, usermode: bool) -> bool {
+#[derive(Debug, PartialEq)]
+pub enum PullState {
+    /// No image of that name in the registry, fetch and register it
+    New,
+    /// An image of that name is in the registry. Only fetch and
+    /// register it again if its origin has changed
+    Update
+}
+
+pub fn pull_init(name: &str, force: bool, usermode: bool) -> Option<PullState> {
     /*!
-    Initialize new pull
+    Initialize pull and tell whether it registers a new image or
+    updates an existing one
+
+    With force an existing image is deleted upfront which turns
+    the pull into a pull from scratch. None is returned if the
+    registry could not be prepared for the pull
     !*/
     if ! init_toplevel_image_dir(&get_registry_dir(usermode)) {
-        return false
+        return None
     }
     let image_dir = get_image_dir(name, usermode);
     if force && Path::new(&image_dir).exists() {
-        match fs::remove_dir_all(&image_dir) {
-            Ok(_) => { },
-            Err(error) => {
-                error!("Error removing directory {image_dir}: {error}");
-                return false
-            }
+        if ! remove_image_dir(&image_dir) {
+            return None
         }
+        return Some(PullState::New)
     }
     if Path::new(&image_dir).exists() {
-        error!("Image directory '{image_dir}' already exists");
-        return false
+        return Some(PullState::Update)
     }
-    true
+    Some(PullState::New)
+}
+
+pub fn pull_new(name: &str, force: bool, usermode: bool) -> bool {
+    /*!
+    Initialize new pull
+
+    Used for pulls that provide no way to tell an existing image
+    apart from its origin. For those an already existing image
+    is an error
+    !*/
+    match pull_init(name, force, usermode) {
+        Some(PullState::New) => true,
+        Some(PullState::Update) => {
+            error!(
+                "Image directory '{}' already exists",
+                get_image_dir(name, usermode)
+            );
+            false
+        },
+        None => false
+    }
+}
+
+pub fn remove_image_dir(image_dir: &str) -> bool {
+    /*!
+    Delete the given image directory from the registry
+    !*/
+    match fs::remove_dir_all(image_dir) {
+        Ok(_) => true,
+        Err(error) => {
+            error!("Error removing directory {image_dir}: {error}");
+            false
+        }
+    }
 }
 
 pub fn purge_vm(vm: &str, usermode: bool) {

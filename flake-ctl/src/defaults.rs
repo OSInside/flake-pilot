@@ -50,6 +50,12 @@ pub const FIRECRACKER_ROOTFS_NAME:&str =
     "rootfs";
 pub const FIRECRACKER_CHECKSUM_NAME:&str =
     "checksum";
+// Name of the file that keeps the checksum record fetched from
+// the image source. A pull of an image that is already in the
+// registry compares against this record to find out whether the
+// registered image is still up to date
+pub const FIRECRACKER_SOURCE_CHECKSUM_NAME:&str =
+    "source_checksum";
 pub const FIRECRACKER_SCI:&str =
     "/usr/lib/flake-pilot/sci";
 // Name of the podman setup directory inside of the flakes

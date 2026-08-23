@@ -48,8 +48,6 @@ pub const FIRECRACKER_KERNEL_NAME:&str =
     "kernel";
 pub const FIRECRACKER_ROOTFS_NAME:&str =
     "rootfs";
-pub const FIRECRACKER_CHECKSUM_NAME:&str =
-    "checksum";
 // Name of the file that keeps the checksum record fetched from
 // the image source. A pull of an image that is already in the
 // registry compares against this record to find out whether the

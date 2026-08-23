@@ -421,15 +421,14 @@ pub async fn pull_kis_image(
                     return result
                 }
             }
-            let mut kis_ok = 3;
+            let mut kis_ok = 2;
             for path in fs::read_dir(&work_dir).unwrap() {
                 let path = path.unwrap().path();
                 let extension = path.extension().unwrap();
                 if extension == OsStr::new("sha256") {
-                    fs::rename(&path, format!("{}/{}",
-                        work_dir, defaults::FIRECRACKER_CHECKSUM_NAME
-                    )).unwrap();
-                    kis_ok -= 1;
+                    fs::remove_file(&path).unwrap();
+                    // unused, the image is verified against the
+                    // checksum record fetched from its origin
                 } else if extension == OsStr::new("append") {
                     fs::remove_file(&path).unwrap();
                     // unused
@@ -452,20 +451,6 @@ pub async fn pull_kis_image(
             }
             if kis_ok != 0 {
                 error!("Not a KIWI kis type image");
-                return result
-            }
-
-            // Verify the rootfs image against the checksum record
-            // that came with the archive
-            info!("Verifying image checksum...");
-            let image_checksum = fs::read_to_string(
-                format!("{}/{}", work_dir, defaults::FIRECRACKER_CHECKSUM_NAME)
-            ).unwrap_or_default().trim().to_string();
-            if ! verify_checksum(
-                &format!("{}/{}", work_dir, defaults::FIRECRACKER_ROOTFS_NAME),
-                &image_checksum
-            ) {
-                error!("Image checksum verification failed");
                 return result
             }
 
@@ -586,12 +571,18 @@ fn checksum_value(checksum_record: &str) -> Option<&str> {
 
 pub fn verify_checksum(image: &str, checksum_record: &str) -> bool {
     /*!
-    Verify the given image against the sha256 checksum record
-    shipped inside of the KIS archive
+    Verify the given file against the sha256 checksum record
+    fetched from the location the file was downloaded from
 
-    The record is created by kiwi and has the format:
+    A record in the sha256sum format has the layout:
+
+        <sha256>  <file>
+
+    A record created by kiwi has the layout:
 
         <sha256> <blocks> <blocksize>
+
+    and covers only the first blocks * blocksize bytes of the file
 
     A record which cannot be read or a missing checksum program
     is reported but does not fail the operation. A checksum

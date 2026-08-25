@@ -46,13 +46,47 @@ and shows a file structure like in the following example
         ├── kernel
         └── rootfs
 
+An image pulled with `--kis-image` carries an additional
+`source_checksum` file, see UPDATE CHECK below.
+
+UPDATE CHECK
+------------
+
+An image pulled with the `--kis-image` option takes part in a
+checksum based update check. The archive given to `--kis-image`
+must be accompanied by a checksum file at the same location which
+is named like the archive plus a `.sha256` suffix. For an archive
+named `foo.tar.xz` the checksum file is expected at
+`foo.tar.xz.sha256`. If no such file exists the pull is rejected
+with an error.
+
+The checksum is used to verify the downloaded archive and it is
+stored along with the image as `source_checksum`. Pulling an image
+under a name that already exists in the registry then behaves as
+follows:
+
+* The checksum file is fetched and compared against the
+  `source_checksum` record of the registered image. If both match,
+  the image is up to date. Nothing is downloaded, nothing in the
+  registry is touched and the command succeeds.
+
+* If the checksums differ, the latest version of the image is
+  fetched and replaces the image in the registry.
+
+An image registered by a `--rootfs`/`--kernel` pull provides no
+such reference and is therefore not update checked. Pulling into
+an existing name stays an error for those images unless `--force`
+is given.
+
 OPTIONS
 -------
 
 --force
 
   Force pulling the image even if it already exists This will wipe
-  existing data for the provided identifier
+  existing data for the provided identifier. The image is fetched
+  from scratch, no update check against an existing image of the
+  same name is done
 
 --initrd <INITRD>
 
@@ -67,7 +101,9 @@ OPTIONS
   Firecracker image built by KIWI as kis image type to pull
   into local image store. This means the file behind KIS_IMAGE
   is expected to be a tarball containing the KIS
-  components; rootfs-image, kernel and optional initrd
+  components; rootfs-image, kernel and optional initrd.
+  A checksum file named like KIS_IMAGE plus a '.sha256' suffix
+  must be available at the same location, see UPDATE CHECK
 
 --name <NAME>
 

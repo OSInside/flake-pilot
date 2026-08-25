@@ -122,7 +122,10 @@ pub enum Firecracker {
         name: String,
 
         /// Firecracker image built by KIWI as kis image type
-        /// to pull into local image store
+        /// to pull into local image store. A checksum file
+        /// named like the image plus a '.sha256' suffix must
+        /// exist next to it. It verifies the download and is
+        /// used to check an already pulled image for an update
         #[clap(long)]
         kis_image: Option<String>,
 

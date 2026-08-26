@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker [--user] register [OPTIONS] --vm <VM> --app <APP>
+       flake-ctl firecracker register [OPTIONS] --vm <VM> --app <APP>
 
 
    OPTIONS:
@@ -26,7 +26,6 @@ SYNOPSIS
        --overlay-size <OVERLAY_SIZE>
        --run-as <RUN_AS>
        --target <TARGET>
-       --user
        --vm <VM>
 
 DESCRIPTION
@@ -37,9 +36,13 @@ virtual machine. The registration process is two fold:
 
 1. Create the application symlink pointing to `/usr/bin/firecracker-pilot`
 2. Create the application default configuration below `/usr/share/flakes`.
-   In user mode the configuration is created below `~/.config/flakes`
-   and refers to a VM of the registry of the calling user.
    Each application registered is called a **flake**
+
+The registry to register in is detected from the caller. Called as any
+user other than root the registration is done in the user specific,
+rootless registry of that user. The flake configuration is created
+below `~/.config/flakes` and the VM is looked up in
+`~/.config/flakes/firecracker/images`
 
 On successful completion the registered *--app* name can be called
 like a normal application on this host.
@@ -103,13 +106,6 @@ OPTIONS
 
   An absolute path to the application in the VM. Use this option if the application path
   on the host should be different to the application path inside of the VM
-
---user
-
-  Register in the user specific registry, rootless mode. The flake
-  configuration is created below `~/.config/flakes` and the VM is
-  looked up in `~/.config/flakes/firecracker/images`. Requesting
-  user mode as the root user has no effect
 
 --vm <VM>
 

@@ -16,7 +16,6 @@ SYNOPSIS
 
    OPTIONS:
        --format <FORMAT>
-       --user
        --help
 
 
@@ -24,6 +23,10 @@ DESCRIPTION
 -----------
 
 List registered flake applications.
+
+The registry to read is detected from the caller. Called as the
+root user the system wide registry is listed. Called as any other
+user the flake registry of that user is listed.
 
 By default the list is rendered as a table with a headline
 which is meant to be read by humans. For processing the list
@@ -63,10 +66,6 @@ OPTIONS
   * ``json``: machine readable list of flake records
   * ``csv``: machine readable comma separated values without
     a header line
-
---user
-
-  List registered flake applications for the calling user
 
 FILES
 -----

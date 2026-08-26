@@ -39,6 +39,22 @@ An application registered via flake-ctl can be called on the host like a
 native application just by calling the name used in the
 registration process.
 
+USER MODE
+---------
+
+flake-ctl detects from the caller which setup to operate on. There
+is no option to select the mode:
+
+* Called as the root user the command manages the system wide setup.
+  Flakes are registered below /usr/share/flakes and the images are
+  stored in the system wide registries of the engines
+
+* Called as any other user the command manages the setup of that
+  user. Flakes are registered below $HOME/.config/flakes and the
+  images are stored in the registries of that user, rootless mode.
+  The user specific setup has to exist and is created once by
+  calling **flake-ctl init**
+
 SEE ALSO
 --------
 

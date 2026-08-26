@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
     USAGE:
-        flake-ctl firecracker [--user] pull [OPTIONS] --name <NAME> <--kis-image <KIS_IMAGE>|--rootfs <ROOTFS>|--kernel <KERNEL>>
+        flake-ctl firecracker pull [OPTIONS] --name <NAME> <--kis-image <KIS_IMAGE>|--rootfs <ROOTFS>|--kernel <KERNEL>>
 
     OPTIONS:
         --force
@@ -21,15 +21,16 @@ SYNOPSIS
         --kis-image <KIS_IMAGE>
         --name <NAME>
         --rootfs <ROOTFS>
-        --user
 
 DESCRIPTION
 -----------
 
 Pull the components of a firecracker image from the given location
-into `/var/lib/firecracker/images/NAME` on the local machine. In
-user mode the image is stored in the registry of the calling user
-below `~/.config/flakes/firecracker/images/NAME`.
+into `/var/lib/firecracker/images/NAME` on the local machine. The
+registry to pull into is detected from the caller. Called as any
+user other than root the image is stored in the user specific,
+rootless registry of that user below
+`~/.config/flakes/firecracker/images/NAME`.
 After completion the available firecracker images can be listed via:
 
 .. code:: bash
@@ -112,12 +113,6 @@ OPTIONS
 --rootfs <ROOTFS>
 
   Single rootfs image to pull into local image store
-
---user
-
-  Pull into the user specific registry, rootless mode. The image
-  is stored below `~/.config/flakes/firecracker/images`.
-  Requesting user mode as the root user has no effect
 
 ENVIRONMENT
 -----------

@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl podman [--user] register [OPTIONS] --container <CONTAINER> --app <APP>
+       flake-ctl podman register [OPTIONS] --container <CONTAINER> --app <APP>
 
    OPTIONS:
        --app <APP>
@@ -45,8 +45,10 @@ like a normal application on this host.
 For further details about the flake configuration please refer to
 the **podman-pilot** manual page.
 
-For further details about the flake configuration when `--user` is
-used please refer to the **flake-pilot** manual page.
+Called as a user other than root the registration is done in the
+flake registry of that user. For further details about the flake
+configuration in user mode please refer to the **flake-pilot**
+manual page.
 
 NOTE
 ----

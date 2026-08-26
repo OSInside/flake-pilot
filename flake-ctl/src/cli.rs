@@ -38,28 +38,16 @@ pub struct Cli {
 pub enum Commands {
     /// Load and register OCI applications
     Podman {
-        /// Use user specific registry, rootless mode
-        #[clap(long)]
-        user: bool,
-
         #[clap(subcommand)]
         command: Podman,
     },
     /// Load and register FireCracker VM applications
     Firecracker {
-        /// Use user specific registry, rootless mode
-        #[clap(long)]
-        user: bool,
-
         #[clap(subcommand)]
         command: Firecracker,
     },
     /// Create the setup to run flake applications
     Init {
-        /// Create the setup for the calling user, rootless mode
-        #[clap(long)]
-        user: bool,
-
         /// Create the configuration files from scratch, even if
         /// they already exist. Existing files are overwritten
         #[clap(long)]
@@ -67,10 +55,6 @@ pub enum Commands {
     },
     /// List registered flake applications
     List {
-        /// Pull into user specific podman registry
-        #[clap(long)]
-        user: bool,
-
         /// Output format. The table format is meant for humans,
         /// the json and csv formats are meant to be parsed by
         /// scripts and other programs

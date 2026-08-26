@@ -41,7 +41,7 @@ pub mod setup;
 
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
-use uzers::get_current_username;
+use uzers::get_current_uid;
 use std::fs;
 
 #[tokio::main]
@@ -51,11 +51,11 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
     let args = cli::parse_args();
 
     // In user mode only resources of the calling user are touched
-    let user = usermode(&args);
+    let user = usermode();
 
     match &args.command {
         // init
-        cli::Commands::Init { force, .. } => {
+        cli::Commands::Init { force } => {
             // The setup this command creates is a precondition
             // for the other commands. It is therefore created
             // before the flake registry directory is expected
@@ -65,12 +65,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
         },
         // list
-        cli::Commands::List { format, .. } => {
+        cli::Commands::List { format } => {
             init_flakes_dir(user)?;
             app::list(user, *format);
         },
         // firecracker engine
-        cli::Commands::Firecracker { command, .. } => {
+        cli::Commands::Firecracker { command } => {
             init_flakes_dir(user)?;
             match &command {
                 // pull
@@ -168,7 +168,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
         },
         // podman engine
-        cli::Commands::Podman { command, .. } => {
+        cli::Commands::Podman { command } => {
             init_flakes_dir(user)?;
             match &command {
                 // pull
@@ -263,19 +263,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn usermode(args: &cli::Cli) -> bool {
+fn usermode() -> bool {
     /*!
     Check if the command should operate on the resources of the
-    calling user only. For the root user there is no user mode,
-    a --user request from root is ignored
+    calling user only. The mode is detected from the caller. Only
+    the root user manages the system wide setup, every other user
+    operates on its own registry in rootless mode
     !*/
-    let usermode = match &args.command {
-        cli::Commands::Init { user, .. } => *user,
-        cli::Commands::List { user, .. } => *user,
-        cli::Commands::Firecracker { user, .. } => *user,
-        cli::Commands::Podman { user, .. } => *user
-    };
-    usermode && get_current_username().unwrap() != "root"
+    get_current_uid() != 0
 }
 
 fn init_flakes_dir(usermode: bool) -> Result<(), Box<dyn std::error::Error>> {

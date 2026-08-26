@@ -63,7 +63,7 @@ pub fn get_flakes_dir(user: bool) -> String {
             } else {
                 error!("No flakes_dir configured");
                 error!("Please check {}", get_user_flakes_config());
-                error!("Run 'flake-ctl init --user' to create the setup");
+                error!("Run 'flake-ctl init' to create the setup");
                 error!("More details on rootless mode in 'man flake-pilot'");
                 exit(1);
             }
@@ -79,7 +79,7 @@ pub fn get_podman_storage_conf(user: bool) -> String {
         } else {
             error!("No podman_storage_conf configured");
             error!("Please check {}", get_user_flakes_config());
-            error!("Run 'flake-ctl init --user' to create the setup");
+            error!("Run 'flake-ctl init' to create the setup");
             exit(1);
         }
     } else {
@@ -95,7 +95,7 @@ pub fn get_podman_ids_dir(user: bool) -> String {
         } else {
             error!("No podman_ids_dir configured");
             error!("Please check {}", get_user_flakes_config());
-            error!("Run 'flake-ctl init --user' to create the setup");
+            error!("Run 'flake-ctl init' to create the setup");
             exit(1);
         }
     } else {
@@ -111,7 +111,7 @@ pub fn get_firecracker_ids_dir(user: bool) -> String {
         } else {
             error!("No firecracker_ids_dir configured");
             error!("Please check {}", get_user_flakes_config());
-            error!("Run 'flake-ctl init --user' to create the setup");
+            error!("Run 'flake-ctl init' to create the setup");
             exit(1);
         }
     } else {

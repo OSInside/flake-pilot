@@ -15,7 +15,6 @@ SYNOPSIS
        flake-ctl init [OPTIONS]
 
    OPTIONS:
-       --user
        --force
        --help
 
@@ -27,7 +26,8 @@ Create the user specific setup to run flake applications.
 The system wide setup is provided with the flake-pilot package.
 A user who wants to register and run flake applications without
 root privileges needs its own setup below the home directory.
-The command creates it as follows:
+This is the only setup the command can create. Calling it as the
+root user is an error. The command creates the setup as follows:
 
 1. The flakes directory of the calling user, $HOME/.config/flakes,
    with the sub directories `podman` and `firecracker` used by the
@@ -48,8 +48,10 @@ a file which already exists is kept and only reported unless the
 **--force** option is given.
 
 After the setup was created, flake applications can be registered
-and run with the **--user** option of the respective flake-ctl
-command. To let podman commands operate on the flake storage of
+and run by the respective flake-ctl command. The user mode is
+detected automatically from the caller. Every flake-ctl command
+called by a user other than root operates on the setup of that
+user. To let podman commands operate on the flake storage of
 the user, export the storage configuration as it is shown at the
 end of the setup:
 
@@ -59,11 +61,6 @@ end of the setup:
 
 OPTIONS
 -------
-
---user
-
-  Create the setup for the calling user. This is the only setup
-  the command can create. Calling it as the root user is an error
 
 --force
 
@@ -84,7 +81,7 @@ EXAMPLE
 
 .. code:: bash
 
-   $ flake-ctl init --user
+   $ flake-ctl init
 
 AUTHOR
 ------

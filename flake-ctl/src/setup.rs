@@ -42,7 +42,7 @@ pub fn init(usermode: bool, force: bool) -> bool {
     if ! usermode {
         error!("Only the user specific setup can be created");
         error!("The system wide setup is provided with the package");
-        error!("Please call 'flake-ctl init --user' as a normal user");
+        error!("Please call 'flake-ctl init' as a normal user");
         return false
     }
     let home = match user_home() {

@@ -54,11 +54,11 @@ FILES
        podman_storage_conf: /etc/flakes/storage.conf
 
   The user specific configuration for running flake applications
-  is created by the following command:
+  is created by calling the following command as that user:
 
   .. code:: sh
 
-     flake-ctl init --user
+     flake-ctl init
 
   For details see:
 

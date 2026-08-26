@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl podman [--user] show [OPTIONS]
+       flake-ctl podman show [OPTIONS]
 
    OPTIONS:
        --format <FORMAT>
@@ -22,6 +22,10 @@ DESCRIPTION
 -----------
 
 Show the container instances created from flake applications.
+
+The setup to read the flake configurations from is detected from
+the caller. Called as any user other than root the user specific,
+rootless setup of that user is used.
 
 For each container instance podman-pilot writes a meta data file
 named after the flake application. The files are stored below
@@ -87,11 +91,6 @@ OPTIONS
   * ``json``: machine readable list of instance records
   * ``csv``: machine readable comma separated values without
     a header line
-
---user
-
-  Show the instances of the user specific, rootless setup.
-  Requesting user mode as the root user has no effect
 
 FILES
 -----

@@ -31,7 +31,7 @@ and looks up all the registration metadata stored in
 `/usr/share/flakes`. If there is no system wide registration
 for the given application name, the registration directory of
 the calling user, `~/.config/flakes`, is used as created by
-**flake-ctl firecracker --user register**
+**flake-ctl firecracker register** called as that user
 
 Below `/usr/share/flakes` each application is registered
 with the following layout:

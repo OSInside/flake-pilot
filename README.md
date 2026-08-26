@@ -90,17 +90,19 @@ mkdir -p ~/bin
 export PATH=$PATH:$HOME/bin
 ```
 
-The examples register the apps for the calling user. The setup
-for this rootless mode is created once via:
+The examples register the apps for the calling user. flake-ctl
+detects this mode from the caller, every command called as a
+user other than root operates on the setup of that user. The
+setup for this rootless mode is created once via:
 
 ```bash
-flake-ctl init --user
+flake-ctl init
 ```
 
 ### Register Amazon's SDK utility as a container app named: aws <a name="one"/>
 
 ```bash
-flake-ctl podman --user register \
+flake-ctl podman register \
      --container docker.io/amazon/aws-cli --app $HOME/bin/aws --target /
 
 aws ec2 help
@@ -119,7 +121,7 @@ the ```ec2``` subcommand.
 ### Register an editor app as a delta container named: joe <a name="two"/>
 
 ```bash
-flake-ctl podman --user register \
+flake-ctl podman register \
     --app $HOME/bin/joe \
     --container registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe \
     --base registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem \
@@ -139,7 +141,7 @@ unfortunately requires root privileges and is forwarded to the system's
 ```bash
 mkdir -p ~/ai
 
-flake-ctl podman --user register \
+flake-ctl podman register \
     --app $HOME/bin/claude \
     --target /bin/bash \
     --container public.ecr.aws/b9k1j9y6/ai/claude:latest \
@@ -172,7 +174,7 @@ of this a krun based app registration cannot use the **resume** feature
 and looks as follows:
 
 ```bash
-flake-ctl podman --user register \
+flake-ctl podman register \
     --app $HOME/bin/claude \
     --target /bin/bash \
     --container public.ecr.aws/b9k1j9y6/ai/claude:latest \
@@ -197,10 +199,10 @@ runtime = "krun"
 ### Register a shell as a firecracker VM app named: fireshell <a name="four"/>
 
 ```bash
-flake-ctl firecracker --user pull --name leap \
+flake-ctl firecracker pull --name leap \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker --user register --vm leap \
+flake-ctl firecracker register --vm leap \
     --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
 fireshell
@@ -219,10 +221,10 @@ option ```--force-vsock``` when registering the application.
 ### Register claude AI as firecracker VM app named: claude <a name="five"/>
 
 ```bash
-flake-ctl firecracker --user pull --name claude \
+flake-ctl firecracker pull --name claude \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/claude.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker --user register --vm claude \
+flake-ctl firecracker register --vm claude \
     --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
 

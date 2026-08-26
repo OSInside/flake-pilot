@@ -12,17 +12,20 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker [--user] remove <--vm <VM>|--app <APP>>
+       flake-ctl firecracker remove <--vm <VM>|--app <APP>>
 
    OPTIONS:
        --app <APP>
-       --user
        --vm <VM>
 
 DESCRIPTION
 -----------
 
-Remove registration(s). The command operates in two modes:
+Remove registration(s). The registry to remove from is detected
+from the caller. Called as any user other than root the user
+specific, rootless registry of that user is used.
+
+The command operates in two modes:
 
 1. Remove an application registration provided via **--app**
 
@@ -43,11 +46,6 @@ OPTIONS
 --app <APP>
 
   Application absolute path to be removed from host
-
---user
-
-  Remove from the user specific registry, rootless mode.
-  Requesting user mode as the root user has no effect
 
 --vm <VM>
 

@@ -153,7 +153,7 @@ fn write_file(config_file: &str, data: &str, force: bool) -> bool {
     }
 }
 
-fn user_home() -> Option<String> {
+pub fn user_home() -> Option<String> {
     /*!
     Home directory of the user calling the program
     !*/

@@ -202,7 +202,7 @@ runtime = "krun"
 flake-ctl firecracker pull --name leap \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker register --vm leap \
+flake-ctl firecracker register --vm leap --no-net \
     --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
 fireshell
@@ -227,6 +227,9 @@ flake-ctl firecracker pull --name claude \
 flake-ctl firecracker register --vm claude \
     --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
+
+flake-ctl firecracker network init --outgoing-interface eth0
+flake-ctl firecracker network add --app $HOME/bin/claude
 
 claude
 ```
@@ -296,6 +299,23 @@ The proposed example works within the following requirements:
    not persistent and has to be called again after a reboot.
 
 3. Set up network configuration in the flake setup
+
+   **_HINT:_** The steps 3. to 5. can also be done in one call:
+
+   ```bash
+   flake-ctl firecracker network add --app $HOME/bin/claude
+   ```
+
+   The command writes the static setup shown below to the flake
+   configuration, creates the TAP device of the app and connects
+   it to the outgoing interface. The address is a free one of the
+   ```172.16.0.0/24``` network, all other values are the defaults
+   used in this example. For an instance of the app, pass the
+   selector it is called with:
+
+   ```bash
+   flake-ctl firecracker network add --app $HOME/bin/claude --instance @id1
+   ```
 
    The flake configuration for the registered ```claude``` app from
    above can be found at:
@@ -386,12 +406,11 @@ The proposed example works within the following requirements:
    the TAP device ```tap-some_bbb9de```. Run the app with
    ```PILOT_DEBUG=1``` to see the TAP device name it expects.
 
-   **_NOTE:_** If the TAP device does not exist, `firecracker-pilot` will
-   create it for you. However, this may be too late in the case of, for example, a
-   DHCP setup which requires the routing of the TAP device to be present
-   before the actual network setup inside the guest takes place.
-   If `firecracker-pilot` creates the TAP device, it will also be
-   removed if the instance shuts down.
+   **_NOTE:_** `firecracker-pilot` does not create the TAP device. It
+   only connects the VM to it and fails to start the instance if the
+   device does not exist. The device is part of the host setup
+   because its routing has to be present before the network setup
+   inside the guest takes place.
 
 5. Connect the TAP device to the outgoing interface
 
@@ -413,7 +432,13 @@ The proposed example works within the following requirements:
    **_NOTE:_** The TAP device cannot be shared across multiple instances.
    Each instance needs its own TAP device. Thus, steps 4 and 5 need to
    be repeated for each instance, and each instance needs its own
-   ```instance``` section as shown in step 3.
+   ```instance``` section as shown in step 3. Called with the
+   ```--instance``` option, ```flake-ctl firecracker network add```
+   creates all of it for one instance.
+
+   **_NOTE:_** Like the setup from the steps 1. and 2., the TAP device
+   and its routing are not persistent. After a reboot of the host the
+   setup has to be created again.
 
 ## Application Setup <a name="setup"/>
 

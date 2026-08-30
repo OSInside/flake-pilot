@@ -24,8 +24,7 @@
 //
 use crate::config::config_file;
 use crate::config::config_from_str;
-use crate::defaults;
-use crate::firecracker::get_valid_interface_name;
+use flakes::network::get_valid_interface_name;
 
 #[test]
 fn simple_config() {
@@ -147,7 +146,7 @@ fn is_valid_interface_name(name: &str) -> bool {
     // extended by the '@' character which iproute2 uses to
     // report the parent of an interface
     ! name.is_empty()
-        && name.len() < defaults::IFNAMSIZ
+        && name.len() < flakes::defaults::IFNAMSIZ
         && name != "."
         && name != ".."
         && ! name.chars().any(

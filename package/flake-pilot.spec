@@ -265,6 +265,7 @@ fi
 %doc /usr/share/man/man8/flake-ctl-firecracker-register.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-show.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-network-init.8.gz
+%doc /usr/share/man/man8/flake-ctl-firecracker-network-add.8.gz
 /usr/bin/firecracker-pilot
 %doc /usr/share/man/man8/firecracker-pilot.8.gz
 /usr/lib/flake-pilot/sci

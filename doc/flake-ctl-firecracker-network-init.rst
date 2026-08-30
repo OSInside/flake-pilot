@@ -50,6 +50,11 @@ outgoing interface. As the setup changes the network configuration of
 the host, the commands are called through **sudo**. The calling user
 therefore needs the permission to run them as root.
 
+The given interface is recorded in the network configuration file.
+Connecting an application to the host network with
+**flake-ctl-firecracker-network-add**(8) reads it from there and
+routes the traffic of that application to the same interface.
+
 Rules which are already active are not created again. This allows to
 call the command more than once without stacking up duplicates of the
 same rule. The setup is not persistent, it has to be created again
@@ -79,6 +84,8 @@ FILES
 -----
 
 * /proc/sys/net/ipv4/ip_forward
+* /etc/flakes/network.yaml
+* $HOME/.config/flakes/network.yaml
 
 EXAMPLE
 -------
@@ -86,6 +93,11 @@ EXAMPLE
 .. code:: bash
 
    $ flake-ctl firecracker network init --outgoing-interface eth0
+
+SEE ALSO
+--------
+
+flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
 
 AUTHOR
 ------

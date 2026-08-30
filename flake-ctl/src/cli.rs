@@ -246,6 +246,22 @@ pub enum Network {
         #[clap(long)]
         outgoing_interface: String,
     },
+    /// Connect a VM application to the host network
+    Add {
+        /// An absolute path to the application on the host.
+        /// The application must be registered as a VM
+        /// application and its flake configuration gets the
+        /// network setup written to it
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the application is
+        /// called with. Every instance needs its own network
+        /// setup, therefore the command has to be called for
+        /// each of them
+        #[clap(long)]
+        instance: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

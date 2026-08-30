@@ -58,7 +58,7 @@ is no option to select the mode:
 SEE ALSO
 --------
 
-podman-pilot(8), flake-ctl-init(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8), flake-ctl-firecracker-network-init(8)
+podman-pilot(8), flake-ctl-init(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8), flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-add(8)
 
 AUTHOR
 ------

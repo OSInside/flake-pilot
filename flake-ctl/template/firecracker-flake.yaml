@@ -27,3 +27,13 @@ vm:
       mem_size_mib: 4096
       vcpu_count: 2
       cache_type: ~
+      # Optional instance specific settings, keyed by the @NAME
+      # instance selector used to call the app. A boot_args option
+      # set here replaces the global setting of the same option for
+      # this instance. Options not set globally are appended, e.g:
+      #
+      # instance:
+      #   "@id":
+      #     boot_args:
+      #       - "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
+      instance: ~

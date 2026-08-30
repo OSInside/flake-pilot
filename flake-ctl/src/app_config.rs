@@ -22,6 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use serde::{Serialize, Deserialize};
@@ -88,6 +89,11 @@ pub struct AppFireCrackerEngine {
     pub mem_size_mib: Option<i32>,
     pub vcpu_count: Option<i32>,
     pub cache_type: Option<String>,
+    pub instance: Option<HashMap<String, AppFireCrackerInstance>>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppFireCrackerInstance {
+    pub boot_args: Option<Vec<String>>,
 }
 
 impl AppConfig {

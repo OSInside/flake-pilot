@@ -24,8 +24,10 @@
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use strum::Display;
+use std::collections::HashMap;
 use std::{env, fs, path::Path, path::PathBuf};
 use flakes::config::get_flakes_dir;
+use flakes::lookup::Lookup;
 
 lazy_static! {
     static ref CONFIG: Config<'static> = load_config();
@@ -214,6 +216,105 @@ pub struct EngineSection<'a> {
     pub initrd_path: Option<&'a str>,
 
     pub boot_args: Vec<&'a str>,
+
+    /// Optional instance specific settings. The map is keyed by
+    /// the @NAME instance selector given at call time. As the '@'
+    /// character is reserved in YAML the key has to be quoted.
+    /// For convenience the plain NAME without the '@' prefix is
+    /// accepted as a key as well
+    #[serde(default)]
+    pub instance: Option<HashMap<String, InstanceSection<'a>>>,
+}
+
+impl<'a> EngineSection<'a> {
+    pub fn get_boot_args(&self, instance_name: &str) -> Vec<&'a str> {
+        /*!
+        Provide the boot_args to use for the given instance
+
+        The boot_args of the engine section are the base. An option
+        which is also set in the instance section of instance_name
+        takes the place of the global setting of the same option.
+        Options which are not set globally are appended. If there
+        is no section for instance_name the global boot_args are
+        used unchanged
+        !*/
+        let instance_boot_args = self.get_instance_boot_args(instance_name);
+        if instance_boot_args.is_empty() {
+            return self.boot_args.clone()
+        }
+        let instance_keys: Vec<&str> = instance_boot_args.iter()
+            .map(|boot_arg| boot_arg_name(boot_arg)).collect();
+
+        let mut boot_args: Vec<&'a str> = Vec::new();
+        let mut applied: Vec<&str> = Vec::new();
+        for boot_arg in &self.boot_args {
+            let name = boot_arg_name(boot_arg);
+            if ! instance_keys.contains(&name) {
+                boot_args.push(boot_arg);
+                continue
+            }
+            // the instance setting(s) of this option take the
+            // place of the global setting
+            if ! applied.contains(&name) {
+                applied.push(name);
+                boot_args.extend(
+                    instance_boot_args.iter()
+                        .filter(|arg| boot_arg_name(arg) == name)
+                );
+            }
+        }
+        // options which are not set globally are appended
+        for (boot_arg, name) in instance_boot_args.iter().zip(&instance_keys) {
+            if ! applied.contains(name) {
+                boot_args.push(boot_arg);
+            }
+        }
+        boot_args
+    }
+
+    fn get_instance_boot_args(&self, instance_name: &str) -> Vec<&'a str> {
+        /*!
+        Provide the boot_args configured for the given instance
+        !*/
+        let instances = match self.instance.as_ref() {
+            Some(instances) => instances,
+            None => return Vec::new()
+        };
+        let instance_section = instances.get(instance_name).or_else(
+            || instances.get(instance_name.trim_start_matches('@'))
+        );
+        match instance_section {
+            Some(instance_section) => {
+                if Lookup::is_debug() {
+                    debug!("Using boot_args of instance {instance_name}");
+                }
+                instance_section.boot_args.clone().unwrap_or_default()
+            },
+            None => {
+                if Lookup::is_debug() && ! instance_name.is_empty() {
+                    debug!("No boot_args configured for {instance_name}");
+                }
+                Vec::new()
+            }
+        }
+    }
+}
+
+fn boot_arg_name(boot_arg: &str) -> &str {
+    /*!
+    Provide the option name of a kernel boot argument
+
+    The name is the part in front of the first '=' character.
+    Boot arguments without a value, e.g 'quiet', are their own name
+    !*/
+    boot_arg.split('=').next().unwrap_or(boot_arg)
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct InstanceSection<'a> {
+    /// Boot arguments effective for this instance only
+    #[serde(borrow, default)]
+    pub boot_args: Option<Vec<&'a str>>,
 }
 
 #[derive(Default, Debug, Deserialize, Clone, Display)]

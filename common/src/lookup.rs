@@ -64,6 +64,19 @@ impl Lookup {
         run
     }
 
+    pub fn get_instance_name() -> String {
+        /*!
+        Provide the instance name given via the @NAME pilot argument
+
+        The special @NAME argument is not passed to the actual call
+        and can be used to run different instances of the same
+        application. If more than one @NAME argument is given they
+        are concatenated in the order of appearance. If no @NAME
+        argument is given an empty string is returned
+        !*/
+        env::args().skip(1).filter(|arg| arg.starts_with('@')).collect()
+    }
+
     pub fn is_safe_instance_name(name: &str) -> bool {
         /*!
         Check the given @NAME pilot argument

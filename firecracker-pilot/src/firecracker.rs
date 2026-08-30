@@ -167,6 +167,15 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
           # Optional path to initrd image done by app registration
           initrd_path: /var/lib/firecracker/images/NAME/initrd
 
+          # Optional instance specific settings, keyed by the
+          # @NAME instance selector. A boot_args option set here
+          # replaces the global setting of the same option for
+          # this instance. Options not set globally are appended
+          instance:
+            "@id":
+              boot_args:
+                - "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
+
       include:
         tar:
           - tar-archive-file-name-to-include
@@ -702,7 +711,7 @@ pub fn create_firecracker_config(
     // that interactive commands, e.g a shell, can provide features
     // like tab completion
     boot_args.append(&mut get_terminal_boot_args());
-    for boot_option in engine_section.boot_args
+    for boot_option in engine_section.get_boot_args(&Lookup::get_instance_name())
     {
         if (resume || force_vsock)
             && ! Lookup::is_debug()

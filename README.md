@@ -317,6 +317,46 @@ The proposed example works within the following requirements:
    to ```man dracut.cmdline``` and look up the section
    about ```ip=```.
 
+   As every instance of the app needs its own IP address, the
+   ```boot_args``` can also be set per instance. The optional
+   ```instance``` section is keyed by the ```@NAME``` selector
+   used to call the app:
+
+   ```yaml
+   vm:
+     runtime:
+       firecracker:
+         boot_args:
+           - ip=dhcp
+           - rd.route=172.16.0.1/24::eth0
+           - nameserver=8.8.8.8
+         instance:
+           "@id1":
+             boot_args:
+               - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+           "@id2":
+             boot_args:
+               - ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off
+   ```
+
+   With this setup ```claude @id1``` boots with the static
+   IP 172.16.0.2 and ```claude @id2``` with 172.16.0.3, while
+   ```claude``` without a selector still uses DHCP.
+
+   The instance settings do not replace the global ```boot_args```
+   but are merged into them: an option which is also set in the
+   ```instance``` section takes the place of the global setting
+   of the same option, options which are not set globally are
+   appended. In the example above only the ```ip=``` option is
+   exchanged, ```rd.route=``` and ```nameserver=``` stay in
+   effect for all instances.
+
+   **_NOTE:_** The ```@``` character is reserved in YAML, therefore
+   the key has to be quoted. For convenience the plain name without
+   the ```@``` prefix, e.g ```id1```, is accepted as a key as well.
+   Run the app with ```PILOT_DEBUG=1``` to see whether an instance
+   section was found and which kernel commandline it produced.
+
 4. Create a TAP device matching the app registration. In the above example,
    the app ```$HOME/bin/claude``` was registered. The Firecracker pilot
    configures the VM instance to pass traffic on the TAP device named
@@ -361,8 +401,9 @@ The proposed example works within the following requirements:
    ```
 
    **_NOTE:_** The TAP device cannot be shared across multiple instances.
-   Each instance needs its own TAP device. Thus, steps 3, 4, and 5 need
-   to be repeated for each instance.
+   Each instance needs its own TAP device. Thus, steps 4 and 5 need to
+   be repeated for each instance, and each instance needs its own
+   ```instance``` section as shown in step 3.
 
 ## Application Setup <a name="setup"/>
 

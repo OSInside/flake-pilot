@@ -150,7 +150,7 @@ EXAMPLE
 SEE ALSO
 --------
 
-flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
+flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
 
 AUTHOR
 ------

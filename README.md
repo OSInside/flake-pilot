@@ -440,6 +440,18 @@ The proposed example works within the following requirements:
    and its routing are not persistent. After a reboot of the host the
    setup has to be created again.
 
+   **_HINT:_** The setup of the steps 3. to 5. can be deleted again
+   with:
+
+   ```bash
+   flake-ctl firecracker network remove --app $HOME/bin/claude [--instance @id1]
+   ```
+
+   The command deletes the forwarding rule, the TAP device and the
+   network settings in the flake configuration. The address of the
+   app becomes free for another one. The NAT setup of the host from
+   the steps 1. and 2. is shared by all apps and stays in place.
+
 ## Application Setup <a name="setup"/>
 
 After an application is registered, it can be listed via:

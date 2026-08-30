@@ -262,6 +262,20 @@ pub enum Network {
         #[clap(long)]
         instance: Option<String>,
     },
+    /// Disconnect a VM application from the host network
+    Remove {
+        /// An absolute path to the application on the host.
+        /// The network setup of the application is deleted
+        /// from the host and from its flake configuration
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the network setup was
+        /// created for. Only the setup of that instance is
+        /// deleted
+        #[clap(long)]
+        instance: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

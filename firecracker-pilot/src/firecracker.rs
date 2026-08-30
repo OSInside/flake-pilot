@@ -757,34 +757,42 @@ pub fn create_firecracker_config(
     }
 
     // set tap device name
-    let tapname = format!("tap-{}", get_meta_name(program_name));
-    firecracker_config.network_interfaces[0].host_dev_name = tapname.clone();
-    // create tap device if not present
-    let mut taplist = Command::new("ip");
-    taplist.arg("tuntap").arg("list");
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", taplist.get_program(), taplist.get_args());
-    }
-    let output = taplist.output()?;
-    let mut tap_devices = String::new();
-    tap_devices.push_str(
-        &String::from_utf8_lossy(&output.stdout)
-    );
-    let tap_matching =
-        tap_devices.lines().find(|line| line.starts_with(&tapname));
-    if tap_matching.is_none() {
-        let root_user = User::from("root");
-        let mut tap = root_user.run("ip");
-        tap
-            .arg("tuntap")
-            .arg("add")
-            .arg(tapname)
-            .arg("mode")
-            .arg("tap");
+    if firecracker_config.network_interfaces.is_empty() {
         if Lookup::is_debug() {
-            debug!("{:?} {:?}", tap.get_program(), tap.get_args());
+            debug!("No network interface configured, skipping tap setup");
         }
-        tap.perform()?;
+    } else {
+        let tapname = get_tap_name(program_name);
+        if Lookup::is_debug() {
+            debug!("tap device is {tapname}");
+        }
+        firecracker_config.network_interfaces[0].host_dev_name =
+            tapname.clone();
+        // create tap device if not present
+        let mut taplist = Command::new("ip");
+        taplist.arg("tuntap").arg("list");
+        if Lookup::is_debug() {
+            debug!("{:?} {:?}", taplist.get_program(), taplist.get_args());
+        }
+        let output = taplist.output()?;
+        let tap_devices = String::from_utf8_lossy(&output.stdout);
+        let tap_exists = tap_devices.lines().any(
+            |line| get_tuntap_device_name(line) == tapname
+        );
+        if ! tap_exists {
+            let root_user = User::from("root");
+            let mut tap = root_user.run("ip");
+            tap
+                .arg("tuntap")
+                .arg("add")
+                .arg(&tapname)
+                .arg("mode")
+                .arg("tap");
+            if Lookup::is_debug() {
+                debug!("{:?} {:?}", tap.get_program(), tap.get_args());
+            }
+            tap.perform()?;
+        }
     }
 
     // set vsock name
@@ -930,6 +938,86 @@ pub fn get_meta_name(program_name: &String) -> String {
         }
     }
     meta_file
+}
+
+pub fn get_tap_name(program_name: &String) -> String {
+    /*!
+    Construct the name of the TAP device for the given program name
+    !*/
+    get_valid_interface_name(
+        defaults::TAP_DEVICE_PREFIX, &get_meta_name(program_name)
+    )
+}
+
+pub fn get_valid_interface_name(prefix: &str, name: &str) -> String {
+    /*!
+    Construct a valid network interface name from prefix and name
+
+    The name of a flake is a free form string, e.g the basename of
+    the calling program optionally extended by the @NAME instance
+    selector. The kernel on the other hand only accepts interface
+    names which are shorter than IFNAMSIZ and which do not contain
+    '/', ':' or whitespace. In addition tools like iproute2 use
+    the '@' character to report the parent of an interface and
+    therefore can't handle it as part of a name.
+
+    Thus all characters outside of [A-Za-z0-9_] are replaced by '_'
+    and names that are too long are shortened. To keep shortened
+    names unique they are suffixed with a hash of the original name
+    !*/
+    let name_size = defaults::IFNAMSIZ - 1 - prefix.len();
+    let mut interface_name = String::new();
+    for letter in name.chars() {
+        if letter.is_ascii_alphanumeric() || letter == '_' {
+            interface_name.push(letter)
+        } else {
+            interface_name.push('_')
+        }
+    }
+    if interface_name.len() > name_size || interface_name.is_empty() {
+        let hash_size = defaults::IFNAME_HASH_LEN;
+        let short_name: String = interface_name.chars().take(
+            name_size.saturating_sub(hash_size + 1)
+        ).collect();
+        interface_name = format!(
+            "{}_{:0width$x}",
+            short_name,
+            name_hash(name) & ((1 << (4 * hash_size)) - 1),
+            width = hash_size
+        );
+    }
+    format!("{prefix}{interface_name}")
+}
+
+fn name_hash(name: &str) -> u64 {
+    /*!
+    FNV-1a hash of the given name
+
+    Used to keep shortened interface names unique. An own
+    implementation is used because the result must stay the
+    same across program calls and rust versions, which the
+    hashers from the standard library do not guarantee
+    !*/
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in name.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+fn get_tuntap_device_name(tuntap_list_line: &str) -> &str {
+    /*!
+    Read the device name from a line of the 'ip tuntap list' output
+
+    The expected format of a line is: 'NAME: tun|tap FLAGS...'.
+    For devices attached to a parent device the name is reported
+    in the 'NAME@PARENT' notation
+    !*/
+    tuntap_list_line
+        .split(':').next().unwrap_or_default()
+        .split('@').next().unwrap_or_default()
+        .trim()
 }
 
 pub fn gc_meta_files(

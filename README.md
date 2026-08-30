@@ -321,11 +321,20 @@ The proposed example works within the following requirements:
    the app ```$HOME/bin/claude``` was registered. The Firecracker pilot
    configures the VM instance to pass traffic on the TAP device named
    ```tap-claude```. If the application is called with an identifier like
-   ```claude @id```, the TAP device name ```tap-claude@id``` is used.
+   ```claude @id```, the TAP device name ```tap-claude_id``` is used.
 
    ```bash
    sudo ip tuntap add tap-claude mode tap
    ```
+
+   **_NOTE:_** The kernel only accepts interface names shorter than 16
+   characters which do not contain ```/```, ```:``` or whitespace. Thus
+   the pilot replaces all characters outside of ```[A-Za-z0-9_]``` by
+   ```_``` and shortens names that are too long. A shortened name keeps
+   the first characters of the app name and is made unique again by a
+   hash suffix, e.g the app ```some-very-long-application-name``` uses
+   the TAP device ```tap-some_bbb9de```. Run the app with
+   ```PILOT_DEBUG=1``` to see the TAP device name it expects.
 
    **_NOTE:_** If the TAP device does not exist, `firecracker-pilot` will
    create it for you. However, this may be too late in the case of, for example, a

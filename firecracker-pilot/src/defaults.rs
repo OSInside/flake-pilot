@@ -42,6 +42,14 @@ pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
     "sci_cmd_";
+pub const TAP_DEVICE_PREFIX: &str =
+    "tap-";
+// Max. size of a network interface name including the
+// terminating zero byte as defined by IFNAMSIZ in linux/if.h
+pub const IFNAMSIZ: usize = 16;
+// Number of hex digits used to make shortened
+// network interface names unique
+pub const IFNAME_HASH_LEN: usize = 6;
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;

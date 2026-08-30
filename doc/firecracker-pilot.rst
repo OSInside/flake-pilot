@@ -106,6 +106,21 @@ can be set for the firecracker engine:
           # Optional path to initrd image done by app registration
           initrd_path: /var/lib/firecracker/images/NAME/initrd
 
+          # Optional instance specific settings, keyed by the
+          # @NAME selector used to call the app. The '@' character
+          # is reserved in YAML, thus the key has to be quoted. For
+          # convenience the plain name without the '@' prefix is
+          # accepted as a key as well
+          instance:
+            "@id":
+              # Boot arguments effective for this instance only.
+              # They are merged into the boot_args above: an option
+              # which is also set here takes the place of the global
+              # setting of the same option, options which are not
+              # set globally are appended
+              boot_args:
+                - "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
+
 After reading of the app configuration information the application
 will be called using the configured engine. If no runtime
 arguments exists, the following defaults will apply:

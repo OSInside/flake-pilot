@@ -208,6 +208,11 @@ pub enum Firecracker {
         #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
         format: ListFormat,
     },
+    /// Manage the host network setup for VM applications
+    Network {
+        #[clap(subcommand)]
+        command: Network,
+    },
     /// Remove application registration or entire VM
     #[clap(group(
         ArgGroup::new("remove").required(true).args(&["vm", "app"]),
@@ -229,6 +234,17 @@ pub enum Firecracker {
         /// when present. Use with care !
         #[clap(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum Network {
+    /// Prepare the host for NAT based VM networking
+    Init {
+        /// Name of the host interface the traffic of the VMs
+        /// is routed to the outside world through, e.g eth0
+        #[clap(long)]
+        outgoing_interface: String,
     },
 }
 

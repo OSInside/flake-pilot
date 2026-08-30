@@ -679,6 +679,138 @@ fn checksum(image: &str, size: Option<u64>) -> Option<String> {
     }
 }
 
+pub fn network_init(outgoing_interface: &str) -> bool {
+    /*!
+    Prepare the host for NAT based VM networking
+
+    Firecracker connects a VM to the host through a TUN/TAP device
+    which by itself has no connection to the outside world. Routing
+    the traffic of that device requires IP forwarding on the host
+    and a NAT rule which lets the traffic appear as if it would
+    originate from the given outgoing interface.
+
+    The setup changes the network configuration of the host and is
+    therefore performed via sudo. It is not persistent and has to
+    be created again after a reboot of the host.
+
+    Please note, the setup assumes there is no other firewall
+    software active on the host. If the host firewall is managed
+    by another tool, the rules have to be created with that tool
+    instead
+    !*/
+    enable_ip_forward() && setup_nat(outgoing_interface)
+}
+
+fn enable_ip_forward() -> bool {
+    /*!
+    Turn on IPv4 forwarding on the host
+    !*/
+    let proc_file = defaults::PROC_IP_FORWARD;
+    info!("Enabling IP forwarding...");
+    let mut call = run_as("sh", "root");
+    call.arg("-c").arg(format!("echo 1 > {proc_file}"));
+    run_ok(&mut call, &format!("write 1 to {proc_file}"))
+}
+
+struct NatRule<'a> {
+    /// Name of the iptables table, None for the default table
+    table: Option<&'a str>,
+    /// Name of the chain the rule belongs to
+    chain: &'a str,
+    /// Match and target of the rule
+    spec: Vec<&'a str>
+}
+
+fn setup_nat(outgoing_interface: &str) -> bool {
+    /*!
+    Create the netfilter rules to masquerade the VM traffic
+
+    Rules which are already present are not created again. This
+    allows to call the setup more than once without stacking up
+    duplicates of the same rule
+    !*/
+    let rules = [
+        // Rewrite the sender of all outgoing traffic to the
+        // address of the outgoing interface
+        NatRule {
+            table: Some("nat"),
+            chain: "POSTROUTING",
+            spec: vec!["-o", outgoing_interface, "-j", "MASQUERADE"]
+        },
+        // Let the answers to that traffic pass back to the VM
+        NatRule {
+            table: None,
+            chain: "FORWARD",
+            spec: vec![
+                "-m", "conntrack",
+                "--ctstate", "RELATED,ESTABLISHED",
+                "-j", "ACCEPT"
+            ]
+        }
+    ];
+    for rule in rules {
+        if rule_exists(&rule) {
+            info!("Keeping existing {} rule", rule.chain);
+            continue
+        }
+        info!("Setting up {} rule...", rule.chain);
+        if ! run_ok(
+            &mut iptables(&rule, "-A"),
+            &format!("add {} rule", rule.chain)
+        ) {
+            return false
+        }
+    }
+    true
+}
+
+fn rule_exists(rule: &NatRule) -> bool {
+    /*!
+    Check if the given rule is already active
+
+    The check itself reports a missing rule on stderr which is
+    not an error in this context and therefore not shown
+    !*/
+    let mut call = iptables(rule, "-C");
+    call.stdout(Stdio::null()).stderr(Stdio::null());
+    match call.status() {
+        Ok(status) => status.success(),
+        Err(_) => false
+    }
+}
+
+fn iptables(rule: &NatRule, command: &str) -> Command {
+    /*!
+    Create an iptables call applying the given command,
+    e.g '-A' or '-C', to the given rule
+    !*/
+    let mut call = run_as(defaults::IPTABLES_TOOL, "root");
+    if let Some(table) = rule.table {
+        call.arg("-t").arg(table);
+    }
+    call.arg(command).arg(rule.chain).args(&rule.spec);
+    call
+}
+
+fn run_ok(call: &mut Command, action: &str) -> bool {
+    /*!
+    Run the given call and tell whether it succeeded
+    !*/
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                error!("Failed to {action}: {status}");
+                return false
+            }
+            true
+        },
+        Err(error) => {
+            error!("Failed to {action}: {error:?}");
+            false
+        }
+    }
+}
+
 fn run_as(program: &str, user: &str) -> Command {
     /*!
     Create a call of the given program

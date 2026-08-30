@@ -104,6 +104,13 @@ pub const INSTANCE_UNKNOWN:&str =
     "unknown";
 pub const SHA256_TOOL:&str =
     "sha256sum";
+pub const IPTABLES_TOOL:&str =
+    "iptables";
+// Kernel switch to turn the host into a router. Required to
+// forward the traffic of a VM from its TUN/TAP device to the
+// outgoing interface of the host
+pub const PROC_IP_FORWARD:&str =
+    "/proc/sys/net/ipv4/ip_forward";
 pub const TEMP_DIR:&str =
     "/var/tmp";
 pub const TEMP_PREFIX:&str =

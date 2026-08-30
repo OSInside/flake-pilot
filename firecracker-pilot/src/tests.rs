@@ -24,6 +24,8 @@
 //
 use crate::config::config_file;
 use crate::config::config_from_str;
+use crate::defaults;
+use crate::firecracker::get_valid_interface_name;
 
 #[test]
 fn simple_config() {
@@ -58,4 +60,70 @@ vm:
 fn test_program_config_file() {
     let config_file = config_file("app", false);
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
+}
+
+fn is_valid_interface_name(name: &str) -> bool {
+    // conditions taken from dev_valid_name() in the kernel,
+    // extended by the '@' character which iproute2 uses to
+    // report the parent of an interface
+    ! name.is_empty()
+        && name.len() < defaults::IFNAMSIZ
+        && name != "."
+        && name != ".."
+        && ! name.chars().any(
+            |letter| letter == '/'
+                || letter == ':'
+                || letter == '@'
+                || letter.is_whitespace()
+        )
+}
+
+#[test]
+fn test_tap_name_is_kept_if_valid() {
+    assert_eq!("tap-app", get_valid_interface_name("tap-", "app"));
+}
+
+#[test]
+fn test_tap_name_replaces_invalid_characters() {
+    assert_eq!("tap-app_id", get_valid_interface_name("tap-", "app@id"));
+    assert_eq!("tap-a_b_c_d", get_valid_interface_name("tap-", "a/b:c d"));
+}
+
+#[test]
+fn test_tap_name_is_shortened() {
+    let name = get_valid_interface_name(
+        "tap-", "some-very-long-application-name"
+    );
+    assert_eq!("tap-some_bbb9de", name);
+    assert!(is_valid_interface_name(&name));
+}
+
+#[test]
+fn test_tap_name_of_long_names_stays_unique() {
+    let name_a = get_valid_interface_name(
+        "tap-", "some-very-long-application-name@a"
+    );
+    let name_b = get_valid_interface_name(
+        "tap-", "some-very-long-application-name@b"
+    );
+    assert_ne!(name_a, name_b);
+}
+
+#[test]
+fn test_tap_name_of_empty_name_is_valid() {
+    assert!(is_valid_interface_name(&get_valid_interface_name("tap-", "")));
+}
+
+#[test]
+fn test_tap_name_is_valid_for_arbitrary_names() {
+    for name in [
+        "", ".", "..", "app", "app@id", "/usr/bin/app", "sömé äpp",
+        "abcdefghijkl", "@", "0123456789012345678901234567890123456789"
+    ] {
+        let interface_name = get_valid_interface_name("tap-", name);
+        assert!(
+            is_valid_interface_name(&interface_name),
+            "invalid interface name {} from {}", interface_name, name
+        );
+    }
 }

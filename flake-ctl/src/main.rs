@@ -146,6 +146,19 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         defaults::FIRECRACKER_ENGINE, user, *format
                     );
                 },
+                // network
+                cli::Firecracker::Network { command } => {
+                    match &command {
+                        // init
+                        cli::Network::Init { outgoing_interface } => {
+                            if ! firecracker::network_init(
+                                outgoing_interface
+                            ) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        }
+                    }
+                },
                 // remove
                 cli::Firecracker::Remove { vm, app, force } => {
                     if ! app.is_none() && ! app::remove(

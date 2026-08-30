@@ -285,6 +285,16 @@ The proposed example works within the following requirements:
    sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
    ```
 
+   **_HINT:_** The steps 1. and 2. can also be done in one call:
+
+   ```bash
+   flake-ctl firecracker network init --outgoing-interface eth0
+   ```
+
+   The command calls the above commands through ```sudo``` and skips
+   the rules which are already active. Like the manual setup it is
+   not persistent and has to be called again after a reboot.
+
 3. Set up network configuration in the flake setup
 
    The flake configuration for the registered ```claude``` app from

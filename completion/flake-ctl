@@ -40,6 +40,14 @@ __flake_ctl_firecracker_show() {
     __flake_ctl_show
 }
 
+__flake_ctl_firecracker_network() {
+    if [ "${COMP_WORDS[3]}" = "init" ];then
+        __comp_reply_unused "--outgoing-interface --help"
+        return 0
+    fi
+    __comp_reply "help init"
+}
+
 __flake_ctl_show() {
     declare prev="${prev}"
     if [ "${prev}" = "--format" ];then
@@ -149,6 +157,7 @@ __flake_ctl_main() {
             podman_show| \
             firecracker_remove| \
             firecracker_help| \
+            firecracker_network| \
             firecracker_pull| \
             firecracker_show| \
             firecracker_register)
@@ -156,7 +165,7 @@ __flake_ctl_main() {
                 ;;
             firecracker_*)
                 command="firecracker" && __comp_reply "
-                    help pull register remove show
+                    help network pull register remove show
                 " && return 0
                 ;;
             podman_*)

@@ -291,7 +291,7 @@ The proposed example works within the following requirements:
    above can be found at:
 
    ```bash
-   vi /usr/share/flakes/claude.yaml
+   vi ~/.config/flakes/claude.yaml
    ```
 
    The default network setup is based on DHCP because this is
@@ -422,13 +422,14 @@ flake-ctl podman show
 flake-ctl firecracker show
 ```
 
-Each application provides a configuration below ```/usr/share/flakes/```.
-The term ```flake``` is a short name for an application running inside an isolated environment.
-For our above registered ```aws``` flake, the config file structure
-looks like the following:
+Each application provides a configuration below ```/usr/share/flakes/```
+for system wide registration or ```~/.config/flakes/``` for user specific
+ones. The term ```flake``` is a short name for an application running
+inside an isolated environment. For our above registered ```aws```
+flake, the config file structure looks like the following:
 
 ```
-/usr/share/flakes/
+~/.config/flakes/
 ├── aws.d
 └── aws.yaml
 ```

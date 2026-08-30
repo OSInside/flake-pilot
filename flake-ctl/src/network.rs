@@ -31,7 +31,9 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::app_config::{AppConfig, AppFireCrackerInstance};
+use crate::app_config::{
+    AppConfig, AppFireCrackerEngine, AppFireCrackerInstance
+};
 use crate::defaults;
 use crate::firecracker::run_as;
 use crate::setup::user_home;
@@ -87,15 +89,123 @@ pub fn add(app: &str, instance: Option<&String>, usermode: bool) -> bool {
     own TAP device. Therefore the command has to be called for
     every @NAME instance selector the application is called with
     !*/
+    let flake = match get_flake_network(app, instance, usermode) {
+        Some(flake) => flake,
+        None => return false
+    };
+    let outgoing_interface = match get_outgoing_interface(usermode) {
+        Some(outgoing_interface) => outgoing_interface,
+        None => return false
+    };
+
+    // 1. the flake configuration
+    let address = match configure_flake(
+        &flake.config_file, flake.instance.as_deref(), usermode
+    ) {
+        Some(address) => address,
+        None => return false
+    };
+
+    // 2. the TAP device of the instance
+    if ! create_tap(&flake.tap) {
+        return false
+    }
+
+    // 3. the route from the TAP device to the outside world
+    if ! connect_tap(&flake.tap, &outgoing_interface) {
+        return false
+    }
+
+    info!("Application {app} is connected:");
+    info!("  address: {address}");
+    info!("  gateway: {}", defaults::NETWORK_GATEWAY);
+    info!("  tap device: {}", flake.tap);
+    info!("  outgoing interface: {outgoing_interface}");
+    if let Some(instance) = flake.instance {
+        info!("Call the application as: {app} {instance}");
+    }
+    true
+}
+
+pub fn remove(app: &str, instance: Option<&String>, usermode: bool) -> bool {
+    /*!
+    Disconnect the given flake application from the host network
+
+    All of the setup created by add() is deleted. This is the
+    route of the TAP device to the outside world, the TAP device
+    itself and the network setup in the flake configuration. The
+    address of the flake becomes available again for another
+    application.
+
+    Called with an instance selector only the setup of that
+    instance is deleted. The setup which is shared with the other
+    instances of the application is kept as long as one of them
+    is still connected
+    !*/
+    let flake = match get_flake_network(app, instance, usermode) {
+        Some(flake) => flake,
+        None => return false
+    };
+
+    // 1. the route from the TAP device to the outside world
+    match find_outgoing_interface(usermode) {
+        Some(outgoing_interface) => {
+            if ! disconnect_tap(&flake.tap, &outgoing_interface) {
+                return false
+            }
+        },
+        None => {
+            // Without the interface the rule was created for there
+            // is nothing to match it against. Deleting the device
+            // stops the traffic anyway, only the rule stays behind
+            warn!("Failed to detect the outgoing interface");
+            warn!("Keeping the FORWARD rule of {}", flake.tap);
+        }
+    }
+
+    // 2. the TAP device of the instance
+    if ! delete_tap(&flake.tap) {
+        return false
+    }
+
+    // 3. the flake configuration
+    if ! unconfigure_flake(&flake.config_file, flake.instance.as_deref()) {
+        return false
+    }
+
+    info!("Application {app} is disconnected");
+    true
+}
+
+// FlakeNetwork is the network identity of a flake application
+struct FlakeNetwork {
+    /// Path of the flake configuration file of the application
+    config_file: String,
+    /// The '@NAME' instance selector, None for the application itself
+    instance: Option<String>,
+    /// Name of the TAP device the instance is connected to
+    tap: String
+}
+
+fn get_flake_network(
+    app: &str, instance: Option<&String>, usermode: bool
+) -> Option<FlakeNetwork> {
+    /*!
+    Provide the network identity of the given flake application
+
+    The flake configuration to work on is looked up from the
+    application path and the TAP device is the one the pilot
+    connects the instance of the application to
+    !*/
     if ! app.starts_with('/') {
         error!("Application {app:?} must be specified with an absolute path");
-        return false
+        return None
     }
     let app_basename = match Path::new(app).file_name() {
         Some(app_basename) => app_basename.to_string_lossy().to_string(),
         None => {
             error!("Failed to read the application name from {app}");
-            return false
+            return None
         }
     };
     let config_file = format!(
@@ -104,7 +214,7 @@ pub fn add(app: &str, instance: Option<&String>, usermode: bool) -> bool {
     if ! Path::new(&config_file).exists() {
         error!("No flake configuration found at {config_file}");
         error!("Please register the application first");
-        return false
+        return None
     }
     let instance = instance.map(|instance| get_instance_name(instance));
 
@@ -116,38 +226,7 @@ pub fn add(app: &str, instance: Option<&String>, usermode: bool) -> bool {
     }
     let tap = get_tap_name(&meta_name);
 
-    let outgoing_interface = match get_outgoing_interface(usermode) {
-        Some(outgoing_interface) => outgoing_interface,
-        None => return false
-    };
-
-    // 1. the flake configuration
-    let address = match configure_flake(
-        &config_file, instance.as_deref(), usermode
-    ) {
-        Some(address) => address,
-        None => return false
-    };
-
-    // 2. the TAP device of the instance
-    if ! create_tap(&tap) {
-        return false
-    }
-
-    // 3. the route from the TAP device to the outside world
-    if ! connect_tap(&tap, &outgoing_interface) {
-        return false
-    }
-
-    info!("Application {app} is connected:");
-    info!("  address: {address}");
-    info!("  gateway: {}", defaults::NETWORK_GATEWAY);
-    info!("  tap device: {tap}");
-    info!("  outgoing interface: {outgoing_interface}");
-    if let Some(instance) = instance {
-        info!("Call the application as: {app} {instance}");
-    }
-    true
+    Some(FlakeNetwork { config_file, instance, tap })
 }
 
 fn get_instance_name(instance: &str) -> String {
@@ -177,17 +256,7 @@ fn configure_flake(
     again, e.g after a reboot of the host
     !*/
     let mut yaml_config = read_flake_config(config_file)?;
-    let engine_section = match yaml_config.vm.as_mut()
-        .and_then(|vm_config| vm_config.runtime.as_mut())
-        .and_then(|runtime_section| runtime_section.firecracker.as_mut())
-    {
-        Some(engine_section) => engine_section,
-        None => {
-            error!("{config_file} provides no firecracker runtime section");
-            error!("Only firecracker flakes can be connected to the network");
-            return None
-        }
-    };
+    let engine_section = get_engine_section(&mut yaml_config, config_file)?;
 
     // An address which is already configured for this flake is
     // kept, in all other cases a free one is taken
@@ -267,9 +336,127 @@ fn get_instance_key(
     instance.to_string()
 }
 
+fn unconfigure_flake(config_file: &str, instance: Option<&str>) -> bool {
+    /*!
+    Delete the static network setup from the flake configuration
+
+    Only the address is specific to an instance. The route to the
+    gateway and the name server are shared and are therefore only
+    deleted if no instance of the application is connected anymore
+    !*/
+    let mut yaml_config = match read_flake_config(config_file) {
+        Some(yaml_config) => yaml_config,
+        None => return false
+    };
+    let engine_section = match get_engine_section(
+        &mut yaml_config, config_file
+    ) {
+        Some(engine_section) => engine_section,
+        None => return false
+    };
+
+    match instance {
+        Some(instance) => delete_instance_address(engine_section, instance),
+        None => {
+            if let Some(boot_args) = engine_section.boot_args.as_mut() {
+                unset_boot_arg(boot_args, "ip");
+            }
+        }
+    }
+    if ! has_configured_address(engine_section) {
+        if let Some(boot_args) = engine_section.boot_args.as_mut() {
+            unset_boot_arg(boot_args, "rd.route");
+            unset_boot_arg(boot_args, "nameserver");
+        }
+    }
+
+    // Sections which became empty are dropped to leave the
+    // configuration as it was before the setup was created
+    if let Some(true) = engine_section.boot_args.as_ref().map(Vec::is_empty) {
+        engine_section.boot_args = None;
+    }
+    if let Some(true) = engine_section.instance.as_ref().map(HashMap::is_empty)
+    {
+        engine_section.instance = None;
+    }
+
+    if ! write_flake_config(config_file, &yaml_config) {
+        return false
+    }
+    info!("Updated {config_file}");
+    true
+}
+
+fn delete_instance_address(
+    engine_section: &mut AppFireCrackerEngine, instance: &str
+) {
+    /*!
+    Delete the address of the given instance
+
+    An instance section which provides nothing else is deleted
+    along with the address
+    !*/
+    let instances = match engine_section.instance.as_mut() {
+        Some(instances) => instances,
+        None => return
+    };
+    let instance_key = if instances.contains_key(instance) {
+        instance.to_string()
+    } else {
+        instance.trim_start_matches('@').to_string()
+    };
+    let instance_section = match instances.get_mut(&instance_key) {
+        Some(instance_section) => instance_section,
+        None => return
+    };
+    let is_empty = match instance_section.boot_args.as_mut() {
+        Some(boot_args) => {
+            unset_boot_arg(boot_args, "ip");
+            boot_args.is_empty()
+        },
+        None => true
+    };
+    if is_empty {
+        instances.remove(&instance_key);
+    }
+}
+
+fn has_configured_address(engine_section: &AppFireCrackerEngine) -> bool {
+    /*!
+    Check if the flake still provides an address for itself or
+    for one of its instances
+    !*/
+    if get_configured_address(engine_section, None).is_some() {
+        return true
+    }
+    match engine_section.instance.as_ref() {
+        Some(instances) => instances.values().any(
+            |instance_section| instance_section.boot_args.as_deref()
+                .and_then(get_boot_args_address).is_some()
+        ),
+        None => false
+    }
+}
+
+fn get_engine_section<'a>(
+    yaml_config: &'a mut AppConfig, config_file: &str
+) -> Option<&'a mut AppFireCrackerEngine> {
+    /*!
+    Provide the firecracker runtime section of the given flake
+    configuration
+    !*/
+    let engine_section = yaml_config.vm.as_mut()
+        .and_then(|vm_config| vm_config.runtime.as_mut())
+        .and_then(|runtime_section| runtime_section.firecracker.as_mut());
+    if engine_section.is_none() {
+        error!("{config_file} provides no firecracker runtime section");
+        error!("Only firecracker flakes provide a network setup");
+    }
+    engine_section
+}
+
 fn get_configured_address(
-    engine_section: &crate::app_config::AppFireCrackerEngine,
-    instance: Option<&str>
+    engine_section: &AppFireCrackerEngine, instance: Option<&str>
 ) -> Option<Ipv4Addr> {
     /*!
     Provide the address which is configured for the given instance
@@ -389,6 +576,13 @@ fn set_boot_arg(boot_args: &mut Vec<String>, boot_arg: String) {
     }
 }
 
+fn unset_boot_arg(boot_args: &mut Vec<String>, name: &str) {
+    /*!
+    Delete the kernel commandline option of the given name
+    !*/
+    boot_args.retain(|boot_arg| boot_arg_name(boot_arg) != name);
+}
+
 fn boot_arg_name(boot_arg: &str) -> &str {
     /*!
     Provide the name of a kernel commandline option
@@ -448,15 +642,8 @@ fn get_outgoing_interface(usermode: bool) -> Option<String> {
     is no record of it, e.g because the setup was created manually,
     the interface of the default route is used
     !*/
-    if let Some(network_config) = read_network_config(usermode) {
-        return Some(network_config.outgoing_interface)
-    }
-    match get_default_route_interface() {
-        Some(interface) => {
-            info!("No network setup record found");
-            info!("Using interface of the default route: {interface}");
-            Some(interface)
-        },
+    match find_outgoing_interface(usermode) {
+        Some(interface) => Some(interface),
         None => {
             error!("Failed to detect the outgoing interface");
             error!(
@@ -466,6 +653,19 @@ fn get_outgoing_interface(usermode: bool) -> Option<String> {
             None
         }
     }
+}
+
+fn find_outgoing_interface(usermode: bool) -> Option<String> {
+    /*!
+    Look up the interface the VM traffic is routed to
+    !*/
+    if let Some(network_config) = read_network_config(usermode) {
+        return Some(network_config.outgoing_interface)
+    }
+    let interface = get_default_route_interface()?;
+    info!("No network setup record found");
+    info!("Using interface of the default route: {interface}");
+    Some(interface)
 }
 
 fn get_default_route_interface() -> Option<String> {
@@ -632,6 +832,30 @@ fn add_rules(rules: &[NatRule]) -> bool {
     true
 }
 
+fn delete_rules(rules: &[NatRule]) -> bool {
+    /*!
+    Delete the given netfilter rules
+
+    A rule which is not active is not deleted. This allows to
+    call the cleanup more than once and also covers the case
+    that the rules were already flushed, e.g by a reboot
+    !*/
+    for rule in rules {
+        if ! rule_exists(rule) {
+            info!("No {} rule to delete", rule.chain);
+            continue
+        }
+        info!("Deleting {} rule...", rule.chain);
+        if ! run_ok(
+            &mut iptables(rule, "-D"),
+            &format!("delete {} rule", rule.chain)
+        ) {
+            return false
+        }
+    }
+    true
+}
+
 fn rule_exists(rule: &NatRule) -> bool {
     /*!
     Check if the given rule is already active
@@ -676,6 +900,23 @@ fn create_tap(tap: &str) -> bool {
     let mut call = run_as(defaults::IP_TOOL, "root");
     call.arg("tuntap").arg("add").arg(tap).arg("mode").arg("tap");
     run_ok(&mut call, &format!("create TAP device {tap}"))
+}
+
+fn delete_tap(tap: &str) -> bool {
+    /*!
+    Delete the TAP device of a VM instance
+
+    The address of the device and its link state are deleted
+    along with it
+    !*/
+    if ! tap_exists(tap) {
+        info!("No TAP device {tap} to delete");
+        return true
+    }
+    info!("Deleting TAP device {tap}...");
+    let mut call = run_as(defaults::IP_TOOL, "root");
+    call.arg("tuntap").arg("del").arg(tap).arg("mode").arg("tap");
+    run_ok(&mut call, &format!("delete TAP device {tap}"))
 }
 
 fn tap_exists(tap: &str) -> bool {
@@ -737,6 +978,24 @@ fn connect_tap(tap: &str, outgoing_interface: &str) -> bool {
         return false
     }
     add_rules(&[
+        NatRule {
+            table: None,
+            chain: "FORWARD",
+            spec: vec!["-i", tap, "-o", outgoing_interface, "-j", "ACCEPT"]
+        }
+    ])
+}
+
+fn disconnect_tap(tap: &str, outgoing_interface: &str) -> bool {
+    /*!
+    Delete the route from the given TAP device to the outside
+    world
+
+    Only the rule of this device is deleted. The NAT setup of
+    the host is shared by all VM applications and stays in
+    place, it can be flushed by other means, e.g a reboot
+    !*/
+    delete_rules(&[
         NatRule {
             table: None,
             chain: "FORWARD",

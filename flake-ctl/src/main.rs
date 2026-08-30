@@ -161,6 +161,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             if ! network::add(app, instance.as_ref(), user) {
                                 return Ok(ExitCode::FAILURE)
                             }
+                        },
+                        // remove
+                        cli::Network::Remove { app, instance } => {
+                            if ! network::remove(app, instance.as_ref(), user) {
+                                return Ok(ExitCode::FAILURE)
+                            }
                         }
                     }
                 },

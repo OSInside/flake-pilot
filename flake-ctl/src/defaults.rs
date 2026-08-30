@@ -106,11 +106,38 @@ pub const SHA256_TOOL:&str =
     "sha256sum";
 pub const IPTABLES_TOOL:&str =
     "iptables";
+pub const IP_TOOL:&str =
+    "ip";
 // Kernel switch to turn the host into a router. Required to
 // forward the traffic of a VM from its TUN/TAP device to the
 // outgoing interface of the host
 pub const PROC_IP_FORWARD:&str =
     "/proc/sys/net/ipv4/ip_forward";
+// Record of the host network setup created by
+// 'flake-ctl firecracker network init'
+pub const NETWORK_CONFIG:&str =
+    "/etc/flakes/network.yaml";
+// User specific location of that record, relative to the
+// home directory of the user calling the program
+pub const NETWORK_CONFIG_USER:&str =
+    ".config/flakes/network.yaml";
+// Static setup of the private network between the host and the
+// VMs. The addresses are not configurable, they only exist
+// between the TAP device of an instance and the VM behind it.
+// The traffic to the outside world is masqueraded and therefore
+// leaves the host with the address of the outgoing interface
+pub const NETWORK_GATEWAY:&str =
+    "172.16.0.1";
+pub const NETWORK_NETMASK:&str =
+    "255.255.255.0";
+pub const NETWORK_PREFIX_LEN:u8 =
+    24;
+pub const NETWORK_DNS:&str =
+    "8.8.8.8";
+// Name of the network interface inside of the VM. Firecracker
+// provides exactly one interface to the guest
+pub const NETWORK_GUEST_INTERFACE:&str =
+    "eth0";
 pub const TEMP_DIR:&str =
     "/var/tmp";
 pub const TEMP_PREFIX:&str =

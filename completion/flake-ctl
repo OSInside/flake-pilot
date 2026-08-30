@@ -45,7 +45,11 @@ __flake_ctl_firecracker_network() {
         __comp_reply_unused "--outgoing-interface --help"
         return 0
     fi
-    __comp_reply "help init"
+    if [ "${COMP_WORDS[3]}" = "add" ];then
+        __comp_reply_unused "--app --instance --help"
+        return 0
+    fi
+    __comp_reply "help add init"
 }
 
 __flake_ctl_show() {

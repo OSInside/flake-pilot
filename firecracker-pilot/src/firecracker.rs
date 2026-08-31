@@ -31,6 +31,7 @@ use flakes::command::{CommandError, handle_output, CommandExtTrait};
 use flakes::error::{FlakeError, OperationError};
 use flakes::user::{User, mkdir, chmod};
 use flakes::lookup::Lookup;
+use flakes::network::get_tap_name as get_tap_device_name;
 use spinoff::{Spinner, spinners, Color};
 use ubyte::ByteUnit;
 use std::path::Path;
@@ -59,7 +60,10 @@ pub struct FireCrackerConfig {
     #[serde(rename = "boot-source")]
     pub boot_source: FireCrackerBootSource,
     pub drives: Vec<FireCrackerDrive>,
+    // A VM without a network setup has no interfaces. In this case
+    // the section is not written to the config passed to firecracker
     #[serde(rename = "network-interfaces")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub network_interfaces: Vec<FireCrackerNetworkInterface>,
     #[serde(rename = "machine-config")]
     pub machine_config: FireCrackerMachine,
@@ -711,8 +715,11 @@ pub fn create_firecracker_config(
     // that interactive commands, e.g a shell, can provide features
     // like tab completion
     boot_args.append(&mut get_terminal_boot_args());
-    for boot_option in engine_section.get_boot_args(&Lookup::get_instance_name())
-    {
+    let flake_boot_args = engine_section.get_boot_args(
+        &Lookup::get_instance_name()
+    );
+    let with_network = has_network_setup(&flake_boot_args);
+    for boot_option in flake_boot_args {
         if (resume || force_vsock)
             && ! Lookup::is_debug()
             && boot_option.starts_with("console=")
@@ -724,7 +731,7 @@ pub fn create_firecracker_config(
         } else {
             boot_args.push(boot_option.to_owned());
         }
-        }
+    }
     if ! firecracker_config.boot_source.boot_args.is_empty() {
         firecracker_config.boot_source.boot_args.push(' ');
     }
@@ -766,7 +773,22 @@ pub fn create_firecracker_config(
     }
 
     // set tap device name
-    if firecracker_config.network_interfaces.is_empty() {
+    //
+    // The device itself is not created here. It is part of the
+    // host setup which is created with 'flake-ctl firecracker
+    // network add'
+    //
+    // A VM whose kernel commandline configures no interface has no
+    // network, e.g because it was registered with '--no-net' or
+    // because its setup was deleted with 'flake-ctl firecracker
+    // network remove'. Such a VM gets no network-interfaces
+    // section in the config passed to firecracker
+    if ! with_network {
+        if Lookup::is_debug() {
+            debug!("No network configured, deleting network interfaces");
+        }
+        firecracker_config.network_interfaces.clear();
+    } else if firecracker_config.network_interfaces.is_empty() {
         if Lookup::is_debug() {
             debug!("No network interface configured, skipping tap setup");
         }
@@ -775,33 +797,7 @@ pub fn create_firecracker_config(
         if Lookup::is_debug() {
             debug!("tap device is {tapname}");
         }
-        firecracker_config.network_interfaces[0].host_dev_name =
-            tapname.clone();
-        // create tap device if not present
-        let mut taplist = Command::new("ip");
-        taplist.arg("tuntap").arg("list");
-        if Lookup::is_debug() {
-            debug!("{:?} {:?}", taplist.get_program(), taplist.get_args());
-        }
-        let output = taplist.output()?;
-        let tap_devices = String::from_utf8_lossy(&output.stdout);
-        let tap_exists = tap_devices.lines().any(
-            |line| get_tuntap_device_name(line) == tapname
-        );
-        if ! tap_exists {
-            let root_user = User::from("root");
-            let mut tap = root_user.run("ip");
-            tap
-                .arg("tuntap")
-                .arg("add")
-                .arg(&tapname)
-                .arg("mode")
-                .arg("tap");
-            if Lookup::is_debug() {
-                debug!("{:?} {:?}", tap.get_program(), tap.get_args());
-            }
-            tap.perform()?;
-        }
+        firecracker_config.network_interfaces[0].host_dev_name = tapname;
     }
 
     // set vsock name
@@ -825,6 +821,22 @@ pub fn create_firecracker_config(
     )?;
 
     Ok(())
+}
+
+pub fn has_network_setup(boot_args: &[&str]) -> bool {
+    /*!
+    Check if the given kernel commandline configures a network
+
+    An interface of the VM is only of use if the guest kernel is
+    told to bring it up. This is done with the 'ip=' boot option
+    which is written by 'flake-ctl firecracker network add' and
+    which is deleted for a registration done with '--no-net'.
+    The values 'off' and 'none' explicitly switch the network of
+    the guest off and are therefore treated like a missing option
+    !*/
+    boot_args.iter()
+        .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
+        .any(|setup| setup != "off" && setup != "none")
 }
 
 pub fn get_target_app_path(program_name: &str) -> String {
@@ -953,80 +965,7 @@ pub fn get_tap_name(program_name: &String) -> String {
     /*!
     Construct the name of the TAP device for the given program name
     !*/
-    get_valid_interface_name(
-        defaults::TAP_DEVICE_PREFIX, &get_meta_name(program_name)
-    )
-}
-
-pub fn get_valid_interface_name(prefix: &str, name: &str) -> String {
-    /*!
-    Construct a valid network interface name from prefix and name
-
-    The name of a flake is a free form string, e.g the basename of
-    the calling program optionally extended by the @NAME instance
-    selector. The kernel on the other hand only accepts interface
-    names which are shorter than IFNAMSIZ and which do not contain
-    '/', ':' or whitespace. In addition tools like iproute2 use
-    the '@' character to report the parent of an interface and
-    therefore can't handle it as part of a name.
-
-    Thus all characters outside of [A-Za-z0-9_] are replaced by '_'
-    and names that are too long are shortened. To keep shortened
-    names unique they are suffixed with a hash of the original name
-    !*/
-    let name_size = defaults::IFNAMSIZ - 1 - prefix.len();
-    let mut interface_name = String::new();
-    for letter in name.chars() {
-        if letter.is_ascii_alphanumeric() || letter == '_' {
-            interface_name.push(letter)
-        } else {
-            interface_name.push('_')
-        }
-    }
-    if interface_name.len() > name_size || interface_name.is_empty() {
-        let hash_size = defaults::IFNAME_HASH_LEN;
-        let short_name: String = interface_name.chars().take(
-            name_size.saturating_sub(hash_size + 1)
-        ).collect();
-        interface_name = format!(
-            "{}_{:0width$x}",
-            short_name,
-            name_hash(name) & ((1 << (4 * hash_size)) - 1),
-            width = hash_size
-        );
-    }
-    format!("{prefix}{interface_name}")
-}
-
-fn name_hash(name: &str) -> u64 {
-    /*!
-    FNV-1a hash of the given name
-
-    Used to keep shortened interface names unique. An own
-    implementation is used because the result must stay the
-    same across program calls and rust versions, which the
-    hashers from the standard library do not guarantee
-    !*/
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in name.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
-
-fn get_tuntap_device_name(tuntap_list_line: &str) -> &str {
-    /*!
-    Read the device name from a line of the 'ip tuntap list' output
-
-    The expected format of a line is: 'NAME: tun|tap FLAGS...'.
-    For devices attached to a parent device the name is reported
-    in the 'NAME@PARENT' notation
-    !*/
-    tuntap_list_line
-        .split(':').next().unwrap_or_default()
-        .split('@').next().unwrap_or_default()
-        .trim()
+    get_tap_device_name(&get_meta_name(program_name))
 }
 
 pub fn gc_meta_files(

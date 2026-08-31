@@ -36,6 +36,7 @@ pub mod app_config;
 pub mod defaults;
 pub mod fetch;
 pub mod instance;
+pub mod network;
 pub mod output;
 pub mod setup;
 
@@ -145,6 +146,29 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     instance::show(
                         defaults::FIRECRACKER_ENGINE, user, *format
                     );
+                },
+                // network
+                cli::Firecracker::Network { command } => {
+                    match &command {
+                        // init
+                        cli::Network::Init { outgoing_interface } => {
+                            if ! network::init(outgoing_interface, user) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        // add
+                        cli::Network::Add { app, instance } => {
+                            if ! network::add(app, instance.as_ref(), user) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        // remove
+                        cli::Network::Remove { app, instance } => {
+                            if ! network::remove(app, instance.as_ref(), user) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        }
+                    }
                 },
                 // remove
                 cli::Firecracker::Remove { vm, app, force } => {

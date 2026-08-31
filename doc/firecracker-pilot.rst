@@ -85,8 +85,6 @@ can be set for the firecracker engine:
             - "console=ttyS0"
             - "root=/dev/vda"
             - "acpi=off"
-            - "rd.neednet=1"
-            - "ip=dhcp"
             - "quiet"
           mem_size_mib: 4096
           vcpu_count: 2

@@ -12,6 +12,9 @@
     4. [Register a shell as a firecracker VM app named: fireshell](#four)
     5. [Register claude AI as firecracker VM app named: claude](#five)
         1. [Firecracker Networking](#networking)
+            1. [The Concept](#networking-concept)
+            2. [The Commands](#networking-commands)
+            3. [The Result in the Flake Configuration](#networking-config)
 4. [Application Setup](#setup)
 5. [How To Build Your Own App Images](#images)
 6. [Known Issues](#issues)
@@ -202,7 +205,7 @@ runtime = "krun"
 flake-ctl firecracker pull --name leap \
     --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
-flake-ctl firecracker register --vm leap \
+flake-ctl firecracker register --vm leap --no-net \
     --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
 fireshell
@@ -228,6 +231,9 @@ flake-ctl firecracker register --vm claude \
     --app $HOME/bin/claude --target /bin/bash \
     --overlay-size 20GiB --force-vsock --resume
 
+flake-ctl firecracker network init --outgoing-interface eth0
+flake-ctl firecracker network add --app $HOME/bin/claude
+
 claude
 ```
 
@@ -247,163 +253,190 @@ claude
 
 #### Firecracker Networking <a name="networking"/>
 
-As of today, Firecracker supports networking only through TUN/TAP devices.
-As a consequence, it is the user's responsibility to set up the routing on the
-host from the TUN/TAP device to the outside world. There are many possible
-solutions available, and the following describes a simple static IP and NAT-based setup.
+Firecracker connects a virtual machine to the outside world through a
+TUN/TAP device only. Such a device is a host local endpoint and provides
+no connection beyond the host by itself. Routing its traffic further is
+the task of the host. `flake-pilot` implements this as a NAT based setup
+with statically assigned addresses. It is created and deleted with the
+```flake-ctl firecracker network``` commands, no manual setup is needed.
 
-The proposed example works within the following requirements:
+The setup works within the following requirements:
 
 *   `initrd_path` must be set in the flake configuration.
 *   The used initrd has to provide support for `systemd-(networkd, resolved)`
     and must have been created by `dracut` such that the passed
     `boot_args` in the flake setup will become effective.
 
-1. Enable IP forwarding
+##### The Concept <a name="networking-concept"/>
+
+All VM applications of a host live in one private network which does not
+exist outside of that host:
+
+*   Private network: ```172.16.0.0/24```
+*   Gateway, the host side of the network: ```172.16.0.1```
+*   Netmask: ```255.255.255.0```
+*   Name server: ```8.8.8.8```
+*   Name of the network interface in the guest: ```eth0```
+
+These values are compiled into ```flake-ctl``` and are not configurable.
+Only the address of an application is variable. It is assigned once,
+when the application is connected, and is written to its flake
+configuration. Therefore an application keeps its address across calls
+and across reboots of the host until it is disconnected again. The
+address handed out is the lowest one of the private network which is
+not used by another flake registration, addresses of applications which
+were disconnected are handed out again.
+
+Every instance of an application has its own address and its own TAP
+device. The host side of each TAP device carries the gateway address,
+the guest side is configured by the kernel of the VM from the ```ip=```
+option on its commandline. No DHCP server is involved:
+
+![Firecracker VM network topology](images/firecracker-network.png)
+
+The traffic of an instance takes the following path:
+
+1. The kernel of the VM configures ```eth0``` statically from its
+   commandline and routes everything to the gateway ```172.16.0.1```,
+   which is the host side of the TAP device the instance is connected to
+
+2. IP forwarding on the host passes the packet from the TAP device on to
+   the outgoing interface. One ```FORWARD``` rule per TAP device allows
+   this
+
+3. The NAT rule of the outgoing interface rewrites the sender address to
+   the address of that interface. On the network of the host the traffic
+   of the instance appears as if it would originate from the host itself
+
+4. The answers are recognized by connection tracking and are routed back
+   to the TAP device the connection came from
+
+**_NOTE:_** The instances share the private network but they are not
+connected to each other. There is no route between two TAP devices, the
+only peer of an instance is the host.
+
+**_NOTE:_** Only the address in the flake configuration is persistent.
+IP forwarding, the netfilter rules and the TAP devices are runtime state
+of the host, after a reboot they have to be created again.
+
+##### The Commands <a name="networking-commands"/>
+
+1. Prepare the host
 
    ```bash
-   sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+   flake-ctl firecracker network init --outgoing-interface eth0
    ```
 
-2. Set up NAT on the outgoing interface
-
-   Network Address Translation (NAT) is an easy way to route traffic
-   to the outside world even when it originates from another network.
-   All traffic appears as if it would come from the outgoing
-   interface.
+   Enables IP forwarding and creates the NAT rules on the given
+   interface, the one the traffic of the VMs leaves the host through.
+   This is done once per host, and again after a reboot, not once per
+   application. The interface is recorded such that the following
+   commands know where to route the traffic to.
 
    **_NOTE:_** Please check which tool is managing the firewall on
    your host and refer to its documentation on how to set up the
-   NAT/postrouting rules. The information below assumes there is no
-   other firewall software active on your host and serves only as
-   an example setup!
+   NAT/postrouting rules. The command assumes there is no other
+   firewall software active on your host and serves only as an
+   example setup!
 
-   In this example, we assume ```eth0``` to be the outgoing interface:
-
-   ```bash
-   sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-   sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-   ```
-
-3. Set up network configuration in the flake setup
-
-   The flake configuration for the registered ```claude``` app from
-   above can be found at:
+2. Connect an application
 
    ```bash
-   vi ~/.config/flakes/claude.yaml
+   flake-ctl firecracker network add --app $HOME/bin/claude
    ```
 
-   The default network setup is based on DHCP because this is
-   the only generic setting that `flake-ctl` offers at the moment.
-   The setup offered for networking provides the setting
-   ```ip=dhcp```. Change this setting to the following:
+   Assigns a free address to the application, writes the network setup
+   to its flake configuration, creates its TAP device and connects that
+   device to the outgoing interface.
 
-   ```yaml
-   vm:
-     runtime:
-       firecracker:
-         boot_args:
-           - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
-           - rd.route=172.16.0.1/24::eth0
-           - nameserver=8.8.8.8
-   ```
-
-   In this example, the DHCP-based setup changes to a static
-   IP: 172.16.0.2 using 172.16.0.1 as its gateway, and Google
-   to perform name resolution. Please note: The name of the
-   network interface in the guest is always ```eth0```. For
-   further information about network setup options, refer
-   to ```man dracut.cmdline``` and look up the section
-   about ```ip=```.
-
-   As every instance of the app needs its own IP address, the
-   ```boot_args``` can also be set per instance. The optional
-   ```instance``` section is keyed by the ```@NAME``` selector
-   used to call the app:
-
-   ```yaml
-   vm:
-     runtime:
-       firecracker:
-         boot_args:
-           - ip=dhcp
-           - rd.route=172.16.0.1/24::eth0
-           - nameserver=8.8.8.8
-         instance:
-           "@id1":
-             boot_args:
-               - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
-           "@id2":
-             boot_args:
-               - ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off
-   ```
-
-   With this setup ```claude @id1``` boots with the static
-   IP 172.16.0.2 and ```claude @id2``` with 172.16.0.3, while
-   ```claude``` without a selector still uses DHCP.
-
-   The instance settings do not replace the global ```boot_args```
-   but are merged into them: an option which is also set in the
-   ```instance``` section takes the place of the global setting
-   of the same option, options which are not set globally are
-   appended. In the example above only the ```ip=``` option is
-   exchanged, ```rd.route=``` and ```nameserver=``` stay in
-   effect for all instances.
-
-   **_NOTE:_** The ```@``` character is reserved in YAML, therefore
-   the key has to be quoted. For convenience the plain name without
-   the ```@``` prefix, e.g ```id1```, is accepted as a key as well.
-   Run the app with ```PILOT_DEBUG=1``` to see whether an instance
-   section was found and which kernel commandline it produced.
-
-4. Create a TAP device matching the app registration. In the above example,
-   the app ```$HOME/bin/claude``` was registered. The Firecracker pilot
-   configures the VM instance to pass traffic on the TAP device named
-   ```tap-claude```. If the application is called with an identifier like
-   ```claude @id```, the TAP device name ```tap-claude_id``` is used.
+   As every instance needs its own address and its own TAP device, the
+   command has to be called for each selector the application is called
+   with:
 
    ```bash
-   sudo ip tuntap add tap-claude mode tap
+   flake-ctl firecracker network add --app $HOME/bin/claude --instance @id1
    ```
 
-   **_NOTE:_** The kernel only accepts interface names shorter than 16
-   characters which do not contain ```/```, ```:``` or whitespace. Thus
-   the pilot replaces all characters outside of ```[A-Za-z0-9_]``` by
-   ```_``` and shortens names that are too long. A shortened name keeps
-   the first characters of the app name and is made unique again by a
-   hash suffix, e.g the app ```some-very-long-application-name``` uses
-   the TAP device ```tap-some_bbb9de```. Run the app with
-   ```PILOT_DEBUG=1``` to see the TAP device name it expects.
-
-   **_NOTE:_** If the TAP device does not exist, `firecracker-pilot` will
-   create it for you. However, this may be too late in the case of, for example, a
-   DHCP setup which requires the routing of the TAP device to be present
-   before the actual network setup inside the guest takes place.
-   If `firecracker-pilot` creates the TAP device, it will also be
-   removed if the instance shuts down.
-
-5. Connect the TAP device to the outgoing interface
-
-   Select a subnet range for the TAP and bring it up.
-
-   **_NOTE:_** The settings here must match the flake configuration!
+3. Disconnect an application
 
    ```bash
-   sudo ip addr add 172.16.0.1/24 dev tap-claude
-   sudo ip link set tap-claude up
+   flake-ctl firecracker network remove --app $HOME/bin/claude
    ```
 
-   Forward TAP to the outgoing interface
+   Deletes the TAP device, its forwarding rule and the network setup in
+   the flake configuration. The address becomes free for another
+   application. Called with ```--instance``` only the setup of that
+   instance is deleted. The host setup of step 1. is shared by all
+   applications and stays in place.
 
-   ```bash
-   sudo iptables -A FORWARD -i tap-claude -o eth0 -j ACCEPT
-   ```
+   **_NOTE:_** The application is left without an ```ip=``` option,
+   which is the same state a registration with the ```--no-net```
+   option creates. If the VM should fall back to a dynamic
+   setup, ```ip=dhcp``` has to be added to its ```boot_args``` by hand.
 
-   **_NOTE:_** The TAP device cannot be shared across multiple instances.
-   Each instance needs its own TAP device. Thus, steps 4 and 5 need to
-   be repeated for each instance, and each instance needs its own
-   ```instance``` section as shown in step 3.
+All commands change the network configuration of the host and therefore
+call the required ```ip``` and ```iptables``` commands through
+```sudo```. They can be called more than once: a device or a rule which
+is already there is not created twice, and one which is gone is not
+deleted again. After a reboot of the host, calling ```init``` and
+```add``` again restores the setup with the same addresses.
+
+##### The Result in the Flake Configuration <a name="networking-config"/>
+
+The flake configuration for the registered ```claude``` app from above
+can be found at:
+
+```bash
+vi ~/.config/flakes/claude.yaml
+```
+
+Connecting the app and its instances leads to the following network
+related settings:
+
+```yaml
+vm:
+  runtime:
+    firecracker:
+      boot_args:
+        - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+        - rd.route=172.16.0.1/24::eth0
+        - nameserver=8.8.8.8
+      instance:
+        "@id1":
+          boot_args:
+            - ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off
+        "@id2":
+          boot_args:
+            - ip=172.16.0.4::172.16.0.1:255.255.255.0::eth0:off
+```
+
+With this setup ```claude``` boots with the static IP 172.16.0.2,
+```claude @id1``` with 172.16.0.3 and ```claude @id2``` with 172.16.0.4.
+For further information about the network setup options, refer to
+```man dracut.cmdline``` and look up the section about ```ip=```.
+
+The instance settings do not replace the global ```boot_args``` but are
+merged into them: an option which is also set in the ```instance```
+section takes the place of the global setting of the same option,
+options which are not set globally are appended. In the example above
+only the ```ip=``` option is exchanged, ```rd.route=```
+and ```nameserver=``` stay in effect for all instances.
+
+**_NOTE:_** The ```@``` character is reserved in YAML, therefore
+the key has to be quoted. For convenience the plain name without
+the ```@``` prefix, e.g ```id1```, is accepted as a key as well.
+Run the app with ```PILOT_DEBUG=1``` to see whether an instance
+section was found and which kernel commandline it produced.
+
+**_NOTE:_** The kernel only accepts interface names shorter than 16
+characters which do not contain ```/```, ```:``` or whitespace. Thus
+the TAP device name is built by replacing all characters outside
+of ```[A-Za-z0-9_]``` by ```_``` and by shortening names that are too
+long. A shortened name keeps the first characters of the app name and
+is made unique again by a hash suffix, e.g the
+app ```some-very-long-application-name``` uses the TAP
+device ```tap-some_bbb9de```. Run the app with ```PILOT_DEBUG=1``` to
+see the TAP device name it expects.
 
 ## Application Setup <a name="setup"/>
 

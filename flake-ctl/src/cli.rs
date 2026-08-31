@@ -208,6 +208,11 @@ pub enum Firecracker {
         #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
         format: ListFormat,
     },
+    /// Manage the host network setup for VM applications
+    Network {
+        #[clap(subcommand)]
+        command: Network,
+    },
     /// Remove application registration or entire VM
     #[clap(group(
         ArgGroup::new("remove").required(true).args(&["vm", "app"]),
@@ -229,6 +234,47 @@ pub enum Firecracker {
         /// when present. Use with care !
         #[clap(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum Network {
+    /// Prepare the host for NAT based VM networking
+    Init {
+        /// Name of the host interface the traffic of the VMs
+        /// is routed to the outside world through, e.g eth0
+        #[clap(long)]
+        outgoing_interface: String,
+    },
+    /// Connect a VM application to the host network
+    Add {
+        /// An absolute path to the application on the host.
+        /// The application must be registered as a VM
+        /// application and its flake configuration gets the
+        /// network setup written to it
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the application is
+        /// called with. Every instance needs its own network
+        /// setup, therefore the command has to be called for
+        /// each of them
+        #[clap(long)]
+        instance: Option<String>,
+    },
+    /// Disconnect a VM application from the host network
+    Remove {
+        /// An absolute path to the application on the host.
+        /// The network setup of the application is deleted
+        /// from the host and from its flake configuration
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the network setup was
+        /// created for. Only the setup of that instance is
+        /// deleted
+        #[clap(long)]
+        instance: Option<String>,
     },
 }
 

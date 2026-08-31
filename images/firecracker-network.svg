@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="768" viewBox="0 52 1500 768">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c6cb0"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e08e0b"/>
+    </marker>
+    <style>
+      .panel  { fill: #e8f1fb; stroke: #cfe0f4; stroke-width: 2; }
+      .box    { fill: #ffffff; stroke: #2c5f9e; stroke-width: 2; }
+      .tap    { fill: #f7fbff; stroke: #2c5f9e; stroke-width: 2; }
+      .icon   { fill: #dbeafe; stroke: #2c5f9e; stroke-width: 2; }
+      .link   { stroke: #2c6cb0; stroke-width: 3; fill: none; }
+      .head   { font: bold 24px 'Adwaita Sans', sans-serif; fill: #24527f; }
+      .sub    { font: 15px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .title  { font: bold 19px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .mono   { font: 15px 'Source Code Pro', monospace; fill: #10263d; }
+      .monos  { font: 13px 'Source Code Pro', monospace; fill: #4a6a8a; }
+      .note   { font: 15px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .tiny   { font: 13px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .amber  { font: bold 15px 'Source Code Pro', monospace; fill: #b8720a; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="820" fill="#ffffff"/>
+
+  <!-- panels -->
+  <rect class="panel" x="24"   y="96" width="380" height="580" rx="18"/>
+  <rect class="panel" x="428"  y="96" width="756" height="580" rx="18"/>
+  <rect class="panel" x="1208" y="96" width="268" height="580" rx="18"/>
+
+  <text class="head" x="214"  y="140" text-anchor="middle">Firecracker VMs</text>
+  <text class="head" x="806"  y="140" text-anchor="middle">Host</text>
+  <text class="head" x="1342" y="140" text-anchor="middle">Outside world</text>
+  <text class="sub"  x="806"  y="166" text-anchor="middle">private network 172.16.0.0/24</text>
+
+  <!-- ==================== instance rows ==================== -->
+  <!-- row 1: claude -->
+  <rect class="box" x="56" y="190" width="316" height="118" rx="12"/>
+  <rect class="icon" x="82" y="227" width="40" height="30" rx="4"/>
+  <path class="link" d="M 102 257 L 102 268 M 90 268 L 114 268"/>
+  <text class="title" x="140" y="236">claude</text>
+  <text class="mono"  x="140" y="262">eth0  172.16.0.2/24</text>
+  <text class="monos" x="140" y="286">gw 172.16.0.1</text>
+
+  <path class="link" marker-start="url(#arrow)" marker-end="url(#arrow)"
+        d="M 372 249 L 462 249"/>
+
+  <rect class="tap" x="462" y="205" width="286" height="88" rx="12"/>
+  <text class="title" x="605" y="242" text-anchor="middle">tap-claude</text>
+  <text class="mono"  x="605" y="270" text-anchor="middle">172.16.0.1/24</text>
+
+  <!-- row 2: claude @id1 -->
+  <rect class="box" x="56" y="358" width="316" height="118" rx="12"/>
+  <rect class="icon" x="82" y="395" width="40" height="30" rx="4"/>
+  <path class="link" d="M 102 425 L 102 436 M 90 436 L 114 436"/>
+  <text class="title" x="140" y="404">claude @id1</text>
+  <text class="mono"  x="140" y="430">eth0  172.16.0.3/24</text>
+  <text class="monos" x="140" y="454">gw 172.16.0.1</text>
+
+  <path class="link" marker-start="url(#arrow)" marker-end="url(#arrow)"
+        d="M 372 417 L 462 417"/>
+
+  <rect class="tap" x="462" y="373" width="286" height="88" rx="12"/>
+  <text class="title" x="605" y="410" text-anchor="middle">tap-claude_id1</text>
+  <text class="mono"  x="605" y="438" text-anchor="middle">172.16.0.1/24</text>
+
+  <!-- row 3: claude @id2 -->
+  <rect class="box" x="56" y="526" width="316" height="118" rx="12"/>
+  <rect class="icon" x="82" y="563" width="40" height="30" rx="4"/>
+  <path class="link" d="M 102 593 L 102 604 M 90 604 L 114 604"/>
+  <text class="title" x="140" y="572">claude @id2</text>
+  <text class="mono"  x="140" y="598">eth0  172.16.0.4/24</text>
+  <text class="monos" x="140" y="622">gw 172.16.0.1</text>
+
+  <path class="link" marker-start="url(#arrow)" marker-end="url(#arrow)"
+        d="M 372 585 L 462 585"/>
+
+  <rect class="tap" x="462" y="541" width="286" height="88" rx="12"/>
+  <text class="title" x="605" y="578" text-anchor="middle">tap-claude_id2</text>
+  <text class="mono"  x="605" y="606" text-anchor="middle">172.16.0.1/24</text>
+
+  <!-- ==================== forwarding ==================== -->
+  <path class="link" d="M 748 249 L 800 249 M 748 585 L 800 585
+                        M 800 249 L 800 585 M 748 417 L 904 417"/>
+  <path class="link" marker-end="url(#arrow)" d="M 860 417 L 904 417"/>
+  <circle cx="800" cy="417" r="5" fill="#2c6cb0"/>
+  <text class="tiny" x="852" y="402" text-anchor="middle">IP forwarding</text>
+
+  <!-- outgoing interface -->
+  <rect class="box" x="904" y="358" width="252" height="118" rx="12"/>
+  <text class="title" x="1030" y="398" text-anchor="middle">eth0</text>
+  <text class="sub"   x="1030" y="422" text-anchor="middle">outgoing interface</text>
+  <text class="amber" x="1030" y="450" text-anchor="middle">NAT / MASQUERADE</text>
+
+  <path class="link" marker-start="url(#arrow-amber)" marker-end="url(#arrow-amber)"
+        style="stroke:#e08e0b" d="M 1156 417 L 1262 417"/>
+
+  <!-- internet -->
+  <circle cx="1342" cy="417" r="62" fill="#ffffff" stroke="#2c5f9e" stroke-width="2"/>
+  <ellipse cx="1342" cy="417" rx="26" ry="62" fill="none" stroke="#2c5f9e" stroke-width="2"/>
+  <path d="M 1280 417 L 1404 417" stroke="#2c5f9e" stroke-width="2" fill="none"/>
+  <path d="M 1291 386 Q 1342 406 1393 386" stroke="#2c5f9e" stroke-width="2" fill="none"/>
+  <path d="M 1291 448 Q 1342 428 1393 448" stroke="#2c5f9e" stroke-width="2" fill="none"/>
+  <text class="title" x="1342" y="516" text-anchor="middle">internet</text>
+
+  <!-- ==================== legend ==================== -->
+  <rect x="24" y="706" width="1452" height="90" rx="14"
+        fill="#ffffff" stroke="#cfe0f4" stroke-width="2"/>
+  <circle cx="60" cy="740" r="7" fill="#e08e0b"/>
+  <text class="amber" x="80" y="746">flake-ctl firecracker network init</text>
+  <text class="note"  x="404" y="746">enables IP forwarding and creates the NAT rules on the outgoing interface, once per host</text>
+  <circle cx="60" cy="774" r="7" fill="#2c6cb0"/>
+  <text class="amber" x="80" y="780" fill="#1f5490">flake-ctl firecracker network add</text>
+  <text class="note"  x="404" y="780">assigns a free address and creates the TAP device and the FORWARD rule of one instance</text>
+</svg>

@@ -679,7 +679,7 @@ fn checksum(image: &str, size: Option<u64>) -> Option<String> {
     }
 }
 
-fn run_as(program: &str, user: &str) -> Command {
+pub fn run_as(program: &str, user: &str) -> Command {
     /*!
     Create a call of the given program
 

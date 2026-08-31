@@ -34,3 +34,11 @@ pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 // Options used for all rsync calls.
 pub const RSYNC_OPTIONS: [&str; 2] = ["-a", "-v"];
+// Prefix of the TAP device a VM instance is connected to
+pub const TAP_DEVICE_PREFIX: &str = "tap-";
+// Max. size of a network interface name including the
+// terminating zero byte as defined by IFNAMSIZ in linux/if.h
+pub const IFNAMSIZ: usize = 16;
+// Number of hex digits used to make shortened
+// network interface names unique
+pub const IFNAME_HASH_LEN: usize = 6;

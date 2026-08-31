@@ -60,7 +60,10 @@ pub struct FireCrackerConfig {
     #[serde(rename = "boot-source")]
     pub boot_source: FireCrackerBootSource,
     pub drives: Vec<FireCrackerDrive>,
+    // A VM without a network setup has no interfaces. In this case
+    // the section is not written to the config passed to firecracker
     #[serde(rename = "network-interfaces")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub network_interfaces: Vec<FireCrackerNetworkInterface>,
     #[serde(rename = "machine-config")]
     pub machine_config: FireCrackerMachine,
@@ -712,8 +715,11 @@ pub fn create_firecracker_config(
     // that interactive commands, e.g a shell, can provide features
     // like tab completion
     boot_args.append(&mut get_terminal_boot_args());
-    for boot_option in engine_section.get_boot_args(&Lookup::get_instance_name())
-    {
+    let flake_boot_args = engine_section.get_boot_args(
+        &Lookup::get_instance_name()
+    );
+    let with_network = has_network_setup(&flake_boot_args);
+    for boot_option in flake_boot_args {
         if (resume || force_vsock)
             && ! Lookup::is_debug()
             && boot_option.starts_with("console=")
@@ -725,7 +731,7 @@ pub fn create_firecracker_config(
         } else {
             boot_args.push(boot_option.to_owned());
         }
-        }
+    }
     if ! firecracker_config.boot_source.boot_args.is_empty() {
         firecracker_config.boot_source.boot_args.push(' ');
     }
@@ -771,7 +777,18 @@ pub fn create_firecracker_config(
     // The device itself is not created here. It is part of the
     // host setup which is created with 'flake-ctl firecracker
     // network add'
-    if firecracker_config.network_interfaces.is_empty() {
+    //
+    // A VM whose kernel commandline configures no interface has no
+    // network, e.g because it was registered with '--no-net' or
+    // because its setup was deleted with 'flake-ctl firecracker
+    // network remove'. Such a VM gets no network-interfaces
+    // section in the config passed to firecracker
+    if ! with_network {
+        if Lookup::is_debug() {
+            debug!("No network configured, deleting network interfaces");
+        }
+        firecracker_config.network_interfaces.clear();
+    } else if firecracker_config.network_interfaces.is_empty() {
         if Lookup::is_debug() {
             debug!("No network interface configured, skipping tap setup");
         }
@@ -804,6 +821,22 @@ pub fn create_firecracker_config(
     )?;
 
     Ok(())
+}
+
+pub fn has_network_setup(boot_args: &[&str]) -> bool {
+    /*!
+    Check if the given kernel commandline configures a network
+
+    An interface of the VM is only of use if the guest kernel is
+    told to bring it up. This is done with the 'ip=' boot option
+    which is written by 'flake-ctl firecracker network add' and
+    which is deleted for a registration done with '--no-net'.
+    The values 'off' and 'none' explicitly switch the network of
+    the guest off and are therefore treated like a missing option
+    !*/
+    boot_args.iter()
+        .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
+        .any(|setup| setup != "off" && setup != "none")
 }
 
 pub fn get_target_app_path(program_name: &str) -> String {

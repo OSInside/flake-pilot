@@ -24,6 +24,7 @@
 //
 use crate::config::config_file;
 use crate::config::config_from_str;
+use crate::firecracker::has_network_setup;
 use flakes::network::get_valid_interface_name;
 
 #[test]
@@ -133,6 +134,47 @@ fn test_instance_name_without_at_sign_is_accepted_as_key() {
         vec!["init=/usr/sbin/sci", "root=/dev/vdb", "ip=dhcp", "quiet"],
         engine_section.get_boot_args("@two")
     );
+}
+
+#[test]
+fn test_network_setup_from_boot_args() {
+    // a registration with '--no-net' and a flake whose setup was
+    // deleted are left without an ip= option
+    assert!(! has_network_setup(&["init=/usr/sbin/sci", "quiet"]));
+    assert!(has_network_setup(&["ip=dhcp"]));
+    assert!(has_network_setup(
+        &["ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"]
+    ));
+    // an explicitly switched off network is no network either
+    assert!(! has_network_setup(&["ip=off"]));
+    assert!(! has_network_setup(&["ip=none"]));
+}
+
+#[test]
+fn test_network_interfaces_section_is_dropped_when_empty() {
+    // the template of the config passed to firecracker, read from
+    // the source tree because the installed one may not exist
+    let template = std::fs::File::open("template/firecracker.json")
+        .expect("Failed to open firecracker template");
+    let mut firecracker_config: crate::firecracker::FireCrackerConfig =
+        serde_json::from_reader(template).expect("Failed to read template");
+    assert!(
+        serde_json::to_string(&firecracker_config).unwrap()
+            .contains("network-interfaces")
+    );
+    firecracker_config.network_interfaces.clear();
+    assert!(
+        ! serde_json::to_string(&firecracker_config).unwrap()
+            .contains("network-interfaces")
+    );
+}
+
+#[test]
+fn test_network_setup_of_instance() {
+    let engine_section = instance_engine_section();
+    // the instance takes the place of the global ip=dhcp
+    assert!(has_network_setup(&engine_section.get_boot_args("@one")));
+    assert!(has_network_setup(&engine_section.get_boot_args("@two")));
 }
 
 #[test]

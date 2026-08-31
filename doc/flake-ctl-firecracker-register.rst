@@ -80,7 +80,12 @@ OPTIONS
 
 --no-net
 
-  Disable networking
+  Disable networking. The ``ip=`` option is deleted from the
+  kernel commandline of the VM. Without it the VM is not
+  connected, the pilot creates no TAP device setup for it and
+  passes no ``network-interfaces`` section to firecracker.
+  The setup can be created later on with
+  **flake-ctl-firecracker-network-add**(8)
 
 --overlay-size <OVERLAY_SIZE>
 

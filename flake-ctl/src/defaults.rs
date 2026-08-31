@@ -120,7 +120,7 @@ pub const NETWORK_CONFIG:&str =
 // User specific location of that record, relative to the
 // home directory of the user calling the program
 pub const NETWORK_CONFIG_USER:&str =
-    ".config/flakes/network.yaml";
+    ".config/flakes/firecracker/network.yaml";
 // Static setup of the private network between the host and the
 // VMs. The addresses are not configurable, they only exist
 // between the TAP device of an instance and the VM behind it.

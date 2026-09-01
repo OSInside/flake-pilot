@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="768" viewBox="0 0 1500 768">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c6cb0"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e08e0b"/>
+    </marker>
+    <style>
+      .panel  { fill: #e8f1fb; stroke: #cfe0f4; stroke-width: 2; }
+      .box    { fill: #ffffff; stroke: #2c5f9e; stroke-width: 2; }
+      .inner  { fill: #f7fbff; stroke: #2c5f9e; stroke-width: 2; }
+      .icon   { fill: #dbeafe; stroke: #2c5f9e; stroke-width: 2; }
+      .link   { stroke: #2c6cb0; stroke-width: 3; fill: none; }
+      .back   { stroke: #e08e0b; stroke-width: 3; fill: none; }
+      .rule   { stroke: #cfe0f4; stroke-width: 2; }
+      .head   { font: bold 28px 'Adwaita Sans', sans-serif; fill: #24527f; }
+      .sub    { font: 17px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .title  { font: bold 22px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .mono   { font: 17px 'Source Code Pro', monospace; fill: #10263d; }
+      .monob  { font: bold 19px 'Source Code Pro', monospace; fill: #10263d; }
+      .monos  { font: 15px 'Source Code Pro', monospace; fill: #4a6a8a; }
+      .note   { font: 17px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .tiny   { font: 15px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .amber  { font: bold 17px 'Source Code Pro', monospace; fill: #b8720a; }
+      .blue   { font: bold 17px 'Source Code Pro', monospace; fill: #24527f; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="768" fill="#ffffff"/>
+
+  <!-- ============================ 1 Register ============================ -->
+  <rect class="panel" x="24" y="70" width="452" height="560" rx="18"/>
+  <text class="head" x="250" y="118" text-anchor="middle">1  Register</text>
+  <text class="sub"  x="250" y="148" text-anchor="middle">once, for a user or system wide</text>
+
+  <rect class="box" x="56" y="182" width="388" height="122" rx="12"/>
+  <text class="monob" x="250" y="220" text-anchor="middle">flake-ctl register</text>
+  <text class="mono"  x="250" y="254" text-anchor="middle">--app /usr/bin/&lt;app&gt;</text>
+  <text class="mono"  x="250" y="282" text-anchor="middle">--container|--vm &lt;image&gt;</text>
+
+  <path class="link" d="M 250 304 L 250 352" marker-end="url(#arrow)"/>
+  <text class="tiny" x="264" y="334">creates</text>
+
+  <rect class="box" x="56" y="356" width="388" height="176" rx="12"/>
+  <text class="monob" x="80" y="400">/usr/bin/&lt;app&gt;</text>
+  <text class="sub"   x="80" y="426">symbolic link to the pilot</text>
+  <line class="rule" x1="80" y1="448" x2="420" y2="448"/>
+  <text class="monob" x="80" y="490">/usr/share/flakes/&lt;app&gt;.yaml</text>
+  <text class="sub"   x="80" y="516">flake configuration</text>
+
+  <text class="tiny" x="250" y="574" text-anchor="middle">no application is installed on the host,</text>
+  <text class="tiny" x="250" y="598" text-anchor="middle">only the link and its configuration</text>
+
+  <path class="link" d="M 480 350 L 520 350" marker-end="url(#arrow)"/>
+
+  <!-- ============================= 2 Call =============================== -->
+  <rect class="panel" x="524" y="70" width="452" height="560" rx="18"/>
+  <text class="head" x="750" y="118" text-anchor="middle">2  Call</text>
+  <text class="sub"  x="750" y="148" text-anchor="middle">like any native binary</text>
+
+  <rect class="box" x="556" y="182" width="388" height="104" rx="12"/>
+  <text class="monob" x="750" y="224" text-anchor="middle">&lt;app&gt; [arguments]</text>
+  <text class="sub"   x="750" y="256" text-anchor="middle">the user calls the registered name</text>
+
+  <path class="link" d="M 750 286 L 750 352" marker-end="url(#arrow)"/>
+  <text class="tiny" x="764" y="325">the link starts the pilot</text>
+
+  <rect class="box" x="556" y="356" width="388" height="176" rx="12"/>
+  <text class="title" x="750" y="398" text-anchor="middle">Pilot</text>
+  <text class="mono"  x="750" y="432" text-anchor="middle">podman-pilot</text>
+  <text class="mono"  x="750" y="460" text-anchor="middle">firecracker-pilot</text>
+  <text class="tiny"  x="750" y="492" text-anchor="middle">reads the flake configuration that belongs</text>
+  <text class="tiny"  x="750" y="514" text-anchor="middle">to the name it was called by</text>
+
+  <text class="tiny" x="750" y="574" text-anchor="middle">the pilot provisions the runtime and passes</text>
+  <text class="tiny" x="750" y="598" text-anchor="middle">all arguments on to the application</text>
+
+  <path class="link" d="M 980 350 L 1020 350" marker-end="url(#arrow)"/>
+
+  <!-- ============================== 3 Run =============================== -->
+  <rect class="panel" x="1024" y="70" width="452" height="560" rx="18"/>
+  <text class="head" x="1250" y="118" text-anchor="middle">3  Run</text>
+  <text class="sub"  x="1250" y="148" text-anchor="middle">isolated, on every call</text>
+
+  <rect class="box" x="1056" y="182" width="388" height="158" rx="12"/>
+  <rect class="icon" x="1080" y="204" width="48" height="13" rx="3"/>
+  <rect class="icon" x="1080" y="220" width="48" height="13" rx="3"/>
+  <rect class="icon" x="1080" y="236" width="48" height="13" rx="3"/>
+  <text class="title" x="1148" y="222">OCI container</text>
+  <text class="sub"   x="1148" y="248">run by podman</text>
+  <rect class="inner" x="1080" y="270" width="340" height="48" rx="8"/>
+  <text class="mono" x="1250" y="300" text-anchor="middle">/usr/bin/&lt;app&gt;</text>
+
+  <rect class="box" x="1056" y="364" width="388" height="158" rx="12"/>
+  <rect class="icon" x="1080" y="386" width="48" height="34" rx="4"/>
+  <path d="M 1104 420 L 1104 428 M 1090 428 L 1118 428" stroke="#2c5f9e"
+        stroke-width="2" fill="none"/>
+  <text class="title" x="1148" y="404">Firecracker VM</text>
+  <text class="sub"   x="1148" y="430">run by firecracker on KVM</text>
+  <rect class="inner" x="1080" y="452" width="340" height="48" rx="8"/>
+  <text class="mono" x="1250" y="482" text-anchor="middle">/usr/bin/&lt;app&gt;</text>
+
+  <text class="tiny" x="1250" y="574" text-anchor="middle">which of the two runtimes is used was</text>
+  <text class="tiny" x="1250" y="598" text-anchor="middle">decided when the app was registered</text>
+
+  <!-- ======================= result back to the user ==================== -->
+  <path class="back" d="M 1250 630 L 1250 658 L 750 658 L 750 634"
+        marker-end="url(#arrow-amber)"/>
+  <rect x="790" y="643" width="420" height="28" fill="#ffffff"/>
+  <text class="note" x="1000" y="664" text-anchor="middle">output and exit code go to the calling terminal</text>
+
+  <!-- ============================== legend ============================== -->
+  <rect class="box" x="24" y="676" width="1452" height="72" rx="18"/>
+  <circle cx="60" cy="700" r="7" fill="#2c6cb0"/>
+  <text class="blue"  x="82" y="707">flake-ctl</text>
+  <text class="note"  x="210" y="707">registers an application, this is a one time step</text>
+  <circle cx="60" cy="732" r="7" fill="#e08e0b"/>
+  <text class="amber" x="82" y="739">pilot</text>
+  <text class="note"  x="210" y="739">provisions the container or the virtual machine and runs the application inside of it</text>
+</svg>

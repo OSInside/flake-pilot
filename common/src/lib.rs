@@ -33,4 +33,5 @@ pub mod config;
 pub mod flakelog;
 pub mod defaults;
 pub mod io;
+pub mod openat;
 pub mod network;

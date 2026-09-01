@@ -78,6 +78,20 @@ can be set for the firecracker engine:
         # Default: false
         resume: true|false
 
+        # Optional pilot options in the format:
+        # - %name or %name:value
+        # Pilot options are not passed to the application call
+        # but control the behavior of firecracker-pilot. An
+        # option configured here is always effective and does
+        # not have to be given at call time. An option of the
+        # same name provided at call time takes precedence over
+        # the configured one. As the '%' character is reserved
+        # in YAML the option has to be quoted. For the list of
+        # available options see the OPTIONS section
+        # Example:
+        pilot_options:
+          - "%port:2000"
+
         firecracker:
           # Currently fixed settings through app registration
           boot_args:
@@ -130,6 +144,13 @@ of the instance except for arguments that starts with the '@'
 or '%' sign. Caller arguments of this type are only used for
 the firecracker-pilot startup itself. See the OPTIONS section
 for the available runtime options.
+
+All options listed in the OPTIONS section, except for @NAME,
+can also be set permanently for an application through the
+**pilot_options** setting of the flake configuration. Such an
+option is always effective and does not have to be given at
+call time. Passing the option at call time takes precedence
+over the configured value.
 
 The execution of the program inside of the instance (the VM)
 is managed by an extra program called `sci` and provided with

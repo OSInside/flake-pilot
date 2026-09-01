@@ -96,7 +96,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, run_as, overlay_size, no_net, resume,
-                    force_vsock, include_tar, include_path, force
+                    force_vsock, include_tar, include_path, pilot_option,
+                    force
                 } => {
                     if *force {
                         app::remove(
@@ -125,6 +126,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 *force_vsock,
                                 include_tar.as_ref().cloned(),
                                 include_path.as_ref().cloned(),
+                                pilot_option.as_ref().cloned(),
                                 user,
                             );
                         }
@@ -207,7 +209,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Podman::Register {
                     container, app, target, base, check_host_dependencies,
                     layer, include_tar, include_path, resume, attach,
-                    opt, info, force
+                    opt, pilot_option, info, force
                 } => {
                     if *info {
                         podman::print_container_info(container);
@@ -241,6 +243,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     *attach,
                                     user,
                                     opt.as_ref().cloned(),
+                                    pilot_option.as_ref().cloned(),
                                 );
                             }
                             if ! ok {

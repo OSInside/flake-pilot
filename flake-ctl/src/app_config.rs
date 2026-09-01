@@ -55,6 +55,7 @@ pub struct AppContainerRuntime {
     pub runas: Option<String>,
     pub resume: Option<bool>,
     pub attach: Option<bool>,
+    pub pilot_options: Option<Vec<String>>,
     pub podman: Option<Vec<String>>,
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,6 +78,7 @@ pub struct AppFireCrackerRuntime {
     pub runas: Option<String>,
     pub resume: Option<bool>,
     pub force_vsock: Option<bool>,
+    pub pilot_options: Option<Vec<String>>,
     pub firecracker: Option<AppFireCrackerEngine>,
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,6 +98,23 @@ pub struct AppFireCrackerInstance {
     pub boot_args: Option<Vec<String>>,
 }
 
+fn normalize_pilot_options(pilot_options: &[String]) -> Vec<String> {
+    /*!
+    Provide the pilot options in the %name or %name:value format
+
+    A pilot option is marked by a leading '%' character. For
+    convenience the option can be specified without that marker
+    which is added here
+    !*/
+    pilot_options.iter().map(
+        |pilot_option| if pilot_option.starts_with('%') {
+            pilot_option.to_string()
+        } else {
+            format!("%{pilot_option}")
+        }
+    ).collect()
+}
+
 impl AppConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn save_container(
@@ -112,6 +131,7 @@ impl AppConfig {
         attach: bool,
         run_as: Option<&String>,
         opts: Option<Vec<String>>,
+        pilot_options: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
         /*!
         save stores an AppConfig to the given file
@@ -166,6 +186,11 @@ impl AppConfig {
                 final_opts
             );
         }
+        if let Some(pilot_options) = &pilot_options {
+            container_config.runtime.as_mut().unwrap().pilot_options = Some(
+                normalize_pilot_options(pilot_options)
+            );
+        }
 
         let config = std::fs::OpenOptions::new()
             .write(true)
@@ -190,6 +215,7 @@ impl AppConfig {
         force_vsock: bool,
         includes_tar: Option<Vec<String>>,
         includes_path: Option<Vec<String>>,
+        pilot_options: Option<Vec<String>>,
         usermode: bool,
     ) -> Result<(), GenericError> {
         /*!
@@ -227,6 +253,11 @@ impl AppConfig {
         }
         if let Some(includes_path) = &includes_path {
             yaml_config.include.path = Some(includes_path.to_vec());
+        }
+        if let Some(pilot_options) = &pilot_options {
+            vm_config.runtime.as_mut().unwrap().pilot_options = Some(
+                normalize_pilot_options(pilot_options)
+            );
         }
         if let Some(overlay_size) = overlay_size {
             vm_config.runtime.as_mut().unwrap()

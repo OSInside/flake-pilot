@@ -15,14 +15,14 @@
       .tap    { fill: #f7fbff; stroke: #2c5f9e; stroke-width: 2; }
       .icon   { fill: #dbeafe; stroke: #2c5f9e; stroke-width: 2; }
       .link   { stroke: #2c6cb0; stroke-width: 3; fill: none; }
-      .head   { font: bold 24px 'Adwaita Sans', sans-serif; fill: #24527f; }
-      .sub    { font: 15px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
-      .title  { font: bold 19px 'Adwaita Sans', sans-serif; fill: #10263d; }
-      .mono   { font: 15px 'Source Code Pro', monospace; fill: #10263d; }
-      .monos  { font: 13px 'Source Code Pro', monospace; fill: #4a6a8a; }
-      .note   { font: 15px 'Adwaita Sans', sans-serif; fill: #10263d; }
-      .tiny   { font: 13px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
-      .amber  { font: bold 15px 'Source Code Pro', monospace; fill: #b8720a; }
+      .head   { font: bold 28px 'Adwaita Sans', sans-serif; fill: #24527f; }
+      .sub    { font: 17px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .title  { font: bold 22px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .mono   { font: 17px 'Source Code Pro', monospace; fill: #10263d; }
+      .monos  { font: 15px 'Source Code Pro', monospace; fill: #4a6a8a; }
+      .note   { font: 17px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .tiny   { font: 15px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .amber  { font: bold 17px 'Source Code Pro', monospace; fill: #b8720a; }
     </style>
   </defs>
 
@@ -89,7 +89,7 @@
                         M 800 249 L 800 585 M 748 417 L 904 417"/>
   <path class="link" marker-end="url(#arrow)" d="M 860 417 L 904 417"/>
   <circle cx="800" cy="417" r="5" fill="#2c6cb0"/>
-  <text class="tiny" x="852" y="402" text-anchor="middle">IP forwarding</text>
+  <text class="tiny" x="836" y="402" text-anchor="middle">IP forwarding</text>
 
   <!-- outgoing interface -->
   <rect class="box" x="904" y="358" width="252" height="118" rx="12"/>
@@ -113,8 +113,8 @@
         fill="#ffffff" stroke="#cfe0f4" stroke-width="2"/>
   <circle cx="60" cy="740" r="7" fill="#e08e0b"/>
   <text class="amber" x="80" y="746">flake-ctl firecracker network init</text>
-  <text class="note"  x="404" y="746">enables IP forwarding and creates the NAT rules on the outgoing interface, once per host</text>
+  <text class="note"  x="452" y="746">enables IP forwarding and creates the NAT rules on the outgoing interface, once per host</text>
   <circle cx="60" cy="774" r="7" fill="#2c6cb0"/>
   <text class="amber" x="80" y="780" fill="#1f5490">flake-ctl firecracker network add</text>
-  <text class="note"  x="404" y="780">assigns a free address and creates the TAP device and the FORWARD rule of one instance</text>
+  <text class="note"  x="452" y="780">assigns a free address and creates the TAP device and the FORWARD rule of one instance</text>
 </svg>

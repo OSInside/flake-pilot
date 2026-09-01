@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "flake-pilot"
+version = "3.1.47"
+description = "flake-pilot - Application Isolation"
+license = "MIT"
+readme = "README.rst"
+homepage = "https://osinside.github.io/flake-pilot/"
+documentation = "https://osinside.github.io/flake-pilot/"
+repository = "https://github.com/OSInside/flake-pilot"
+package-mode = false
+
+authors = [
+   "Marcus Schäfer <marcus.schaefer@gmail.com>",
+]
+maintainers = [
+   "Marcus Schäfer <marcus.schaefer@gmail.com>",
+]
+
+classifiers = [
+   # classifier: http://pypi.python.org/pypi?%3Aaction=list_classifiers
+   "Development Status :: 5 - Production/Stable",
+   "Intended Audience :: Developers",
+   "Operating System :: POSIX :: Linux",
+   "Topic :: System :: Operating System",
+]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/OSInside/flake-pilot/issues"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.poetry.group.docs]
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=5.0.0"
+sphinx_rtd_theme = "*"
+sphinxcontrib-spelling = "*"
+pyenchant = "*"
+ghp-import = "*"
+pdoc = ">=12.0.0"
+
+[tool.poetry.group.development]
+[tool.poetry.group.development.dependencies]
+bumpversion = "*"
+
+[build-system]
+requires = ["poetry-core>=1.2.0"]
+build-backend = "poetry.core.masonry.api"

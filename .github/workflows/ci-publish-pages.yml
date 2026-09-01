@@ -1,0 +1,35 @@
+name: CI-GitHub-Pages
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  documentation:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Python${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install poetry
+    - name: Render
+      run: |
+        make ghpages
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        publish_branch: gh-pages
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./doc/build
+        force_orphan: true

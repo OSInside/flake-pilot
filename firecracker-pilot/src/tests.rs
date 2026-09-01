@@ -183,6 +183,45 @@ fn test_program_config_file() {
     assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }
 
+#[test]
+fn test_configured_pilot_options() {
+    let cfg = config_from_str(
+            r#"vm:
+ name: JoJo
+ host_app_path: /myapp
+ runtime:
+  runas: root
+  pilot_options:
+    - "%port:2000"
+  firecracker:
+   rootfs_image_path: /rootfs
+   kernel_image_path: /kernel
+   boot_args:
+     - "init=/usr/sbin/sci"
+include:
+ tar: ~
+"#,
+    );
+    assert_eq!(vec!["%port:2000"], cfg.pilot_options());
+    let pilot_options = flakes::lookup::Lookup::get_pilot_run_options(
+        cfg.pilot_options()
+    );
+    assert_eq!(Some(&"2000".to_string()), pilot_options.get("%port"));
+}
+
+#[test]
+fn test_no_pilot_options_configured() {
+    let cfg = config_from_str(
+            r#"vm:
+ name: JoJo
+ host_app_path: /myapp
+include:
+ tar: ~
+"#,
+    );
+    assert!(cfg.pilot_options().is_empty());
+}
+
 fn is_valid_interface_name(name: &str) -> bool {
     // conditions taken from dev_valid_name() in the kernel,
     // extended by the '@' character which iproute2 uses to

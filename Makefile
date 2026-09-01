@@ -120,7 +120,19 @@ uninstall:
 man:
 	${MAKE} -C doc man
 
+user_guide:
+	${MAKE} -C doc user_guide
+
 cargo:
 	for path in $(shell find . -name Cargo.toml ! -path "*/vendor/*");do \
 		pushd `dirname $$path`; cargo build || exit 1; popd;\
 	done
+
+setup:
+	poetry install --all-extras
+
+docs: setup
+	poetry run make -C doc user_guide
+
+ghpages:
+	poetry run sphinx-build doc/user_guide doc/build

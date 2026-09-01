@@ -134,5 +134,5 @@ setup:
 docs: setup
 	poetry run make -C doc user_guide
 
-ghpages:
+ghpages: setup
 	poetry run sphinx-build doc/user_guide doc/build

@@ -394,13 +394,13 @@ pub fn start(
             // 2. Startup VM as background job and execute app through vsock
             is_blocking = false;
             call_instance(
-                &firecracker_config, &vm_id_file, is_blocking
+                program_name, &firecracker_config, &vm_id_file, is_blocking
             )?;
             execute_command_at_instance(program_name)?;
         } else {
             // 3. Startup VM and execute app
             call_instance(
-                &firecracker_config, &vm_id_file, is_blocking
+                program_name, &firecracker_config, &vm_id_file, is_blocking
             )?;
         }
     }
@@ -408,11 +408,22 @@ pub fn start(
 }
 
 pub fn call_instance(
-    config_file: &NamedTempFile, vm_id_file: &str, is_blocking: bool
+    program_name: &String, config_file: &NamedTempFile,
+    vm_id_file: &str, is_blocking: bool
 ) -> Result<(), FlakeError> {
     /*!
     Run firecracker with specified configuration
     !*/
+    // Check if there is an old UDS socket file still present.
+    // It must be deleted to allow the new firecracker process
+    // to create and connect to it
+    let vsock_uds_path = get_vsock_uds_path(program_name)?;
+    if Path::new(&vsock_uds_path).exists() {
+        if Lookup::is_debug() {
+            debug!("Deleting {vsock_uds_path} prior new firecracker call");
+        }
+        delete_file(&vsock_uds_path);
+    }
     let mut firecracker = Command::new(defaults::FIRECRACKER);
     firecracker
         .arg("--no-api")

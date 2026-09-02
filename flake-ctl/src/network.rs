@@ -83,7 +83,8 @@ pub fn add(app: &str, instance: Option<&String>, usermode: bool) -> bool {
     The flake gets a free address of the private network between
     the host and the VMs written to its configuration and the TAP
     device it expects is created and routed to the outgoing
-    interface of the host setup created by init().
+    interface of the host setup created by init(). A host route
+    connects that address with that device.
 
     Each instance of an application needs its own address and its
     own TAP device. Therefore the command has to be called for
@@ -113,6 +114,11 @@ pub fn add(app: &str, instance: Option<&String>, usermode: bool) -> bool {
 
     // 3. the route from the TAP device to the outside world
     if ! connect_tap(&flake.tap, &outgoing_interface) {
+        return false
+    }
+
+    // 4. the host route to the address of the instance
+    if ! route_address(&address, &flake.tap) {
         return false
     }
 
@@ -906,8 +912,8 @@ fn delete_tap(tap: &str) -> bool {
     /*!
     Delete the TAP device of a VM instance
 
-    The address of the device and its link state are deleted
-    along with it
+    The address of the device, its link state and the host route
+    to the instance behind it are deleted along with it
     !*/
     if ! tap_exists(tap) {
         info!("No TAP device {tap} to delete");
@@ -984,6 +990,57 @@ fn connect_tap(tap: &str, outgoing_interface: &str) -> bool {
             spec: vec!["-i", tap, "-o", outgoing_interface, "-j", "ACCEPT"]
         }
     ])
+}
+
+fn route_address(address: &Ipv4Addr, tap: &str) -> bool {
+    /*!
+    Route the address of a VM instance to its TAP device
+
+    Every TAP device provides the same gateway address of the
+    private network. The route to that network which comes with
+    it therefore points to one of the devices only and the
+    traffic to all other instances would be sent to the wrong
+    device. A host route for the address of the instance makes
+    sure it is reached through the device it is connected to
+    !*/
+    let route = format!("{address}/{}", defaults::NETWORK_HOST_PREFIX_LEN);
+    if route_exists(address, tap) {
+        info!("Keeping existing route {route} dev {tap}");
+        return true
+    }
+    info!("Adding route {route} dev {tap}...");
+    let mut call = run_as(defaults::IP_TOOL, "root");
+    call.arg("route").arg("add").arg(&route).arg("dev").arg(tap);
+    run_ok(&mut call, &format!("add route {route} dev {tap}"))
+}
+
+fn route_exists(address: &Ipv4Addr, tap: &str) -> bool {
+    /*!
+    Check if the given device already routes the given address
+
+    A host route is reported by iproute2 with the plain address,
+    the prefix length of a single host is not shown
+    !*/
+    let mut call = Command::new(defaults::IP_TOOL);
+    call.arg("-4").arg("-oneline").arg("route").arg("show").arg("dev")
+        .arg(tap);
+    let host_address = address.to_string();
+    let host_route = format!(
+        "{host_address}/{}", defaults::NETWORK_HOST_PREFIX_LEN
+    );
+    match call.output() {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).lines().any(
+            |line| {
+                let destination = line.split_whitespace().next()
+                    .unwrap_or_default();
+                destination == host_address || destination == host_route
+            }
+        ),
+        Err(error) => {
+            error!("Failed to execute {}: {error:?}", defaults::IP_TOOL);
+            false
+        }
+    }
 }
 
 fn disconnect_tap(tap: &str, outgoing_interface: &str) -> bool {

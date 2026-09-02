@@ -74,7 +74,11 @@ The traffic of an instance takes the following path:
    host itself
 
 4. The answers are recognized by connection tracking and are routed
-   back to the TAP device the connection came from
+   back to the TAP device the connection came from. As all TAP
+   devices carry the same gateway address, and with it the same
+   route to the private network, a host route of the form
+   ``172.16.0.3/32 dev tap-claude_id1`` per instance makes sure the
+   packets are delivered to the device the instance is connected to
 
 .. note::
 
@@ -119,8 +123,9 @@ Connect an Application
    flake-ctl firecracker network add --app $HOME/bin/claude
 
 Assigns a free address to the application, writes the network setup
-to its flake configuration, creates its TAP device and connects that
-device to the outgoing interface.
+to its flake configuration, creates its TAP device, connects that
+device to the outgoing interface and routes the address of the
+application to it.
 
 As every instance needs its own address and its own TAP device, the
 command has to be called for each selector the application is called
@@ -152,9 +157,9 @@ by all applications and stays in place.
 
 All commands change the network configuration of the host and
 therefore call the required ``ip`` and ``iptables`` commands through
-``sudo``. They can be called more than once: a device or a rule which
-is already there is not created twice, and one which is gone is not
-deleted again. After a reboot of the host, calling ``init`` and
+``sudo``. They can be called more than once: a device, a route or a
+rule which is already there is not created twice, and one which is
+gone is not deleted again. After a reboot of the host, calling ``init`` and
 ``add`` again restores the setup with the same addresses.
 
 The Result in the Flake Configuration

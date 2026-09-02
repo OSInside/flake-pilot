@@ -100,6 +100,14 @@ can be set for the firecracker engine:
             - "root=/dev/vda"
             - "acpi=off"
             - "quiet"
+            # Optional NFS volume(s) to mount in the VM before the
+            # app is called, given as a comma separated list of
+            # NAME_OR_IP:/export_path:/mount_path elements. A mount
+            # point which does not exist is created. This requires
+            # a network setup for the VM and the NFS client tools
+            # in the VM image. See sci(8) for details
+            # Example:
+            - "nfs=some.host:/host/path:/local/path"
           mem_size_mib: 4096
           vcpu_count: 2
           cache_type: Writeback

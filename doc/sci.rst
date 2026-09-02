@@ -39,6 +39,7 @@ Available variables are:
 
     + run= command
     + overlay_root= /dev/block_device
+    + nfs= NAME_OR_IP:/export_path:/mount_path[,...]
 
 
 If provided via the overlay_root=/dev/block_device kernel boot
@@ -49,6 +50,33 @@ using the given block device for writing.
 For the overlay_root parameter to work the firecracker.json file
 needs to have a proper section with
 a record of the overlayfs on the root system.
+
+If provided via the nfs= kernel boot parameter, sci mounts the
+listed NFS volumes before the command is called. The parameter
+takes a comma separated list of volumes, each of them given as
+the name or address of the server, the path exported by that
+server and the path it is mounted on in the instance:
+
+.. code:: bash
+
+   nfs=some.host:/host/path:/local/path,some.host:/other/path:/local/other
+
+leads to the following mount calls:
+
+.. code:: bash
+
+   mount -t nfs some.host:/host/path /local/path
+   mount -t nfs some.host:/other/path /local/other
+
+A mount point which does not exist in the instance is created.
+A volume which cannot be read from the given specification, or
+which fails to mount, is skipped and the remaining volumes are
+still mounted.
+
+For the nfs parameter to work the instance needs a working
+network setup, see **flake-ctl-firecracker-network-add**(8), and
+has to provide the NFS client tools. Mounting a filesystem of
+this type requires the ``mount.nfs`` helper program.
 
 Every environment variable configurable and all options 
 regarding filesystems are stored in the firecracker.json
@@ -88,6 +116,17 @@ ENVIROMENT VARIABLES
 |                      |                   | will not be made.                |
 |                      |                   |                                  |
 +----------------------+-------------------+----------------------------------+
+|                      |                   |                                  |
+|nfs                   | NAME_OR_IP:       | NFS volume(s) to mount before    |
+|                      | /export_path:     | the command is called. More than |
+|                      | /mount_path       | one volume can be given as a     |
+|                      |                   | comma separated list. A mount    |
+|                      |                   | point which does not exist is    |
+|                      |                   | created. The instance needs a    |
+|                      |                   | working network setup and the    |
+|                      |                   | NFS client tools for this.       |
+|                      |                   |                                  |
++----------------------+-------------------+----------------------------------+
 
 FILES
 -----
@@ -102,6 +141,7 @@ sci will execute these steps in order:
     + evaluation of environment variable 'run'
     + mounting of overlay if requested
     + switching root into overlay if configured
+    + mounting of the nfs volumes if requested
     + execution of provided command
     + reboot of firecracker instance
 

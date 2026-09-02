@@ -45,6 +45,7 @@
         <package name="openssh-server"/>
         <package name="flake-pilot-firecracker-guestvm-tools"/>
         <package name="flake-pilot-firecracker-dracut-netstart"/>
+        <package name="nfs-client"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

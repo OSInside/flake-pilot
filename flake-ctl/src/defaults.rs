@@ -132,6 +132,10 @@ pub const NETWORK_NETMASK:&str =
     "255.255.255.0";
 pub const NETWORK_PREFIX_LEN:u8 =
     24;
+// Prefix length of the host route which connects the address of
+// a single VM instance with the TAP device of that instance
+pub const NETWORK_HOST_PREFIX_LEN:u8 =
+    32;
 pub const NETWORK_DNS:&str =
     "8.8.8.8";
 // Name of the network interface inside of the VM. Firecracker

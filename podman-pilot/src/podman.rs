@@ -226,9 +226,7 @@ pub fn create(
 
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
-    let volume_pattern = Regex::new(
-        r"(?:^|\s)(?:--volume|-v)(?:\s*=\s*|\s+)([^\s:]+)"
-    ).unwrap();
+    let mut is_volume = false;
     for arg in podman.iter().flatten().flat_map(|x| x.splitn(2, ' ')) {
         let mut arg_value = arg.to_string();
         // The value of a variable can contain another %VAR reference.
@@ -258,20 +256,24 @@ pub fn create(
                 );
             }
         }
-        let mut use_option = true;
-        if pilot_options.contains_key("%ignore_missing_volume_path") {
-            if let Some(capture) = volume_pattern.captures(&arg_value.clone()) {
-                let host_volume_path = &capture.get(1).unwrap().as_str();
+        if arg_value == "--volume" || arg_value == "-v" {
+            is_volume = true;
+            continue
+        } else if is_volume {
+            is_volume = false;
+            if pilot_options.contains_key("%ignore_missing_volume_path") {
+                let host_volume_path = arg_value.split(':').next().unwrap_or("");
                 if ! Path::new(&host_volume_path).exists() {
                     if Lookup::is_debug() {
                         debug!("Volume path {} not found", host_volume_path);
-                        debug!("Call option {} skipped", arg_value);
+                        debug!("Call option --volume {} skipped", arg_value);
                     }
-                    use_option = false
+                    continue
                 }
             }
-        }
-        if use_option {
+            app.arg("--volume");
+            app.arg(arg_value);
+        } else {
             app.arg(arg_value);
         }
     };

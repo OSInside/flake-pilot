@@ -65,6 +65,9 @@ fn main() {
     if provided via the overlay_root=/dev/block_device kernel boot
     parameter, sci also prepares the root filesystem as an overlay
     using the given block device for writing.
+
+    if provided via the nfs=... kernel boot parameter, sci mounts
+    the listed NFS volumes before the command is called.
     !*/
     setup_logger();
 
@@ -251,6 +254,9 @@ fn main() {
             call = Command::new(&args[0]);
         }
     };
+
+    // mount nfs volumes if requested
+    mount_nfs_volumes();
 
     // start sshd if present
     start_sshd();
@@ -1091,7 +1097,7 @@ fn move_mounts(new_root: &str) {
     Move filesystems from current root to new_root
     !*/
     // /run
-    let mut call = Command::new("mount");
+    let mut call = Command::new(defaults::MOUNT_TOOL);
     call.arg("--bind").arg("/run").arg(format!("{new_root}/run"));
     debug(&format!("EXEC: mount -> {:?}", call.get_args()));
     match call.status() {
@@ -1106,6 +1112,89 @@ fn move_mounts(new_root: &str) {
                     debug(&format!("Failed to mount /run: {error}"));
                 }
             }
+        }
+    }
+}
+
+fn mount_nfs_volumes() {
+    /*!
+    Mount the NFS volumes given in the nfs=... cmdline variable
+
+    The variable provides a comma separated list of volumes. Each
+    of them is specified in the format:
+
+    NAME_OR_IP:/export_path:/mount_path
+
+    A volume which cannot be read from the specification is
+    skipped, all other volumes are still mounted
+    !*/
+    let nfs_volumes = env::var("nfs").unwrap_or_default();
+    if nfs_volumes.is_empty() {
+        return
+    }
+    for nfs_volume in nfs_volumes.split(defaults::NFS_VOLUME_DELIMITER) {
+        let nfs_volume = nfs_volume.trim();
+        if nfs_volume.is_empty() {
+            continue
+        }
+        match get_nfs_volume(nfs_volume) {
+            Some((source, target)) => mount_nfs_volume(source, target),
+            None => {
+                debug(&format!(
+                    "Invalid nfs volume specification [skipped]: {nfs_volume}"
+                ));
+            }
+        }
+    }
+}
+
+fn get_nfs_volume(nfs_volume: &str) -> Option<(&str, &str)> {
+    /*!
+    Read source and mount point of the given NFS volume
+
+    The mount point is the last element of the specification.
+    Everything in front of it is the source of the volume, the
+    export path on the server, which contains a colon itself
+    !*/
+    let (source, target) = nfs_volume.rsplit_once(':')?;
+    if ! source.contains(':') || ! target.starts_with('/') {
+        return None
+    }
+    Some((source, target))
+}
+
+fn mount_nfs_volume(source: &str, target: &str) {
+    /*!
+    Mount the given NFS source on the given mount point
+
+    The mount point is created if it does not exist. The mount is
+    done through the mount tool of the guest because an NFS mount
+    requires the mount helper of the filesystem to be called
+    !*/
+    match fs::create_dir_all(target) {
+        Ok(_) => { },
+        Err(error) => {
+            debug(&format!("Error creating directory {target}: {error}"));
+            return
+        }
+    }
+    let mut call = Command::new(defaults::MOUNT_TOOL);
+    call.arg("-t").arg(defaults::NFS_FSTYPE).arg(source).arg(target);
+    debug(&format!(
+        "SCI CALL: {} -> {:?}", defaults::MOUNT_TOOL, call.get_args()
+    ));
+    match run_child(&mut call) {
+        Ok(status) => {
+            if status.success() {
+                debug(&format!("Mounted {source} on {target}"))
+            } else {
+                debug(&format!(
+                    "Failed to mount {source} on {target}: {status}"
+                ))
+            }
+        },
+        Err(error) => {
+            debug(&format!("Failed to mount {source} on {target}: {error}"))
         }
     }
 }
@@ -1149,5 +1238,40 @@ fn setup_logger() {
         .write_style_or("FLAKE_LOG_STYLE", "always");
 
     env_logger::init_from_env(env);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_nfs_volume;
+
+    #[test]
+    fn test_get_nfs_volume() {
+        assert_eq!(
+            get_nfs_volume("some.host:/host/path:/local/path"),
+            Some(("some.host:/host/path", "/local/path"))
+        );
+        assert_eq!(
+            get_nfs_volume("172.16.0.1:/host/path:/local/path"),
+            Some(("172.16.0.1:/host/path", "/local/path"))
+        );
+        // an IPv6 address is enclosed in brackets and can be
+        // told apart from the delimiter of the mount point
+        assert_eq!(
+            get_nfs_volume("[fd00::1]:/host/path:/local/path"),
+            Some(("[fd00::1]:/host/path", "/local/path"))
+        );
+    }
+
+    #[test]
+    fn test_get_invalid_nfs_volume() {
+        // no mount point
+        assert_eq!(get_nfs_volume("some.host:/host/path"), None);
+        // relative mount point
+        assert_eq!(get_nfs_volume("some.host:/host/path:local"), None);
+        // no export path
+        assert_eq!(get_nfs_volume("some.host:/local/path"), None);
+        assert_eq!(get_nfs_volume("/local/path"), None);
+        assert_eq!(get_nfs_volume(""), None);
+    }
 }
 

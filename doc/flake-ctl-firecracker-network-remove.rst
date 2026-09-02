@@ -38,8 +38,8 @@ application. All of the setup created with
 
       sudo ip tuntap del tap-<APP> mode tap
 
-   The address of the device and its link state are deleted
-   along with it
+   The address of the device, its link state and the host route
+   to the address of the application are deleted along with it
 
 3. The network setup in the flake configuration
 

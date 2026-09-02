@@ -11,6 +11,13 @@ vm:
     runas: root
     resume: false
     force_vsock: false
+    # Optional pilot options which are always effective for this
+    # application. The same options can be given at call time and
+    # then take precedence over the setting here, e.g:
+    #
+    # pilot_options:
+    #   - "%port:2000"
+    pilot_options: ~
     firecracker:
       boot_args:
         - "init=/usr/sbin/sci"

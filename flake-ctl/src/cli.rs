@@ -195,6 +195,17 @@ pub enum Firecracker {
         #[clap(long, multiple = true, requires = "overlay-size")]
         include_path: Option<Vec<String>>,
 
+        /// Pilot option, and optional value, in the format
+        /// %name or %name:value. Pilot options are not passed
+        /// to the application call but control the behavior of
+        /// firecracker-pilot. An option registered here is always
+        /// effective and does not have to be given at call time.
+        /// This option can be specified multiple times. For the
+        /// list of available pilot options please consult the
+        /// firecracker-pilot manual page.
+        #[clap(long, multiple = true)]
+        pilot_option: Option<Vec<String>>,
+
         /// Force writing the registration even if a registration
         /// of the same name already exists
         #[clap(long)]
@@ -406,6 +417,17 @@ pub enum Podman {
         /// specified multiple times.
         #[clap(long, multiple = true)]
         opt: Option<Vec<String>>,
+
+        /// Pilot option, and optional value, in the format
+        /// %name or %name:value. Pilot options are not passed
+        /// to the application call but control the behavior of
+        /// podman-pilot. An option registered here is always
+        /// effective and does not have to be given at call time.
+        /// This option can be specified multiple times. For the
+        /// list of available pilot options please consult the
+        /// podman-pilot manual page.
+        #[clap(long, multiple = true)]
+        pilot_option: Option<Vec<String>>,
 
         /// Print registration information from container if provided
         #[clap(long)]

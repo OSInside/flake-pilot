@@ -192,3 +192,31 @@ container, with two exceptions which are read by the launcher itself:
    interactive call style or ``%remove`` to delete an instance which
    was kept by ``--resume`` or ``--attach``. See ``man 8
    podman-pilot`` for the complete list.
+
+Pilot Options as Part of the Registration
+=========================================
+
+A pilot option which is always needed does not have to be typed at
+every call. ``--pilot-option`` registers it as part of the flake:
+
+.. code-block:: bash
+
+   flake-ctl podman register \
+       --app $HOME/bin/claude \
+       --target /bin/bash \
+       --container public.ecr.aws/b9k1j9y6/ai/claude:latest \
+       --opt "\--volume %HOME/ai:%HOME/ai" \
+       --pilot-option "%ignore_missing_volume_path"
+
+The option can be given more than once and is stored in the
+``pilot_options`` list of the flake configuration:
+
+.. code-block:: yaml
+
+   container:
+     runtime:
+       pilot_options:
+         - "%ignore_missing_volume_path"
+
+Registered options are read on every call. An option of the same
+name given at call time takes precedence over the registered one.

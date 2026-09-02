@@ -145,6 +145,12 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         # Default: false
         force_vsock: true|false
 
+        # Pilot options which are always effective for this
+        # application. The same options can be given at call
+        # time and then take precedence over the setting here
+        pilot_options:
+          - "%port:2000"
+
         firecracker:
           # Currently fixed settings through app registration
           boot_args:
@@ -255,7 +261,9 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     }
 
     // Setup VM...
-    let pilot_options = Lookup::get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
     let mut spinner = None;
     if pilot_options.contains_key("%progress") {
         spinner = Some(
@@ -443,7 +451,9 @@ pub fn get_exec_port() -> u32 {
     case use the pilot call option %port:number to bind to a port
     of your choice
     !*/
-    let pilot_options = Lookup::get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
     let port: u32 = if pilot_options.contains_key("%port") {
         pilot_options["%port"].parse::<u32>().unwrap_or_default()
     } else {

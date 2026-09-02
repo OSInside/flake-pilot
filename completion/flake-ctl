@@ -25,6 +25,7 @@ __flake_ctl_firecracker_register() {
         --no-net
         --overlay-size
         --resume
+        --pilot-option
         --run-as
         --target
         --vm
@@ -98,6 +99,7 @@ __flake_ctl_podman_register() {
         --layer
         --opt
         --resume
+        --pilot-option
         --run-as
         --target
         --help

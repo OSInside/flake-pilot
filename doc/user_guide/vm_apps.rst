@@ -135,4 +135,12 @@ Registration Options in Short
 ``--no-net``
    Register the app without a network setup.
 
+``--pilot-option``
+   A runtime option of the pilot, e.g ``%port:2000`` to bind the
+   guest to host communication of a resume flake to a port of your
+   choice. The option is stored in the ``pilot_options`` list of the
+   flake configuration and is effective on every call. The same
+   option given at call time takes precedence. The option can be
+   specified multiple times.
+
 See ``man 8 flake-ctl-firecracker-register`` for the complete list.

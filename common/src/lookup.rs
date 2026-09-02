@@ -93,27 +93,54 @@ impl Lookup {
         )
     }
 
-    pub fn get_pilot_run_options() -> HashMap<String, String> {
+    pub fn get_pilot_run_options(
+        default_options: Vec<&str>
+    ) -> HashMap<String, String> {
         /*!
         read runtime options which are only meant to be used for the
         pilot and should not interfere with the standard arguments
         passed along to the command call. For this purpose we deviate
         from the standard Unix/Linux commandline format and treat
         options passed as %name:value to be a pilot option
+
+        The given default_options are provided by the flake
+        configuration of the application. They are read first which
+        allows to overwrite an option of the same name at call time
         !*/
-        let args: Vec<String> = env::args().collect();
         let mut pilot_options = HashMap::new();
+        for option in default_options {
+            let option = if option.starts_with('%') {
+                option.to_string()
+            } else {
+                // for convenience the option can be configured
+                // without the '%' pilot option marker
+                format!("%{option}")
+            };
+            FlakeLog::debug(&format!("Got Default Pilot Option: {option}"));
+            Self::set_pilot_option(&mut pilot_options, &option);
+        }
+        let args: Vec<String> = env::args().collect();
         for arg in &args[1..] {
             if arg.starts_with('%') {
-                let (name, value) = arg.rsplit_once(':').unwrap_or_default();
-                if name.is_empty() {
-                    pilot_options.insert(arg.to_string(), "".to_string());
-                } else {
-                    pilot_options.insert(name.to_string(), value.to_string());
-                }
+                Self::set_pilot_option(&mut pilot_options, arg);
             }
         }
         pilot_options
+    }
+
+    fn set_pilot_option(
+        pilot_options: &mut HashMap<String, String>, option: &str
+    ) {
+        /*!
+        store the given %name:value pilot option. An option given
+        without a value is stored with an empty value
+        !*/
+        let (name, value) = option.rsplit_once(':').unwrap_or_default();
+        if name.is_empty() {
+            pilot_options.insert(option.to_string(), "".to_string());
+        } else {
+            pilot_options.insert(name.to_string(), value.to_string());
+        }
     }
 
     pub fn which(command: &str) -> bool {

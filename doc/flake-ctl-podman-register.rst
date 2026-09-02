@@ -26,6 +26,7 @@ SYNOPSIS
        --info
        --layer <LAYER>...
        --opt <OPT>...
+       --pilot-option <PILOT_OPTION>...
        --resume
        --target <TARGET>
 
@@ -128,6 +129,17 @@ OPTIONS
   default settings will apply. See the example section for further
   details.
 
+--pilot-option <PILOT_OPTION>...
+
+  Pilot option, and optional value, in the format %name or
+  %name:value. Pilot options are not passed to the application
+  call but control the behavior of podman-pilot. An option
+  registered here is always effective and does not have to be
+  given at call time. Passing the option at call time takes
+  precedence over the registered value. This option can be
+  specified multiple times. For the list of available pilot
+  options please refer to the **podman-pilot** manual page.
+
 --resume
 
   Resume the container from previous execution. If the container is
@@ -166,6 +178,10 @@ EXAMPLE
        --opt '\-ti' \
        --opt '\--rm' \
        --opt '\--storage-opt size=10G'
+
+   $ flake-ctl podman register --container SOME_APT_CONTAINER \
+       --app /usr/bin/apt-get \
+       --pilot-option '%ignore_missing_volume_path'
 
 AUTHOR
 ------

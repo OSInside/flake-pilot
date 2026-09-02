@@ -131,6 +131,14 @@ impl<'a> Config<'a> {
         self.vm.runtime.as_ref().cloned().unwrap_or_default()
     }
 
+    pub fn pilot_options(&self) -> Vec<&'a str> {
+        match self.vm.runtime.as_ref() {
+            Some(runtime) => runtime.pilot_options
+                .as_ref().cloned().unwrap_or_default(),
+            None => Vec::new()
+        }
+    }
+
     pub fn tars(&self) -> Vec<&'a str> {
         self.include.tar.as_ref().cloned().unwrap_or_default()
     }
@@ -191,6 +199,17 @@ pub struct RuntimeSection<'a> {
     /// Default: false
     #[serde(default)]
     pub force_vsock: bool,
+
+    /// Optional pilot options in the format:
+    /// - %name or %name:value
+    ///
+    /// Pilot options are not passed to the application call but
+    /// control the behavior of the pilot. An option configured
+    /// here is always effective and does not have to be given
+    /// at call time. An option of the same name provided at call
+    /// time takes precedence over the configured one
+    #[serde(default)]
+    pub pilot_options: Option<Vec<&'a str>>,
 
     pub firecracker: EngineSection<'a>,
 }

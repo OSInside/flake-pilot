@@ -12,5 +12,12 @@ container:
     runas: any
     resume: false
     attach: false
+    # Optional pilot options which are always effective for this
+    # application. The same options can be given at call time and
+    # then take precedence over the setting here, e.g:
+    #
+    # pilot_options:
+    #   - "%ignore_missing_volume_path"
+    pilot_options: ~
     podman:
       - "-ti"

@@ -21,6 +21,7 @@ SYNOPSIS
        --include-tar <INCLUDE_TAR>...
        --include-path <INCLUDE_PATH>...
        --no-net
+       --pilot-option <PILOT_OPTION>...
        --resume
        --force-vsock
        --overlay-size <OVERLAY_SIZE>
@@ -92,6 +93,17 @@ OPTIONS
   Size of overlay write space in bytes. Optional suffixes are:
   KiB/MiB/GiB/TiB (1024) or KB/MB/GB/TB (1000)
 
+--pilot-option <PILOT_OPTION>...
+
+  Pilot option, and optional value, in the format %name or
+  %name:value. Pilot options are not passed to the application
+  call but control the behavior of firecracker-pilot. An option
+  registered here is always effective and does not have to be
+  given at call time. Passing the option at call time takes
+  precedence over the registered value. This option can be
+  specified multiple times. For the list of available pilot
+  options please refer to the **firecracker-pilot** manual page.
+
 --resume
 
   Resume the VM from previous execution. If the VM is still running,
@@ -133,6 +145,11 @@ EXAMPLE
    $ flake-ctl firecracker register --vm NAME \
        --overlay-size 20g \
        --app /usr/bin/apt-get
+
+   $ flake-ctl firecracker register --vm NAME \
+       --app /usr/bin/apt-get \
+       --resume \
+       --pilot-option '%port:2000'
 
 AUTHOR
 ------

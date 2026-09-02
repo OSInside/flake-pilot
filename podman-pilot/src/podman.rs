@@ -107,6 +107,12 @@ pub fn create(
         # Default: false
         attach: true|false
 
+        # Pilot options which are always effective for this
+        # application. The same options can be given at call
+        # time and then take precedence over the setting here
+        pilot_options:
+          - "%ignore_missing_volume_path"
+
         podman:
           - --storage-opt size=10G
           - -ti
@@ -222,7 +228,9 @@ pub fn create(
     // Garbage collect occasionally
     gc(user)?;
 
-    let pilot_options = Lookup::get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
 
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
@@ -539,7 +547,9 @@ pub fn start(program_name: &str, cid: &str) -> Result<(), FlakeError> {
     Start container with the given container ID
     !*/
     let RuntimeSection { resume, attach, .. } = config().runtime();
-    let pilot_options = Lookup::get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
     let is_running = container_running(cid)?;
     let is_created = container_exists(cid)?;
     let mut is_removed = false;
@@ -591,7 +601,9 @@ pub fn call_instance(
     let RuntimeSection { runas, resume, .. } = config().runtime();
 
     let usermode = runas != "root";
-    let pilot_options = Lookup::get_pilot_run_options();
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
     let mut interactive = false;
     if pilot_options.contains_key("%interactive") {
         interactive = true;

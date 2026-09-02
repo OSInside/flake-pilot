@@ -61,6 +61,18 @@ The command performs the following steps:
       sudo ip link set tap-<APP> up
       sudo iptables -A FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
 
+4. Route the address of the application to its TAP device
+
+   .. code:: bash
+
+      sudo ip route add 172.16.0.2/32 dev tap-<APP>
+
+   Every TAP device provides the same gateway address and thus
+   the same route to the private network. Without a host route
+   for the address of the application the traffic to it would be
+   sent to the device that route points to, which is not
+   necessarily the device the application is connected to
+
 As the setup changes the network configuration of the host, the
 commands are called through **sudo**. The calling user therefore
 needs the permission to run them as root.
@@ -74,8 +86,8 @@ The steps only take effect if the host is prepared for NAT
 networking. Please run **flake-ctl firecracker network init**
 first.
 
-A device, address or rule which is already present is not created
-again. This allows to call the command more than once, e.g to
+A device, address, route or rule which is already present is not
+created again. This allows to call the command more than once, e.g to
 create the setup again after a reboot of the host. Only the flake
 configuration is persistent, the setup on the host is not.
 

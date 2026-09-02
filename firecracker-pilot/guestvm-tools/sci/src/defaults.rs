@@ -32,6 +32,11 @@ pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";
 pub const OVERLAY_UPPER: &str = "/overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str = "/overlayroot/rootfs_work";
 pub const PROBE_MODULE: &str = "/sbin/modprobe";
+pub const MOUNT_TOOL: &str = "mount";
+// Filesystem type and separator of the volume specification
+// given in the nfs=... cmdline variable
+pub const NFS_FSTYPE: &str = "nfs";
+pub const NFS_VOLUME_DELIMITER: char = ',';
 pub const SYSTEMD_NETWORK_RESOLV_CONF: &str = "/run/systemd/resolve/resolv.conf";
 pub const VM_QUIT: &str = "sci_quit";
 pub const VHOST_TRANSPORT: &str = "vmw_vsock_virtio_transport";

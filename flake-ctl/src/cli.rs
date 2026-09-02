@@ -224,6 +224,11 @@ pub enum Firecracker {
         #[clap(subcommand)]
         command: Network,
     },
+    /// Manage NFS exports for firecracker volumes
+    Volume {
+        #[clap(subcommand)]
+        command: Volume,
+    },
     /// Remove application registration or entire VM
     #[clap(group(
         ArgGroup::new("remove").required(true).args(&["vm", "app"]),
@@ -286,6 +291,22 @@ pub enum Network {
         /// deleted
         #[clap(long)]
         instance: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum Volume {
+    /// Export a local path through NFS for firecracker guests
+    Export {
+        /// An absolute path on the host to export via NFS
+        #[clap(long)]
+        path: String,
+    },
+    /// Remove an exported local path from the NFS configuration
+    Release {
+        /// An absolute path on the host to remove from the NFS exports
+        #[clap(long)]
+        path: String,
     },
 }
 

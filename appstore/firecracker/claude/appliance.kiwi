@@ -77,6 +77,7 @@
         <package name="which"/>
         <package name="shadow"/>
         <package name="procps"/>
+        <package name="nfs-client"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

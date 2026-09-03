@@ -203,25 +203,8 @@ fn get_flake_network(
     application path and the TAP device is the one the pilot
     connects the instance of the application to
     !*/
-    if ! app.starts_with('/') {
-        error!("Application {app:?} must be specified with an absolute path");
-        return None
-    }
-    let app_basename = match Path::new(app).file_name() {
-        Some(app_basename) => app_basename.to_string_lossy().to_string(),
-        None => {
-            error!("Failed to read the application name from {app}");
-            return None
-        }
-    };
-    let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
-    );
-    if ! Path::new(&config_file).exists() {
-        error!("No flake configuration found at {config_file}");
-        error!("Please register the application first");
-        return None
-    }
+    let app_basename = get_app_basename(app)?;
+    let config_file = get_flake_config_file(app, usermode)?;
     let instance = instance.map(|instance| get_instance_name(instance));
 
     // The pilot connects the VM to the TAP device named after the
@@ -235,7 +218,45 @@ fn get_flake_network(
     Some(FlakeNetwork { config_file, instance, tap })
 }
 
-fn get_instance_name(instance: &str) -> String {
+fn get_app_basename(app: &str) -> Option<String> {
+    /*!
+    Provide the name the flake configuration of the given
+    application is stored under
+    !*/
+    if ! app.starts_with('/') {
+        error!("Application {app:?} must be specified with an absolute path");
+        return None
+    }
+    match Path::new(app).file_name() {
+        Some(app_basename) => Some(app_basename.to_string_lossy().to_string()),
+        None => {
+            error!("Failed to read the application name from {app}");
+            None
+        }
+    }
+}
+
+pub fn get_flake_config_file(app: &str, usermode: bool) -> Option<String> {
+    /*!
+    Provide the path of the flake configuration of the given
+    application
+
+    The configuration is looked up from the application path in
+    the flake registry the caller operates on
+    !*/
+    let app_basename = get_app_basename(app)?;
+    let config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    );
+    if ! Path::new(&config_file).exists() {
+        error!("No flake configuration found at {config_file}");
+        error!("Please register the application first");
+        return None
+    }
+    Some(config_file)
+}
+
+pub fn get_instance_name(instance: &str) -> String {
     /*!
     Provide the instance selector in its '@NAME' notation
 
@@ -262,7 +283,9 @@ fn configure_flake(
     again, e.g after a reboot of the host
     !*/
     let mut yaml_config = read_flake_config(config_file)?;
-    let engine_section = get_engine_section(&mut yaml_config, config_file)?;
+    let engine_section = get_engine_section(
+        &mut yaml_config, config_file, "network"
+    )?;
 
     // An address which is already configured for this flake is
     // kept, in all other cases a free one is taken
@@ -324,7 +347,7 @@ fn configure_flake(
     Some(address)
 }
 
-fn get_instance_key(
+pub fn get_instance_key(
     instances: &HashMap<String, AppFireCrackerInstance>, instance: &str
 ) -> String {
     /*!
@@ -355,7 +378,7 @@ fn unconfigure_flake(config_file: &str, instance: Option<&str>) -> bool {
         None => return false
     };
     let engine_section = match get_engine_section(
-        &mut yaml_config, config_file
+        &mut yaml_config, config_file, "network"
     ) {
         Some(engine_section) => engine_section,
         None => return false
@@ -444,8 +467,8 @@ fn has_configured_address(engine_section: &AppFireCrackerEngine) -> bool {
     }
 }
 
-fn get_engine_section<'a>(
-    yaml_config: &'a mut AppConfig, config_file: &str
+pub fn get_engine_section<'a>(
+    yaml_config: &'a mut AppConfig, config_file: &str, setup: &str
 ) -> Option<&'a mut AppFireCrackerEngine> {
     /*!
     Provide the firecracker runtime section of the given flake
@@ -456,7 +479,7 @@ fn get_engine_section<'a>(
         .and_then(|runtime_section| runtime_section.firecracker.as_mut());
     if engine_section.is_none() {
         error!("{config_file} provides no firecracker runtime section");
-        error!("Only firecracker flakes provide a network setup");
+        error!("Only firecracker flakes provide a {setup} setup");
     }
     engine_section
 }
@@ -568,7 +591,7 @@ fn get_gateway() -> Ipv4Addr {
     )
 }
 
-fn set_boot_arg(boot_args: &mut Vec<String>, boot_arg: String) {
+pub fn set_boot_arg(boot_args: &mut Vec<String>, boot_arg: String) {
     /*!
     Set the given kernel commandline option
 
@@ -582,21 +605,21 @@ fn set_boot_arg(boot_args: &mut Vec<String>, boot_arg: String) {
     }
 }
 
-fn unset_boot_arg(boot_args: &mut Vec<String>, name: &str) {
+pub fn unset_boot_arg(boot_args: &mut Vec<String>, name: &str) {
     /*!
     Delete the kernel commandline option of the given name
     !*/
     boot_args.retain(|boot_arg| boot_arg_name(boot_arg) != name);
 }
 
-fn boot_arg_name(boot_arg: &str) -> &str {
+pub fn boot_arg_name(boot_arg: &str) -> &str {
     /*!
     Provide the name of a kernel commandline option
     !*/
     boot_arg.split('=').next().unwrap_or(boot_arg)
 }
 
-fn read_flake_config(config_file: &str) -> Option<AppConfig> {
+pub fn read_flake_config(config_file: &str) -> Option<AppConfig> {
     /*!
     Read the given flake configuration
 
@@ -620,7 +643,7 @@ fn read_flake_config(config_file: &str) -> Option<AppConfig> {
     }
 }
 
-fn write_flake_config(config_file: &str, yaml_config: &AppConfig) -> bool {
+pub fn write_flake_config(config_file: &str, yaml_config: &AppConfig) -> bool {
     /*!
     Write back the given flake configuration
     !*/

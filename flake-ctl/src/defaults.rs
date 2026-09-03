@@ -118,6 +118,13 @@ pub const NFS_CLIENT_NETWORK:&str =
     "172.16.0.0/24";
 pub const NFS_EXPORT_OPTIONS:&str =
     "rw,sync,no_subtree_check,no_root_squash,insecure";
+// Kernel commandline option sci reads the NFS volumes of a VM
+// from. The option provides all volumes of an instance as a
+// list of NAME_OR_IP:HOST_PATH:GUEST_PATH elements
+pub const NFS_VOLUME_BOOT_ARG:&str =
+    "nfs";
+pub const NFS_VOLUME_DELIMITER:char =
+    ',';
 // Kernel switch to turn the host into a router. Required to
 // forward the traffic of a VM from its TUN/TAP device to the
 // outgoing interface of the host

@@ -58,7 +58,11 @@ __flake_ctl_firecracker_volume() {
         __comp_reply_unused "--path --help"
         return 0
     fi
-    __comp_reply "help export release"
+    if [ "${COMP_WORDS[3]}" = "add" ] || [ "${COMP_WORDS[3]}" = "remove" ];then
+        __comp_reply_unused "--app --volume --instance --help"
+        return 0
+    fi
+    __comp_reply "help export release add remove"
 }
 
 __flake_ctl_show() {

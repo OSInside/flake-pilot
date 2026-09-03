@@ -224,7 +224,7 @@ pub enum Firecracker {
         #[clap(subcommand)]
         command: Network,
     },
-    /// Manage NFS exports for firecracker volumes
+    /// Manage volumes for VM applications
     Volume {
         #[clap(subcommand)]
         command: Volume,
@@ -307,6 +307,49 @@ pub enum Volume {
         /// An absolute path on the host to remove from the NFS exports
         #[clap(long)]
         path: String,
+    },
+    /// Provide a volume to a VM application
+    Add {
+        /// An absolute path to the application on the host.
+        /// The application must be registered as a VM
+        /// application and its flake configuration gets the
+        /// volume setup written to it
+        #[clap(long)]
+        app: String,
+
+        /// A volume to provide to the application in the format
+        /// /some/local/path:/some/guest/path. The local path is
+        /// mounted on the guest path inside of the VM. This
+        /// option can be specified multiple times
+        #[clap(long, multiple = true, required = true)]
+        volume: Vec<String>,
+
+        /// The @NAME instance selector the application is
+        /// called with. The volumes are provided to that
+        /// instance only and take the place of the volumes
+        /// configured for the application itself
+        #[clap(long)]
+        instance: Option<String>,
+    },
+    /// Delete a volume from a VM application
+    Remove {
+        /// An absolute path to the application on the host.
+        /// The volume setup is deleted from the flake
+        /// configuration of the application
+        #[clap(long)]
+        app: String,
+
+        /// A volume to delete from the application in the format
+        /// /some/local/path:/some/guest/path. This option can be
+        /// specified multiple times
+        #[clap(long, multiple = true, required = true)]
+        volume: Vec<String>,
+
+        /// The @NAME instance selector the volumes were
+        /// added for. Only the volumes of that instance
+        /// are deleted
+        #[clap(long)]
+        instance: Option<String>,
     },
 }
 

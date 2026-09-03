@@ -39,6 +39,7 @@ pub mod instance;
 pub mod network;
 pub mod output;
 pub mod setup;
+pub mod volume;
 
 use flakes::config::get_flakes_dir;
 use flakes::user::{User, mkdir};
@@ -182,6 +183,20 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         },
                         cli::Volume::Release { path } => {
                             if ! firecracker::release_volume(path) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        cli::Volume::Add { app, volume, instance } => {
+                            if ! volume::add(
+                                app, volume, instance.as_ref(), user
+                            ) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        cli::Volume::Remove { app, volume, instance } => {
+                            if ! volume::remove(
+                                app, volume, instance.as_ref(), user
+                            ) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         }

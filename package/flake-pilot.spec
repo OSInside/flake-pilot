@@ -117,6 +117,7 @@ execution interface
 %package -n flake-pilot-firecracker-guestvm-tools
 Summary:        FireCracker guest VM tools
 Group:          System/Management
+Requires:       nfs-client
 
 %description -n flake-pilot-firecracker-guestvm-tools
 Guest VM tools to help with firecracker workloads

@@ -24,6 +24,7 @@ __flake_ctl_firecracker_register() {
         --include-path
         --no-net
         --overlay-size
+        --force-vsock
         --resume
         --pilot-option
         --run-as

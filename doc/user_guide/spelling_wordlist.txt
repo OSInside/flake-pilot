@@ -3,6 +3,7 @@ Firecracker
 KIWI
 Linux
 NAT
+NFS
 OCI
 SDK
 TAP

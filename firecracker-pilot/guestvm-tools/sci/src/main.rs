@@ -55,6 +55,21 @@ use crate::defaults::debug;
 // The reaper must not read the exit status of these processes
 static OWNED_CHILDREN: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 
+// Terminal of a command sci runs for a caller
+struct TerminalSession {
+    // Port the caller listens on. It identifies the session and
+    // is defaults::TERM_CONSOLE_PORT for the console of the instance
+    port: u32,
+    // Descriptor of the terminal, -1 as long as it does not exist
+    fd: i32,
+    // Window size the caller has sent for this session, if any
+    window_size: Option<(u16, u16)>
+}
+
+// Terminals sci serves. A window resize of the caller is applied
+// to the terminal of the session it belongs to
+static TERMINAL_SESSIONS: Mutex<Vec<TerminalSession>> = Mutex::new(Vec::new());
+
 fn main() {
     /*!
     Simple Command Init (sci) is a tool which executes the provided
@@ -275,20 +290,9 @@ fn main() {
     }
     if console_vsock {
         // vsock required; check if vhost transport is loaded
-        let mut modprobe = Command::new(defaults::PROBE_MODULE);
-        modprobe.arg(defaults::VHOST_TRANSPORT);
-        debug(&format!(
-            "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
-        ));
-        match run_child(&mut modprobe) {
-            Ok(_) => { },
-            Err(error) => {
-                debug(&format!(
-                    "Loading {} module failed: {}",
-                    defaults::VHOST_TRANSPORT, error
-                ));
-            }
-        }
+        load_vhost_transport();
+        // follow the window size of the caller's terminal
+        start_terminal_resize_listener();
         // start vsock listener on VM_PORT, wait for command(s) in a loop
         // A received command turns into a vsock stream process calling
         // the command with an expected listener.
@@ -391,7 +395,8 @@ fn main() {
                                         ) {
                                             Ok(vsock_stream) => {
                                                 redirect_command(
-                                                    &exec_cmd, vsock_stream
+                                                    &exec_cmd, vsock_stream,
+                                                    exec_port_num
                                                 );
                                                 break
                                             },
@@ -443,7 +448,16 @@ fn main() {
         // instance. Setup this terminal such that the line editor of
         // an interactive command can move the cursor correctly
         if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
-            set_interactive_terminal_flags(libc::STDIN_FILENO)
+            set_interactive_terminal_flags(libc::STDIN_FILENO);
+            if ! do_exec {
+                // Follow the window size of the caller's terminal.
+                // A process replacement would terminate the listener
+                // thread, thus this is only done if sci stays alive
+                register_terminal_session(
+                    defaults::TERM_CONSOLE_PORT, libc::STDIN_FILENO
+                );
+                start_terminal_resize_listener();
+            }
         }
         if do_exec {
             // replace ourselves
@@ -459,6 +473,199 @@ fn main() {
     }
     // Close firecracker session
     do_reboot(ok)
+}
+
+fn load_vhost_transport() {
+    /*!
+    Load the vsock transport module of the guest
+
+    Loading an already loaded module is a no-op, thus this can be
+    called from every place which requires a vsock connection
+    !*/
+    let mut modprobe = Command::new(defaults::PROBE_MODULE);
+    modprobe.arg(defaults::VHOST_TRANSPORT);
+    debug(&format!(
+        "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
+    ));
+    match run_child(&mut modprobe) {
+        Ok(_) => { },
+        Err(error) => {
+            debug(&format!(
+                "Loading {} module failed: {}",
+                defaults::VHOST_TRANSPORT, error
+            ));
+        }
+    }
+}
+
+fn start_terminal_resize_listener() {
+    /*!
+    Start listening for window size changes of the caller
+
+    The window size of the caller's terminal is handed over at
+    boot time through the sci_lines=... and sci_columns=... boot
+    parameters. This is a snapshot of the geometry at the time the
+    instance was started. If the caller resizes its terminal
+    afterwards, or connects to a running instance with a terminal
+    of a different geometry, it sends the new window size to this
+    listener which applies it to the terminal of the session
+    !*/
+    thread::spawn(|| {
+        load_vhost_transport();
+        debug(&format!(
+            "Binding terminal resize vsock CID={} on port={}",
+            defaults::GUEST_CID, defaults::TERM_RESIZE_PORT
+        ));
+        match VsockListener::bind_with_cid_port(
+            defaults::GUEST_CID, defaults::TERM_RESIZE_PORT
+        ) {
+            Ok(listener) => {
+                for connection in listener.incoming() {
+                    match connection {
+                        Ok(mut stream) => {
+                            // A request is a single line and the
+                            // connection ends with it. Don't wait
+                            // for a caller which does not send it
+                            let _ = stream.set_read_timeout(
+                                Some(time::Duration::from_millis(
+                                    defaults::VM_WAIT_TIMEOUT_MSEC
+                                ))
+                            );
+                            let mut message = Vec::new();
+                            match stream.read_to_end(&mut message) {
+                                Ok(_) => handle_resize_request(
+                                    &String::from_utf8_lossy(&message)
+                                ),
+                                Err(error) => {
+                                    debug(&format!(
+                                        "Failed to read window size: {error}"
+                                    ));
+                                }
+                            }
+                            let _ = stream.shutdown(Shutdown::Both);
+                        },
+                        Err(error) => {
+                            debug(&format!(
+                                "Failed to accept resize connection: {error}"
+                            ));
+                        }
+                    }
+                }
+            },
+            Err(error) => {
+                debug(&format!(
+                    "Failed to bind terminal resize vsock: CID: {}: {}",
+                    defaults::GUEST_CID, error
+                ));
+            }
+        }
+    });
+}
+
+fn handle_resize_request(message: &str) {
+    /*!
+    Apply the window size of the given resize request
+
+    A request which cannot be read is dropped. The session it
+    belongs to keeps the window size it currently uses
+    !*/
+    match get_resize_request(message) {
+        Some((port, lines, columns)) => {
+            debug(&format!(
+                "Received window size {lines}x{columns} for port {port}"
+            ));
+            resize_terminal_session(port, lines, columns)
+        },
+        None => {
+            debug(&format!("Invalid resize request [skipped]: {message:?}"));
+        }
+    }
+}
+
+fn get_resize_request(message: &str) -> Option<(u32, u16, u16)> {
+    /*!
+    Read the values of the given resize request
+
+    A request consists of the port of the session followed by the
+    number of lines and columns of the caller's terminal:
+
+    PORT LINES COLUMNS
+    !*/
+    let mut values = message.split_whitespace();
+    let port = values.next()?.parse::<u32>().ok()?;
+    let lines = values.next()?.parse::<u16>().ok()?;
+    let columns = values.next()?.parse::<u16>().ok()?;
+    if values.next().is_some() || lines == 0 || columns == 0 {
+        return None
+    }
+    Some((port, lines, columns))
+}
+
+fn resize_terminal_session(port: u32, lines: u16, columns: u16) {
+    /*!
+    Resize the terminal of the session with the given port
+
+    The window size is stored with the session such that it can
+    also be applied to a terminal which does not exist yet. The
+    caller sends its geometry when the session starts and the
+    command it wants to run can still be on its way into its
+    terminal at this time
+    !*/
+    let mut sessions = lock_terminal_sessions();
+    let session = get_terminal_session(&mut sessions, port);
+    session.window_size = Some((lines, columns));
+    if session.fd >= 0 {
+        set_terminal_window_size(session.fd, lines, columns)
+    }
+}
+
+fn register_terminal_session(port: u32, fd: i32) {
+    /*!
+    Register the terminal of the session with the given port
+
+    A window size which arrived before the terminal existed is
+    applied to it now
+    !*/
+    let mut sessions = lock_terminal_sessions();
+    let session = get_terminal_session(&mut sessions, port);
+    session.fd = fd;
+    if let Some((lines, columns)) = session.window_size {
+        set_terminal_window_size(fd, lines, columns)
+    }
+}
+
+fn unregister_terminal_session(port: u32) {
+    /*!
+    Delete the session with the given port
+
+    The terminal of the session is about to be closed. Deleting
+    the session under the lock which is also held for the time of
+    a resize makes sure the descriptor cannot be used any more
+    when this function returns
+    !*/
+    lock_terminal_sessions().retain(|session| session.port != port)
+}
+
+fn get_terminal_session(
+    sessions: &mut Vec<TerminalSession>, port: u32
+) -> &mut TerminalSession {
+    // Provide the session with the given port and create it
+    // if it does not exist yet
+    match sessions.iter().position(|session| session.port == port) {
+        Some(index) => &mut sessions[index],
+        None => {
+            sessions.push(
+                TerminalSession { port, fd: -1, window_size: None }
+            );
+            sessions.last_mut().unwrap()
+        }
+    }
+}
+
+fn lock_terminal_sessions() -> MutexGuard<'static, Vec<TerminalSession>> {
+    // Provide access to the list of the terminal sessions.
+    // A poisoned lock is taken over because the list stays usable
+    TERMINAL_SESSIONS.lock().unwrap_or_else(|error| error.into_inner())
 }
 
 fn start_child_reaper() {
@@ -592,7 +799,9 @@ fn is_owned_child(pid: i32) -> bool {
     lock_owned_children().contains(&pid)
 }
 
-fn redirect_command(command: &[String], stream: vsock::VsockStream) {
+fn redirect_command(
+    command: &[String], stream: vsock::VsockStream, port: u32
+) {
     // start the given command as a child process in a new PTY
     // or on raw channels if no pseudo terminal can be allocated
     // connect its standard channels to the stream
@@ -612,13 +821,16 @@ fn redirect_command(command: &[String], stream: vsock::VsockStream) {
     };
     match fork_result {
         Ok(fork) => {
-            redirect_command_to_pty(command, stream, fork)
+            redirect_command_to_pty(command, stream, fork, port)
         },
         Err(error) => {
             debug(&format!(
                 "Terminal allocation failed, using raw channels: {error:?}"
             ));
-            redirect_command_to_raw_channels(command, stream)
+            redirect_command_to_raw_channels(command, stream);
+            // there is no terminal in this session, drop a window
+            // size which arrived for it
+            unregister_terminal_session(port)
         }
     }
 }
@@ -743,14 +955,30 @@ fn set_terminal_size(fd: i32) {
     caller's terminal can be handed over through the sci_lines=...
     and sci_columns=... boot parameters and defaults to
     defaults::TERM_LINES x defaults::TERM_COLUMNS
+
+    These parameters provide the geometry of the caller's terminal
+    at the time the instance was started. A resize of that terminal
+    afterwards is handed over through the resize listener
+    !*/
+    set_terminal_window_size(
+        fd,
+        get_terminal_size_value("sci_lines", defaults::TERM_LINES),
+        get_terminal_size_value("sci_columns", defaults::TERM_COLUMNS)
+    )
+}
+
+fn set_terminal_window_size(fd: i32, lines: u16, columns: u16) {
+    /*!
+    Set the given window size on the given terminal
+
+    Beside of storing the new geometry the kernel sends SIGWINCH
+    to the foreground process group of the terminal. The line
+    editor of an interactive command re-reads the window size on
+    this signal and redraws the input line to match it
     !*/
     let window_size = libc::winsize {
-        ws_row: get_terminal_size_value(
-            "sci_lines", defaults::TERM_LINES
-        ),
-        ws_col: get_terminal_size_value(
-            "sci_columns", defaults::TERM_COLUMNS
-        ),
+        ws_row: lines,
+        ws_col: columns,
         ws_xpixel: 0,
         ws_ypixel: 0
     };
@@ -764,6 +992,8 @@ fn set_terminal_size(fd: i32) {
             "Failed to set terminal size: {}",
             std::io::Error::last_os_error()
         ));
+    } else {
+        debug(&format!("Terminal size set to {lines}x{columns}"));
     }
 }
 
@@ -945,7 +1175,8 @@ fn redirect_command_to_raw_channels(
 }
 
 fn redirect_command_to_pty(
-    command: &[String], mut stream: vsock::VsockStream, pty_fork: Fork
+    command: &[String], mut stream: vsock::VsockStream, pty_fork: Fork,
+    port: u32
 ) {
     if let Ok(mut master) = pty_fork.is_parent() {
         let mut child_pid = -1;
@@ -960,6 +1191,10 @@ fn redirect_command_to_pty(
         // reading and echoing the input which is the precondition
         // for features like tab completion to work
         set_interactive_terminal_flags(stdout_fd);
+
+        // Follow the window size of the caller's terminal for
+        // the time of the session
+        register_terminal_session(port, stdout_fd);
 
         // main send/recv loop
         let mut buffer = [0_u8; 1];
@@ -1022,6 +1257,8 @@ fn redirect_command_to_pty(
                 }
             }
         }
+        // The terminal is about to be closed, no longer resize it
+        unregister_terminal_session(port);
         let _ = pty_fork.wait();
         disown_child(child_pid);
     } else {
@@ -1243,6 +1480,34 @@ fn setup_logger() {
 #[cfg(test)]
 mod tests {
     use super::get_nfs_volume;
+    use super::get_resize_request;
+
+    #[test]
+    fn test_get_resize_request() {
+        assert_eq!(get_resize_request("52 24 80"), Some((52, 24, 80)));
+        // the caller sends the request as a line
+        assert_eq!(get_resize_request("52 24 80\n"), Some((52, 24, 80)));
+        // the console of the instance has no port of its own
+        assert_eq!(get_resize_request("0 43 132"), Some((0, 43, 132)));
+    }
+
+    #[test]
+    fn test_get_invalid_resize_request() {
+        // no geometry
+        assert_eq!(get_resize_request("52 24"), None);
+        assert_eq!(get_resize_request("52"), None);
+        assert_eq!(get_resize_request(""), None);
+        // no geometry a terminal could use
+        assert_eq!(get_resize_request("52 0 80"), None);
+        assert_eq!(get_resize_request("52 24 0"), None);
+        // not a number
+        assert_eq!(get_resize_request("52 24 columns"), None);
+        assert_eq!(get_resize_request("52 -1 80"), None);
+        // out of range
+        assert_eq!(get_resize_request("52 65536 80"), None);
+        // no request at all
+        assert_eq!(get_resize_request("52 24 80 rm -rf /"), None);
+    }
 
     #[test]
     fn test_get_nfs_volume() {

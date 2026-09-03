@@ -270,6 +270,8 @@ fi
 %doc /usr/share/man/man8/flake-ctl-firecracker-network-remove.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-volume-export.8.gz
 %doc /usr/share/man/man8/flake-ctl-firecracker-volume-release.8.gz
+%doc /usr/share/man/man8/flake-ctl-firecracker-volume-add.8.gz
+%doc /usr/share/man/man8/flake-ctl-firecracker-volume-remove.8.gz
 /usr/bin/firecracker-pilot
 %doc /usr/share/man/man8/firecracker-pilot.8.gz
 /usr/lib/flake-pilot/sci

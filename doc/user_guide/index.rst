@@ -51,6 +51,9 @@ The guide is organized as follows:
 * :ref:`firecracker-networking` explains how a virtual machine is
   connected to the outside world.
 
+* :ref:`firecracker-volumes` explains how a local host path is
+  shared with a virtual machine over NFS.
+
 * :ref:`application-setup` documents the registry layout, the flake
   configuration and the tools to inspect a running setup.
 
@@ -76,6 +79,7 @@ matter.
    container_apps
    vm_apps
    firecracker_networking
+   firecracker_volumes
    application_setup
    building_images
    troubleshooting

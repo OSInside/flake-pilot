@@ -172,6 +172,21 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         }
                     }
                 },
+                // volume
+                cli::Firecracker::Volume { command } => {
+                    match &command {
+                        cli::Volume::Export { path } => {
+                            if ! firecracker::export_volume(path) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        cli::Volume::Release { path } => {
+                            if ! firecracker::release_volume(path) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        }
+                    }
+                },
                 // remove
                 cli::Firecracker::Remove { vm, app, force } => {
                     if ! app.is_none() && ! app::remove(

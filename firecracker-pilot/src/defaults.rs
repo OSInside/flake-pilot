@@ -45,6 +45,17 @@ pub const FIRECRACKER_VSOCK_PREFIX: &str =
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
+// Port of the instance the window size of the caller's terminal
+// is sent to whenever it got resized
+pub const TERM_RESIZE_PORT: u32 = 53;
+// Port used to address the session which runs on the console of
+// the instance. The console is not connected through a vsock and
+// therefore has no port of its own
+pub const TERM_CONSOLE_PORT: u32 = 0;
+// Interval to check the window size of the caller's terminal for
+pub const TERM_RESIZE_POLL_MSEC: u64 = 250;
+// Time to wait for the instance to take the new window size
+pub const TERM_RESIZE_TIMEOUT_MSEC: u64 = 200;
 pub const VM_CID: u32 = 3;
 pub const VM_PORT: u32 =
     52;

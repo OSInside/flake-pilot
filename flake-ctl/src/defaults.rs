@@ -108,6 +108,16 @@ pub const IPTABLES_TOOL:&str =
     "iptables";
 pub const IP_TOOL:&str =
     "ip";
+pub const NFS_EXPORTFS_TOOL:&str =
+    "exportfs";
+pub const NFS_EXPORTS_FILE:&str =
+    "/etc/exports";
+pub const NFS_SERVER_SERVICE:&str =
+    "nfs-server";
+pub const NFS_CLIENT_NETWORK:&str =
+    "172.16.0.0/24";
+pub const NFS_EXPORT_OPTIONS:&str =
+    "rw,sync,no_subtree_check,no_root_squash,insecure";
 // Kernel switch to turn the host into a router. Required to
 // forward the traffic of a VM from its TUN/TAP device to the
 // outgoing interface of the host

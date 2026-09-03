@@ -24,10 +24,10 @@
 //
 use flakes::config::get_flakes_dir;
 use std::ffi::OsStr;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
-use tempfile::{Builder, TempDir};
+use tempfile::{Builder, NamedTempFile, TempDir};
 use std::path::Path;
 use std::borrow::Cow;
 use std::fs;
@@ -37,6 +37,9 @@ use crate::defaults;
 use crate::{app, app_config};
 
 use crate::fetch::{fetch_file, send_request};
+
+const FLAKE_PILOT_NFS_EXPORT_MARKER: &str =
+    "# flake-pilot firecracker volume";
 
 pub fn get_registry_dir(usermode: bool) -> String {
     /*!
@@ -693,6 +696,249 @@ pub fn run_as(program: &str, user: &str) -> Command {
     let mut call = Command::new("sudo");
     call.arg("--user").arg(user).arg(program);
     call
+}
+
+pub fn export_volume(path: &str) -> bool {
+    /*!
+    Export the given host path via NFS for firecracker guests
+    !*/
+    if ! validate_volume_export_path(path, true) {
+        return false
+    }
+    if ! update_nfs_exports(path, true) {
+        return false
+    }
+    if nfs_server_is_running() {
+        reload_nfs_exports()
+    } else {
+        start_nfs_server()
+    }
+}
+
+pub fn release_volume(path: &str) -> bool {
+    /*!
+    Remove the given host path from the NFS exports
+    !*/
+    if ! validate_volume_export_path(path, false) {
+        return false
+    }
+    if ! update_nfs_exports(path, false) {
+        return false
+    }
+    restart_nfs_server()
+}
+
+fn validate_volume_export_path(path: &str, must_exist: bool) -> bool {
+    /*!
+    Validate the path used for an NFS volume export operation
+    !*/
+    if ! path.starts_with('/') {
+        error!("Path {path:?} must be specified with an absolute path");
+        return false
+    }
+    if path.contains('\n') || path.contains('\r') {
+        error!("Path {path:?} contains unsupported control characters");
+        return false
+    }
+    if must_exist {
+        let volume_path = Path::new(path);
+        if ! volume_path.exists() {
+            error!("Volume path {path:?} does not exist");
+            return false
+        }
+        if ! volume_path.is_dir() {
+            error!("Volume path {path:?} is not a directory");
+            return false
+        }
+    }
+    true
+}
+
+fn update_nfs_exports(path: &str, present: bool) -> bool {
+    /*!
+    Add or remove the flake-pilot managed NFS export entry
+    !*/
+    let exports = match read_nfs_exports() {
+        Some(exports) => exports,
+        None => return false
+    };
+    let desired_entry = nfs_export_entry(path);
+    let managed_entries: Vec<&str> = exports.lines().filter(
+        |line| is_flake_pilot_nfs_export(line, path)
+    ).collect();
+    if present && managed_entries.len() == 1
+        && managed_entries[0].trim() == desired_entry
+    {
+        info!("Keeping existing NFS export for {path}");
+        return true
+    }
+    if ! present && managed_entries.is_empty() {
+        info!("No flake-pilot NFS export entry found for {path}");
+        return true
+    }
+
+    let mut updated_lines: Vec<String> = exports.lines().filter(
+        |line| ! is_flake_pilot_nfs_export(line, path)
+    ).map(ToOwned::to_owned).collect();
+    if present {
+        info!("Exporting {path} through NFS...");
+        updated_lines.push(desired_entry);
+    } else {
+        info!("Releasing NFS export for {path}...");
+    }
+
+    let mut updated_exports = updated_lines.join("\n");
+    if ! updated_exports.is_empty() {
+        updated_exports.push('\n');
+    }
+    write_nfs_exports(&updated_exports)
+}
+
+fn read_nfs_exports() -> Option<String> {
+    /*!
+    Read the /etc/exports file
+    !*/
+    match fs::read_to_string(defaults::NFS_EXPORTS_FILE) {
+        Ok(exports) => Some(exports),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Some(String::new()),
+        Err(error) => {
+            error!(
+                "Failed to read {}: {error}",
+                defaults::NFS_EXPORTS_FILE
+            );
+            None
+        }
+    }
+}
+
+fn write_nfs_exports(exports: &str) -> bool {
+    /*!
+    Write the /etc/exports file through a temporary copy
+    !*/
+    let mut temp = match NamedTempFile::new_in(defaults::TEMP_DIR) {
+        Ok(temp) => temp,
+        Err(error) => {
+            error!(
+                "Failed to create temp file in {}: {error}",
+                defaults::TEMP_DIR
+            );
+            return false
+        }
+    };
+    if let Err(error) = temp.write_all(exports.as_bytes()) {
+        error!("Failed to write temp exports file: {error}");
+        return false
+    }
+    if let Err(error) = temp.flush() {
+        error!("Failed to flush temp exports file: {error}");
+        return false
+    }
+    let mut call = run_as("install", "root");
+    call.arg("-m")
+        .arg("644")
+        .arg(temp.path())
+        .arg(defaults::NFS_EXPORTS_FILE);
+    run_ok(&mut call, &format!("install {}", defaults::NFS_EXPORTS_FILE))
+}
+
+fn nfs_export_entry(path: &str) -> String {
+    /*!
+    Provide the managed NFS export line for the given path
+    !*/
+    format!(
+        "{} {}({}) {}",
+        escape_nfs_export_path(path),
+        defaults::NFS_CLIENT_NETWORK,
+        defaults::NFS_EXPORT_OPTIONS,
+        FLAKE_PILOT_NFS_EXPORT_MARKER
+    )
+}
+
+fn escape_nfs_export_path(path: &str) -> String {
+    /*!
+    Escape whitespace in the path for /etc/exports
+    !*/
+    path.replace('\\', "\\\\")
+        .replace(' ', "\\040")
+        .replace('\t', "\\011")
+}
+
+fn is_flake_pilot_nfs_export(line: &str, path: &str) -> bool {
+    /*!
+    Check if the line is the managed flake-pilot export for path
+    !*/
+    let trimmed = line.trim();
+    trimmed.starts_with(&format!("{} ", escape_nfs_export_path(path)))
+        && trimmed.ends_with(FLAKE_PILOT_NFS_EXPORT_MARKER)
+}
+
+fn nfs_server_is_running() -> bool {
+    /*!
+    Check if the NFS server systemd service is active
+    !*/
+    let mut call = run_as("systemctl", "root");
+    call.arg("is-active")
+        .arg("--quiet")
+        .arg(defaults::NFS_SERVER_SERVICE);
+    match call.status() {
+        Ok(status) => status.success(),
+        Err(error) => {
+            error!(
+                "Failed to query {}: {error:?}",
+                defaults::NFS_SERVER_SERVICE
+            );
+            false
+        }
+    }
+}
+
+fn start_nfs_server() -> bool {
+    /*!
+    Start the NFS server service
+    !*/
+    info!("Starting {}...", defaults::NFS_SERVER_SERVICE);
+    let mut call = run_as("systemctl", "root");
+    call.arg("start").arg(defaults::NFS_SERVER_SERVICE);
+    run_ok(&mut call, &format!("start {}", defaults::NFS_SERVER_SERVICE))
+}
+
+fn restart_nfs_server() -> bool {
+    /*!
+    Restart the NFS server service
+    !*/
+    info!("Restarting {}...", defaults::NFS_SERVER_SERVICE);
+    let mut call = run_as("systemctl", "root");
+    call.arg("restart").arg(defaults::NFS_SERVER_SERVICE);
+    run_ok(&mut call, &format!("restart {}", defaults::NFS_SERVER_SERVICE))
+}
+
+fn reload_nfs_exports() -> bool {
+    /*!
+    Reload the NFS exports of the running server
+    !*/
+    info!("Reloading NFS exports...");
+    let mut call = run_as(defaults::NFS_EXPORTFS_TOOL, "root");
+    call.arg("-ra");
+    run_ok(&mut call, "reload NFS exports")
+}
+
+fn run_ok(call: &mut Command, action: &str) -> bool {
+    /*!
+    Run the given call and tell whether it succeeded
+    !*/
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                error!("Failed to {action}: {status}");
+                return false
+            }
+            true
+        },
+        Err(error) => {
+            error!("Failed to {action}: {error:?}");
+            false
+        }
+    }
 }
 
 pub fn mkdir(dirname: &String, user: &str) -> bool {

@@ -16,10 +16,13 @@
         <rpm-check-signatures>false</rpm-check-signatures>
         <type image="kis" filesystem="ext2"/>
     </preferences>
+    <users>
+        <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
+    </users>
     <repository type="rpm-md">
         <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_15.6"/>
     </repository>
-    <repository type="rpm-md">   
+    <repository type="rpm-md">
         <source path="https://download.opensuse.org/update/leap/15.6/sle/"/>
     </repository>
     <repository type="rpm-md">
@@ -31,7 +34,6 @@
         <!-- <package name="kernel-kvmsmall"/> -->
         <package name="kernel-default"/>
         <!-- system -->
-        <package name="psmisc"/>
         <package name="timezone"/>
         <package name="systemd"/>
         <package name="systemd-networkd"/>
@@ -43,9 +45,43 @@
         <package name="socat"/>
         <package name="kmod"/>
         <package name="openssh-server"/>
+        <package name="npm-default"/>
+        <package name="dracut"/>
+        <package name="bash"/>
         <package name="flake-pilot-firecracker-guestvm-tools"/>
         <package name="flake-pilot-firecracker-dracut-netstart"/>
+        <package name="curl"/>
+        <package name="less"/>
+        <package name="sed"/>
+        <package name="libcap-progs"/>
+        <package name="ncurses-utils"/>
+        <package name="patterns-openSUSE-base"/>
+        <package name="systemd"/>
+        <package name="bash"/>
+        <package name="acl"/>
+        <package name="coreutils"/>
+        <package name="cpio"/>
+        <package name="findutils"/>
+        <package name="pigz"/>
+        <package name="iputils"/>
+        <package name="tar"/>
+        <package name="psmisc"/>
+        <package name="fontconfig"/>
+        <package name="fonts-config"/>
+        <package name="sudo"/>
+        <package name="rsync"/>
+        <package name="openssh-server"/>
+        <package name="npm-default"/>
+        <package name="python311"/>
+        <package name="python311-pip"/>
+        <package name="rust"/>
+        <package name="cargo"/>
+        <package name="vim"/>
+        <package name="which"/>
+        <package name="shadow"/>
+        <package name="procps"/>
         <package name="nfs-client"/>
+        <package name="git"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

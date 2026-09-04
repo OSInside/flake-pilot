@@ -16,6 +16,10 @@
         <rpm-check-signatures>false</rpm-check-signatures>
         <type image="kis" filesystem="ext2"/>
     </preferences>
+    <users>
+        <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
+        <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/home/ai" name="ai" groups="users"/>
+    </users>
     <repository type="rpm-md">
         <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_15.6"/>
     </repository>
@@ -78,6 +82,7 @@
         <package name="shadow"/>
         <package name="procps"/>
         <package name="nfs-client"/>
+        <package name="git"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

@@ -114,8 +114,6 @@ pub const NFS_EXPORTS_FILE:&str =
     "/etc/exports";
 pub const NFS_SERVER_SERVICE:&str =
     "nfs-server";
-pub const NFS_CLIENT_NETWORK:&str =
-    "172.16.0.0/24";
 pub const NFS_EXPORT_OPTIONS:&str =
     "rw,sync,no_subtree_check,no_root_squash,insecure";
 // Kernel commandline option sci reads the NFS volumes of a VM
@@ -138,15 +136,33 @@ pub const NETWORK_CONFIG:&str =
 // home directory of the user calling the program
 pub const NETWORK_CONFIG_USER:&str =
     ".config/flakes/firecracker/network.yaml";
-// Static setup of the private network between the host and the
-// VMs. The addresses are not configurable, they only exist
-// between the TAP device of an instance and the VM behind it.
-// The traffic to the outside world is masqueraded and therefore
-// leaves the host with the address of the outgoing interface
-pub const NETWORK_GATEWAY:&str =
-    "172.16.0.1";
-pub const NETWORK_NETMASK:&str =
-    "255.255.255.0";
+// Setup of the private network between the host and the VMs.
+// The addresses only exist between the TAP device of an instance
+// and the VM behind it. The traffic to the outside world is
+// masqueraded and therefore leaves the host with the address of
+// the outgoing interface.
+//
+// The network to use is selected when the host setup is created
+// and is recorded along with it. The preferred network is taken
+// if the host is not connected to it already, in all other cases
+// a free network from the ranges below is taken
+pub const NETWORK_PREFERRED:&str =
+    "172.16.0.0";
+// Ranges of private networks a free network is searched in if
+// the preferred network conflicts with a network of the host.
+// Each entry provides the first network of the range and the
+// number of networks in it. The networks of a range follow each
+// other in steps of NETWORK_PREFIX_LEN, e.g 172.16.0.0 is
+// followed by 172.16.1.0. The ranges are searched in the order
+// they are listed here
+pub const NETWORK_RANGES:&[(&str, u32)] = &[
+    // 172.16.0.0 ... 172.31.255.0
+    ("172.16.0.0", 4096),
+    // 192.168.0.0 ... 192.168.255.0
+    ("192.168.0.0", 256),
+    // 10.0.0.0 ... 10.255.255.0
+    ("10.0.0.0", 65536)
+];
 pub const NETWORK_PREFIX_LEN:u8 =
     24;
 // Prefix length of the host route which connects the address of

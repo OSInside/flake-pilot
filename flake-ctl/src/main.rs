@@ -96,7 +96,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 },
                 // register
                 cli::Firecracker::Register {
-                    vm, app, target, run_as, overlay_size, no_net, resume,
+                    vm, app, target, run_as, overlay_size, resume,
                     force_vsock, include_tar, include_path, pilot_option,
                     force
                 } => {
@@ -122,7 +122,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 target.as_ref(),
                                 run_as.as_ref(),
                                 overlay_size.as_ref(),
-                                *no_net,
                                 *resume,
                                 *force_vsock,
                                 include_tar.as_ref().cloned(),

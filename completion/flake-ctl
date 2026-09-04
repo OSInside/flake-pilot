@@ -22,7 +22,6 @@ __flake_ctl_firecracker_register() {
         --app
         --include-tar
         --include-path
-        --no-net
         --overlay-size
         --force-vsock
         --resume

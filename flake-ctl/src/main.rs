@@ -176,7 +176,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Firecracker::Volume { command } => {
                     match &command {
                         cli::Volume::Export { path } => {
-                            if ! firecracker::export_volume(path) {
+                            if ! firecracker::export_volume(path, user) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         },

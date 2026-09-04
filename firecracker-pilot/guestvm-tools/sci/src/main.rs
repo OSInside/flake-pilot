@@ -79,7 +79,9 @@ fn main() {
 
     if provided via the overlay_root=/dev/block_device kernel boot
     parameter, sci also prepares the root filesystem as an overlay
-    using the given block device for writing.
+    using the given block device for writing. The overlay is made
+    the root filesystem with a switch root, which calls sci again
+    as the init process of the new root.
 
     if provided via the nfs=... kernel boot parameter, sci mounts
     the listed NFS volumes before the command is called.
@@ -87,7 +89,6 @@ fn main() {
     setup_logger();
 
     let mut args: Vec<String> = vec![];
-    let mut call: Command;
     let mut do_exec = false;
     let mut ok = true;
 
@@ -144,7 +145,15 @@ fn main() {
 
     // mount overlay if requested
     match env::var("overlay_root").ok() {
-        Some(overlay) => {
+        Some(overlay) => if env::var(defaults::OVERLAY_SWITCHED).is_ok() {
+            // the overlay is the root filesystem of this instance.
+            // sci switched into it and got called again as its init
+            // process, thus there is nothing left to prepare
+            debug(&format!(
+                "{} is the root filesystem", defaults::OVERLAY_ROOT
+            ));
+            setup_resolver_link();
+        } else {
             // overlay device is specified, mount the device and
             // prepare the folder structure
             let mut modprobe = Command::new(defaults::PROBE_MODULE);
@@ -216,7 +225,7 @@ fn main() {
                     }
                 }
             }
-            // Call specified command through switch root into the overlay
+            // Make the overlay the new root
             if ok {
                 move_mounts(defaults::OVERLAY_ROOT);
                 let root = Path::new(defaults::OVERLAY_ROOT);
@@ -235,40 +244,33 @@ fn main() {
                     }
                 }
             }
-            if do_exec {
-                call = Command::new(defaults::SWITCH_ROOT);
-                call.arg(".").arg(&args[0]);
-            } else {
-                call = Command::new(&args[0]);
-                if ok {
-                    let mut pivot = Command::new(defaults::PIVOT_ROOT);
-                    pivot.arg(".").arg("mnt");
-                    debug(&format!(
-                        "SCI CALL: {} -> {:?}",
-                        defaults::PIVOT_ROOT, pivot.get_args()
-                    ));
-                    match pivot.status() {
-                        Ok(_) => {
-                            debug(&format!(
-                                "{} is now the new root", defaults::OVERLAY_ROOT
-                            ));
-                            ok = true;
-                        },
-                        Err(error) => {
-                            debug(&format!("Failed to pivot_root: {error}"));
-                            ok = false;
-                        }
-                    }
-                    mount_basic_fs();
-                    setup_resolver_link();
-                }
+            if ok {
+                // Switch root into the overlay. sci calls itself as
+                // the init process of the new root, thus the setup
+                // of the instance and the command call itself is
+                // done with the overlay as the root filesystem.
+                // On success this replaces the running process and
+                // main() starts over inside of the overlay
+                let mut switch_root = Command::new(defaults::SWITCH_ROOT);
+                switch_root.arg(".").arg(defaults::SCI)
+                    .env(defaults::OVERLAY_SWITCHED, "true");
+                debug(&format!(
+                    "SCI CALL: {} -> {:?}",
+                    defaults::SWITCH_ROOT, switch_root.get_args()
+                ));
+                let error = switch_root.exec();
+                debug(&format!("Failed to switch_root: {error}"));
+                ok = false;
             }
         },
         None => {
-            // Call command in current environment
-            call = Command::new(&args[0]);
+            debug("No overlay_root=... cmdline parameter in env");
         }
     };
+
+    // Call the command in the current root. With an overlay this
+    // is the overlay root, sci switched into it before
+    let mut call = Command::new(&args[0]);
 
     // mount nfs volumes if requested
     mount_nfs_volumes();
@@ -1439,29 +1441,50 @@ fn mount_nfs_volume(source: &str, target: &str) {
 fn mount_basic_fs() {
     /*!
     Mount standard filesystems
+
+    A filesystem which is already mounted is skipped. This is the
+    case after the switch root into the overlay because the switch
+    root moves these filesystems along into the new root
     !*/
-    match Mount::builder().fstype("proc").mount("proc", "/proc") {
-        Ok(_) => debug("Mounted proc on /proc"),
-        Err(error) => {
-            debug(&format!("Failed to mount /proc [skipped]: {error}"));
+    let basic_fs = [
+        ("proc", "/proc"),
+        ("sysfs", "/sys"),
+        ("devtmpfs", "/dev"),
+        ("devpts", "/dev/pts")
+    ];
+    for (fstype, mount_point) in basic_fs.iter() {
+        if is_mounted(mount_point) {
+            debug(&format!("{mount_point} is already mounted [skipped]"));
+            continue
+        }
+        match Mount::builder().fstype(*fstype).mount(*fstype, mount_point) {
+            Ok(_) => debug(&format!("Mounted {fstype} on {mount_point}")),
+            Err(error) => {
+                debug(&format!("Failed to mount {mount_point}: {error}"));
+            }
         }
     }
-    match Mount::builder().fstype("sysfs").mount("sysfs", "/sys") {
-        Ok(_) => debug("Mounted sysfs on /sys"),
+}
+
+fn is_mounted(mount_point: &str) -> bool {
+    /*!
+    Check if something is mounted on the given mount point
+
+    The information is read from the mount table of the kernel.
+    A mount table which cannot be read, e.g because /proc is not
+    mounted yet, reports the mount point as not mounted
+    !*/
+    match fs::read_to_string(defaults::PROC_MOUNTS) {
+        Ok(mount_table) => mount_table.lines().any(
+            |mount_record| mount_record
+                .split_whitespace()
+                .nth(1) == Some(mount_point)
+        ),
         Err(error) => {
-            debug(&format!("Failed to mount /sys: {error}"));
-        }
-    }
-    match Mount::builder().fstype("devtmpfs").mount("devtmpfs", "/dev") {
-        Ok(_) => debug("Mounted devtmpfs on /dev"),
-        Err(error) => {
-            debug(&format!("Failed to mount /dev: {error}"));
-        }
-    }
-    match Mount::builder().fstype("devpts").mount("devpts", "/dev/pts") {
-        Ok(_) => debug("Mounted devpts on /dev/pts"),
-        Err(error) => {
-            debug(&format!("Failed to mount /dev/pts: {error}"));
+            debug(&format!(
+                "Failed to read {}: {}", defaults::PROC_MOUNTS, error
+            ));
+            false
         }
     }
 }

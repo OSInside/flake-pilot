@@ -447,6 +447,9 @@ pub fn call_instance(
     }
     IO::create_meta_file(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
     if is_blocking {
+        // the command talks to the console of the instance,
+        // follow the window size of the caller's terminal for it
+        watch_terminal_size(&vsock_uds_path, defaults::TERM_CONSOLE_PORT);
         handle_output(child.wait_with_output(), firecracker.get_args())?;
     }
     Ok(())
@@ -633,6 +636,12 @@ pub fn execute_command_at_instance(
     IO::no_symlink(command_socket)?;
     let thread_handle = stream_listener(command_socket);
 
+    // follow the window size of the caller's terminal. The size
+    // the instance was booted with does not apply to a session
+    // in a terminal which was resized or which is not the one
+    // the instance was started from
+    watch_terminal_size(&vsock_uds_path, exec_port);
+
     send_command_to_instance(program_name, &vsock_uds_path, exec_port);
 
     let _ = thread_handle.join();
@@ -669,6 +678,125 @@ pub fn get_terminal_boot_args() -> Vec<String> {
         terminal_boot_args.push(format!("sci_columns={columns}"));
     }
     terminal_boot_args
+}
+
+pub fn watch_terminal_size(vsock_uds_path: &str, port: u32) {
+    /*!
+    Follow the window size of the caller's terminal
+
+    The initial geometry of the terminal is handed over to the
+    instance as kernel boot params. This is only correct as long
+    as the terminal keeps its size and it does not apply at all
+    to an instance which was started by someone else before. Thus
+    watch the terminal and send its geometry to the instance
+    whenever it changed.
+
+    The size is polled and not taken from a SIGWINCH handler.
+    Dragging a window border creates a burst of resize events and
+    polling combines them to the one size which is left at the
+    end of it. It also keeps the data transfer loops of the
+    session free from being interrupted by a signal
+    !*/
+    if get_terminal_size().is_none() {
+        // no terminal to follow, e.g the output is redirected
+        if Lookup::is_debug() {
+            debug!("No terminal to watch for window size changes");
+        }
+        return
+    }
+    let vsock_uds_path = vsock_uds_path.to_owned();
+    thread::spawn(move || {
+        let mut sent_size = None;
+        let mut retry_count = 0;
+        loop {
+            let terminal_size = get_terminal_size();
+            if let Some((lines, columns)) = terminal_size {
+                if terminal_size != sent_size {
+                    // The instance cannot be reached at any time, e.g
+                    // it could still be booting. Keep the size to be
+                    // sent in this case and try again on the next turn
+                    if send_terminal_size_to_instance(
+                        &vsock_uds_path, port, lines, columns
+                    ) {
+                        sent_size = terminal_size;
+                        retry_count = 0
+                    } else {
+                        if retry_count <= defaults::RETRIES {
+                            retry_count += 1;
+                            if retry_count > defaults::RETRIES
+                                && Lookup::is_debug()
+                            {
+                                debug!(
+                                    "Instance does not take window sizes, \
+                                     continue watching at a lower rate"
+                                );
+                            }
+                        }
+                    }
+                }
+            } else {
+                // the terminal is gone, e.g it was closed
+                sent_size = terminal_size
+            }
+            // Poll at the rate of a resize as long as the instance
+            // takes the window sizes. An instance which does not,
+            // e.g because it runs an older sci, is contacted at the
+            // rate of a connection retry to keep the load low
+            let poll_interval = if retry_count > defaults::RETRIES {
+                time::Duration::from_millis(defaults::VM_WAIT_TIMEOUT_MSEC)
+            } else {
+                time::Duration::from_millis(defaults::TERM_RESIZE_POLL_MSEC)
+            };
+            thread::sleep(poll_interval)
+        }
+    });
+}
+
+fn send_terminal_size_to_instance(
+    vsock_uds_path: &str, port: u32, lines: u16, columns: u16
+) -> bool {
+    /*!
+    Send the given window size to the instance
+
+    The size is sent to the resize port of the instance together
+    with the port of the session it belongs to. sci applies it to
+    the terminal of that session
+    !*/
+    let timeout = Some(time::Duration::from_millis(
+        defaults::TERM_RESIZE_TIMEOUT_MSEC
+    ));
+    let mut stream = match UnixStream::connect(vsock_uds_path) {
+        Ok(stream) => stream,
+        Err(error) => {
+            if Lookup::is_debug() {
+                debug!("Failed to connect {vsock_uds_path}: {error}");
+            }
+            return false
+        }
+    };
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+    let mut sent = stream.write_all(
+        format!("CONNECT {}\n", defaults::TERM_RESIZE_PORT).as_bytes()
+    ).is_ok();
+    if sent {
+        // The connection to the port is confirmed with an OK
+        // message. An instance which does not listen for window
+        // sizes, e.g an older sci, refuses the connection
+        let mut buffer = [0; 14];
+        let bytes_read = stream.read(&mut buffer).unwrap_or(0);
+        sent = String::from_utf8_lossy(&buffer[0..bytes_read]).starts_with("OK")
+    }
+    if sent {
+        sent = stream.write_all(
+            format!("{port} {lines} {columns}\n").as_bytes()
+        ).is_ok()
+    }
+    let _ = stream.shutdown(Shutdown::Both);
+    if Lookup::is_debug() && ! sent {
+        debug!("Failed to send window size {lines}x{columns} to the instance");
+    }
+    sent
 }
 
 pub fn get_terminal_size() -> Option<(u16, u16)> {

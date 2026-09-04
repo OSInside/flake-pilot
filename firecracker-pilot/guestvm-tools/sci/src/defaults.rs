@@ -47,6 +47,13 @@ pub const TERMINFO_DIRS: [&str; 3] = [
 ];
 pub const TERM_LINES: u16 = 24;
 pub const TERM_COLUMNS: u16 = 80;
+// Port the caller sends the window size of its terminal to
+// whenever it got resized
+pub const TERM_RESIZE_PORT: u32 = 53;
+// Port of the caller which owns the console of the instance.
+// The console is not connected through a vsock and therefore
+// has no port of its own
+pub const TERM_CONSOLE_PORT: u32 = 0;
 pub const VM_PORT: u32 = 52;
 pub const GUEST_CID: u32 = 3;
 pub const RETRIES: u32 =

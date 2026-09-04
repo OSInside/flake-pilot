@@ -27,11 +27,18 @@ use std::env;
 pub const PROMPT: &str = "\\[\\]\\u@\\h: > ";
 pub const SSHD: &str = "/usr/sbin/sshd";
 pub const SWITCH_ROOT: &str = "/sbin/switch_root";
-pub const PIVOT_ROOT: &str = "/sbin/pivot_root";
+// Path of sci in the guest. sci calls itself through the switch
+// root to become the init process of the overlay root
+pub const SCI: &str = "/usr/sbin/sci";
+// Marker in the environment of sci which tells that the switch
+// root into the overlay was done already
+pub const OVERLAY_SWITCHED: &str = "sci_overlay_switched";
 pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";
 pub const OVERLAY_UPPER: &str = "/overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str = "/overlayroot/rootfs_work";
 pub const PROBE_MODULE: &str = "/sbin/modprobe";
+// Mount table of the kernel
+pub const PROC_MOUNTS: &str = "/proc/self/mounts";
 pub const MOUNT_TOOL: &str = "mount";
 // Filesystem type and separator of the volume specification
 // given in the nfs=... cmdline variable

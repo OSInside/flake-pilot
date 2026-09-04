@@ -34,6 +34,8 @@ pub const SCI: &str = "/usr/sbin/sci";
 // root into the overlay was done already
 pub const OVERLAY_SWITCHED: &str = "sci_overlay_switched";
 pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";
+// Permissions of the root directory of the instance
+pub const ROOT_DIR_MODE: u32 = 0o755;
 pub const OVERLAY_UPPER: &str = "/overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str = "/overlayroot/rootfs_work";
 pub const PROBE_MODULE: &str = "/sbin/modprobe";

@@ -29,7 +29,7 @@ extern crate shell_words;
 pub mod defaults;
 
 use std::env;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
 use std::process::Command;
 use std::os::unix::process::CommandExt;
@@ -224,6 +224,14 @@ fn main() {
                         ok = false;
                     }
                 }
+            }
+            if ok {
+                // The overlay takes the permissions of its upper
+                // directory, which was created with the umask of
+                // sci. Set them to the standard mode of the root
+                // directory such that the new / is not world
+                // writable
+                set_root_permissions(defaults::OVERLAY_ROOT);
             }
             // Make the overlay the new root
             if ok {
@@ -1462,6 +1470,25 @@ fn mount_basic_fs() {
             Err(error) => {
                 debug(&format!("Failed to mount {mount_point}: {error}"));
             }
+        }
+    }
+}
+
+fn set_root_permissions(root: &str) {
+    /*!
+    Set the permissions of the given root directory
+
+    The root directory of the instance is expected to be readable
+    and searchable for everyone but writable only for the owner
+    !*/
+    match fs::set_permissions(
+        root, fs::Permissions::from_mode(defaults::ROOT_DIR_MODE)
+    ) {
+        Ok(_) => debug(&format!(
+            "Set mode {:o} on {}", defaults::ROOT_DIR_MODE, root
+        )),
+        Err(error) => {
+            debug(&format!("Failed to set permissions on {root}: {error}"));
         }
     }
 }

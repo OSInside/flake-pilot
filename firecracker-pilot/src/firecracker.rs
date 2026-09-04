@@ -928,8 +928,8 @@ pub fn create_firecracker_config(
     // network add'
     //
     // A VM whose kernel commandline configures no interface has no
-    // network, e.g because it was registered with '--no-net' or
-    // because its setup was deleted with 'flake-ctl firecracker
+    // network, e.g because it was freshly registered or because
+    // its setup was deleted with 'flake-ctl firecracker
     // network remove'. Such a VM gets no network-interfaces
     // section in the config passed to firecracker
     if ! with_network {
@@ -979,7 +979,7 @@ pub fn has_network_setup(boot_args: &[&str]) -> bool {
     An interface of the VM is only of use if the guest kernel is
     told to bring it up. This is done with the 'ip=' boot option
     which is written by 'flake-ctl firecracker network add' and
-    which is deleted for a registration done with '--no-net'.
+    which is deleted by 'flake-ctl firecracker register'.
     The values 'off' and 'none' explicitly switch the network of
     the guest off and are therefore treated like a missing option
     !*/

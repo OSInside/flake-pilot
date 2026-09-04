@@ -210,7 +210,6 @@ impl AppConfig {
         host_app_path: &String,
         run_as: Option<&String>,
         overlay_size: Option<&String>,
-        no_net: bool,
         resume: bool,
         force_vsock: bool,
         includes_tar: Option<Vec<String>>,
@@ -305,19 +304,20 @@ impl AppConfig {
                 .initrd_path = Some(initrd_path);
         }
 
-        if no_net {
-            let mut boot_args: Vec<String> = Vec::new();
-            let firecracker_section = vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap();
-            for boot_arg in
-                firecracker_section.boot_args.as_mut().unwrap().iter().cloned()
-            {
-                if ! boot_arg.starts_with("ip=") {
-                    boot_args.push(boot_arg);
-                }
+        // The registration creates no network setup. The 'ip=' option
+        // is deleted from the kernel commandline of the VM. The setup
+        // can be created later on with 'flake-ctl firecracker network add'
+        let mut boot_args: Vec<String> = Vec::new();
+        let firecracker_section = vm_config.runtime.as_mut().unwrap()
+            .firecracker.as_mut().unwrap();
+        for boot_arg in
+            firecracker_section.boot_args.as_mut().unwrap().iter().cloned()
+        {
+            if ! boot_arg.starts_with("ip=") {
+                boot_args.push(boot_arg);
             }
-            firecracker_section.boot_args = Some(boot_args);
         }
+        firecracker_section.boot_args = Some(boot_args);
 
         if resume || force_vsock {
             let firecracker_section = vm_config.runtime.as_mut().unwrap()

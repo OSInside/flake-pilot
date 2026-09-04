@@ -51,8 +51,7 @@ application. All of the setup created with
 The address of the application becomes available again and is
 handed out to the next application which is connected. The
 application itself is left without an ``ip=`` option, which is
-the same state a registration with the ``--no-net`` option
-creates.
+the same state a fresh registration creates.
 
 As the setup changes the network configuration of the host, the
 commands are called through **sudo**. The calling user therefore

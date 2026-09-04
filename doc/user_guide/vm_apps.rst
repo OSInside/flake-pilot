@@ -48,7 +48,7 @@ A Shell as a Firecracker VM App
    flake-ctl firecracker pull --name leap \
        --kis-image https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
 
-   flake-ctl firecracker register --vm leap --no-net \
+   flake-ctl firecracker register --vm leap \
        --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB
 
    fireshell
@@ -58,10 +58,10 @@ a Firecracker VM, based on the pulled ``leap`` image, is started and
 drops you into a bash shell. In addition, some write space of 20GB is
 added to the instance.
 
-The ``--no-net`` option registers the app without a network setup.
-The VM boots without an ``ip=`` option on its kernel commandline, no
-TAP device is created for it and no ``network-interfaces`` section is
-passed to firecracker. The setup can be added later on, see
+The registration creates no network setup. The VM boots without an
+``ip=`` option on its kernel commandline, no TAP device is created
+for it and no ``network-interfaces`` section is passed to
+firecracker. The setup can be added later on, see
 :ref:`firecracker-networking`.
 
 .. note::
@@ -131,9 +131,6 @@ Registration Options in Short
 ``--force-vsock``
    Use a vsock instead of the serial console to talk to the guest. In
    resume mode a vsock is always required.
-
-``--no-net``
-   Register the app without a network setup.
 
 ``--pilot-option``
    A runtime option of the pilot, e.g ``%port:2000`` to bind the

@@ -20,7 +20,6 @@ SYNOPSIS
        --force
        --include-tar <INCLUDE_TAR>...
        --include-path <INCLUDE_PATH>...
-       --no-net
        --pilot-option <PILOT_OPTION>...
        --resume
        --force-vsock
@@ -47,6 +46,12 @@ below `~/.config/flakes` and the VM is looked up in
 
 On successful completion the registered *--app* name can be called
 like a normal application on this host.
+
+The registration creates no network setup. The ``ip=`` option is
+deleted from the kernel commandline of the VM. Without it the VM is
+not connected, the pilot creates no TAP device setup for it and
+passes no ``network-interfaces`` section to firecracker. The setup
+can be created later on with **flake-ctl-firecracker-network-add**(8)
 
 For further details about the flake configuration please refer to
 the **firecracker-pilot** manual page.
@@ -78,15 +83,6 @@ OPTIONS
 
   Name of a file or directory to be included on top of the VM instance.
   This option can be specified multiple times
-
---no-net
-
-  Disable networking. The ``ip=`` option is deleted from the
-  kernel commandline of the VM. Without it the VM is not
-  connected, the pilot creates no TAP device setup for it and
-  passes no ``network-interfaces`` section to firecracker.
-  The setup can be created later on with
-  **flake-ctl-firecracker-network-add**(8)
 
 --overlay-size <OVERLAY_SIZE>
 

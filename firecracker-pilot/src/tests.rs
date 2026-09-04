@@ -138,8 +138,8 @@ fn test_instance_name_without_at_sign_is_accepted_as_key() {
 
 #[test]
 fn test_network_setup_from_boot_args() {
-    // a registration with '--no-net' and a flake whose setup was
-    // deleted are left without an ip= option
+    // a fresh registration and a flake whose setup was deleted
+    // are left without an ip= option
     assert!(! has_network_setup(&["init=/usr/sbin/sci", "quiet"]));
     assert!(has_network_setup(&["ip=dhcp"]));
     assert!(has_network_setup(

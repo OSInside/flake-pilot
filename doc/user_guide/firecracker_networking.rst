@@ -151,7 +151,7 @@ by all applications and stays in place.
 .. note::
 
    The application is left without an ``ip=`` option, which is the
-   same state a registration with the ``--no-net`` option creates. If
+   same state a fresh registration creates. If
    the VM should fall back to a dynamic setup, ``ip=dhcp`` has to be
    added to its ``boot_args`` by hand.
 

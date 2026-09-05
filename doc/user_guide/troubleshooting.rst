@@ -78,6 +78,66 @@ the host and a restart of ``firewalld``.
    documentation on how to allow the NFS traffic of the private
    firecracker network.
 
+User and Group ID of an NFS Volume
+-----------------------------------
+
+NFS transports the ownership of a file as numeric user and group ID,
+it does not transport the names behind them. Host and guest each
+resolve those numbers through their own user database, and the
+minimal image of a Firecracker VM usually knows nothing about the
+accounts of the host. A volume exported with
+``flake-ctl firecracker volume export``, see
+:ref:`firecracker-volumes`, therefore shows up inside the VM owned by
+a plain number if the owning host user does not exist there, and
+every access done under a different ID than the one the files belong
+to is answered with a permission error.
+
+The application itself is started as ``root`` by the init process of
+the guest, and the export is written with the ``no_root_squash``
+option, so ``root`` inside the VM is not mapped to ``nobody`` and can
+read and write the volume regardless of its ownership. The mismatch
+becomes visible as soon as the application runs under a user account
+of its own inside the VM, or when the files it creates should stay
+accessible to the owning user on the host, as they are created with
+the ID the process runs under.
+
+The fix is to give the VM a user with the same numeric IDs as the
+owner of the exported path on the host. Look the IDs up on the host
+first:
+
+.. code-block:: bash
+
+   stat -c '%u %g' /some/local/path
+
+For a path owned by the calling user this is the same as:
+
+.. code-block:: bash
+
+   id -u; id -g
+
+With the IDs known, create a matching group and user in the VM, e.g
+for the ID ``1000``:
+
+.. code-block:: bash
+
+   groupadd -g 1000 myuser
+   useradd -u 1000 -g 1000 -m myuser
+
+The ``-u`` and ``-g`` options are what matters, they pin the account
+to the IDs used on the host, the name is free to choose as it never
+leaves the guest. If the group already exists under the wanted ID,
+the ``groupadd`` call can be left out and ``useradd -g`` points to
+the existing group. Adding the user to the image description of the
+VM, see :ref:`building-images`, keeps the setup in place across a
+rebuild of the image and applies to every application based on it.
+
+.. note::
+
+   Only the numbers have to match, not the user names. A host user
+   ``tux`` with the ID ``1000`` and a guest user ``myuser`` with the
+   ID ``1000`` are the same owner as far as NFS is concerned, whereas
+   two accounts of the same name with different IDs are not.
+
 Feedback
 ========
 

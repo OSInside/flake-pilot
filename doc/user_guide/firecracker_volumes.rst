@@ -61,7 +61,9 @@ keeps the existing entry unchanged.
    The export alone is not enough if a firewall is active on the
    host, it has to allow the NFS traffic of the private firecracker
    network as well. See :ref:`troubleshooting` for the services to
-   open up with ``firewalld``.
+   open up with ``firewalld``, and for the user and group ID the
+   exported path is owned by, which the VM has to know as well to
+   avoid permission problems.
 
 Release a Local Path
 =====================

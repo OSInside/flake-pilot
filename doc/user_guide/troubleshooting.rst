@@ -49,6 +49,35 @@ command:
 
    --opt "\--security-opt label=disable"
 
+firewalld
+---------
+
+The NFS export created by ``flake-ctl firecracker volume export``, see
+:ref:`firecracker-volumes`, is of no use if the host firewall blocks
+the guest from reaching the NFS server. If ``firewalld`` is in use on
+the host, the mount inside of the VM fails and the application starts
+without its volumes. The services required for NFS have to be allowed
+explicitly:
+
+.. code-block:: bash
+
+   firewall-cmd --permanent --add-service=nfs
+   firewall-cmd --permanent --add-service=mountd
+   firewall-cmd --permanent --add-service=rpc-bind
+   firewall-cmd --reload
+
+The commands require root privileges and have to be run once per
+host, the ``--permanent`` option keeps the setting across a reboot of
+the host and a restart of ``firewalld``.
+
+.. note::
+
+   As with the network setup, see :ref:`firecracker-networking`, this
+   serves as an example for one firewall implementation. Please check
+   which tool is managing the firewall on your host and refer to its
+   documentation on how to allow the NFS traffic of the private
+   firecracker network.
+
 Feedback
 ========
 

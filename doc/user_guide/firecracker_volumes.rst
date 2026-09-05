@@ -56,6 +56,13 @@ wide NFS configuration, the required privileged operations are
 executed through ``sudo`` when needed. Exporting the same path again
 keeps the existing entry unchanged.
 
+.. note::
+
+   The export alone is not enough if a firewall is active on the
+   host, it has to allow the NFS traffic of the private firecracker
+   network as well. See :ref:`troubleshooting` for the services to
+   open up with ``firewalld``.
+
 Release a Local Path
 =====================
 

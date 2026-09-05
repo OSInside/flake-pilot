@@ -1,0 +1,316 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. Troubleshooting and Known Issues &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f93e6795" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d00bbc30"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="9. How To Build Your Own App Images" href="building_images.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">3. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">3.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">3.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">3.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">3.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">3.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">4. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">4.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">4.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">4.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">4.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">4.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">4.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">4.7. Pilot Options as Part of the Registration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">5. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">5.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">5.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">5.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">5.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">6. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">6.1. The Concept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">6.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">6.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">6.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">6.2.3. Disconnect an Application</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">6.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">7. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">7.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">7.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">7.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">7.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">7.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">8. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">8.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">8.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">8.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">8.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">9. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#examples">9.1. Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">10. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#debugging-a-flake">10.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#known-issues">10.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#selinux">10.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#firewalld">10.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#user-and-group-id-of-an-nfs-volume">10.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#feedback">10.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">10. </span>Troubleshooting and Known Issues</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="building_images.html" class="btn btn-neutral float-left" title="9. How To Build Your Own App Images" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="troubleshooting-and-known-issues">
+<span id="troubleshooting"></span><h1><span class="section-number">10. </span>Troubleshooting and Known Issues<a class="headerlink" href="#troubleshooting-and-known-issues" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter collects the switches which show what a pilot is
+doing and the issues which are known to get in the way.</p>
+</div>
+<section id="debugging-a-flake">
+<h2><span class="section-number">10.1. </span>Debugging a Flake<a class="headerlink" href="#debugging-a-flake" title="Link to this heading"></a></h2>
+<p>Both pilots report the details of their work if the following
+environment variable is set:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">PILOT_DEBUG</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>myapp
+</pre></div>
+</div>
+<p>The output shows which flake configuration was read, which engine
+command was constructed from it and, for VM applications, which
+kernel commandline and which TAP device name the instance is started
+with. This is the first thing to look at whenever an application does
+not behave as expected.</p>
+</section>
+<section id="known-issues">
+<h2><span class="section-number">10.2. </span>Known Issues<a class="headerlink" href="#known-issues" title="Link to this heading"></a></h2>
+<section id="selinux">
+<h3><span class="section-number">10.2.1. </span>selinux<a class="headerlink" href="#selinux" title="Link to this heading"></a></h3>
+<p>The security profiles of selinux often prevents operations done by
+the pilots. In case of trouble and to check if selinux might be the
+cause, try to temporarily disable selinux as follows:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>setenforce<span class="w"> </span><span class="m">0</span>
+</pre></div>
+</div>
+<p>For container based flakes, the selinux context of the container
+image might also be the cause of problems. In this case, try to run
+the container with the <code class="docutils literal notranslate"><span class="pre">--security-opt</span> <span class="pre">label=disable</span></code> option. This
+can be done by passing the following option to the flake registration
+command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>--opt<span class="w"> </span><span class="s2">"\--security-opt label=disable"</span>
+</pre></div>
+</div>
+</section>
+<section id="firewalld">
+<h3><span class="section-number">10.2.2. </span>firewalld<a class="headerlink" href="#firewalld" title="Link to this heading"></a></h3>
+<p>The NFS export created by <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">volume</span> <span class="pre">export</span></code>, see
+<a class="reference internal" href="firecracker_volumes.html#firecracker-volumes"><span class="std std-ref">Firecracker Volumes</span></a>, is of no use if the host firewall blocks
+the guest from reaching the NFS server. If <code class="docutils literal notranslate"><span class="pre">firewalld</span></code> is in use on
+the host, the mount inside of the VM fails and the application starts
+without its volumes. The services required for NFS have to be allowed
+explicitly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--add-service<span class="o">=</span>nfs
+firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--add-service<span class="o">=</span>mountd
+firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--add-service<span class="o">=</span>rpc-bind
+firewall-cmd<span class="w"> </span>--reload
+</pre></div>
+</div>
+<p>The commands require root privileges and have to be run once per
+host, the <code class="docutils literal notranslate"><span class="pre">--permanent</span></code> option keeps the setting across a reboot of
+the host and a restart of <code class="docutils literal notranslate"><span class="pre">firewalld</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>As with the network setup, see <a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>, this
+serves as an example for one firewall implementation. Please check
+which tool is managing the firewall on your host and refer to its
+documentation on how to allow the NFS traffic of the private
+firecracker network.</p>
+</div>
+</section>
+<section id="user-and-group-id-of-an-nfs-volume">
+<h3><span class="section-number">10.2.3. </span>User and Group ID of an NFS Volume<a class="headerlink" href="#user-and-group-id-of-an-nfs-volume" title="Link to this heading"></a></h3>
+<p>NFS transports the ownership of a file as numeric user and group ID,
+it does not transport the names behind them. Host and guest each
+resolve those numbers through their own user database, and the
+minimal image of a Firecracker VM usually knows nothing about the
+accounts of the host. A volume exported with
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">volume</span> <span class="pre">export</span></code>, see
+<a class="reference internal" href="firecracker_volumes.html#firecracker-volumes"><span class="std std-ref">Firecracker Volumes</span></a>, therefore shows up inside the VM owned by
+a plain number if the owning host user does not exist there, and
+every access done under a different ID than the one the files belong
+to is answered with a permission error.</p>
+<p>The application itself is started as <code class="docutils literal notranslate"><span class="pre">root</span></code> by the init process of
+the guest, and the export is written with the <code class="docutils literal notranslate"><span class="pre">no_root_squash</span></code>
+option, so <code class="docutils literal notranslate"><span class="pre">root</span></code> inside the VM is not mapped to <code class="docutils literal notranslate"><span class="pre">nobody</span></code> and can
+read and write the volume regardless of its ownership. The mismatch
+becomes visible as soon as the application runs under a user account
+of its own inside the VM, or when the files it creates should stay
+accessible to the owning user on the host, as they are created with
+the ID the process runs under.</p>
+<p>The fix is to give the VM a user with the same numeric IDs as the
+owner of the exported path on the host. Look the IDs up on the host
+first:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>stat<span class="w"> </span>-c<span class="w"> </span><span class="s1">'%u %g'</span><span class="w"> </span>/some/local/path
+</pre></div>
+</div>
+<p>For a path owned by the calling user this is the same as:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>id<span class="w"> </span>-u<span class="p">;</span><span class="w"> </span>id<span class="w"> </span>-g
+</pre></div>
+</div>
+<p>With the IDs known, create a matching group and user in the VM, e.g
+for the ID <code class="docutils literal notranslate"><span class="pre">1000</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>groupadd<span class="w"> </span>-g<span class="w"> </span><span class="m">1000</span><span class="w"> </span>myuser
+useradd<span class="w"> </span>-u<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-g<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-m<span class="w"> </span>myuser
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">-u</span></code> and <code class="docutils literal notranslate"><span class="pre">-g</span></code> options are what matters, they pin the account
+to the IDs used on the host, the name is free to choose as it never
+leaves the guest. If the group already exists under the wanted ID,
+the <code class="docutils literal notranslate"><span class="pre">groupadd</span></code> call can be left out and <code class="docutils literal notranslate"><span class="pre">useradd</span> <span class="pre">-g</span></code> points to
+the existing group. Adding the user to the image description of the
+VM, see <a class="reference internal" href="building_images.html#building-images"><span class="std std-ref">How To Build Your Own App Images</span></a>, keeps the setup in place across a
+rebuild of the image and applies to every application based on it.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only the numbers have to match, not the user names. A host user
+<code class="docutils literal notranslate"><span class="pre">tux</span></code> with the ID <code class="docutils literal notranslate"><span class="pre">1000</span></code> and a guest user <code class="docutils literal notranslate"><span class="pre">myuser</span></code> with the
+ID <code class="docutils literal notranslate"><span class="pre">1000</span></code> are the same owner as far as NFS is concerned, whereas
+two accounts of the same name with different IDs are not.</p>
+</div>
+</section>
+</section>
+<section id="feedback">
+<h2><span class="section-number">10.3. </span>Feedback<a class="headerlink" href="#feedback" title="Link to this heading"></a></h2>
+<p>Feedback is very much welcome. Please report issues and improvements
+at:</p>
+<p><a class="reference external" href="https://github.com/OSInside/flake-pilot/issues">https://github.com/OSInside/flake-pilot/issues</a></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="building_images.html" class="btn btn-neutral float-left" title="9. How To Build Your Own App Images" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on September 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,42 @@
+/* Flake Pilot user guide, small adjustments to the theme */
+
+/* The tagline below the title of the front page */
+p.rubric {
+    margin-top: 0;
+    font-size: 130%;
+    font-weight: 300;
+    color: #404040;
+    border: none;
+}
+
+/* Chapter abstracts, rendered as a hint admonition */
+.rst-content .hint {
+    background: #f5f7f9;
+    border-left: 4px solid #6ab0de;
+}
+
+.rst-content .hint .admonition-title {
+    background: #6ab0de;
+}
+
+/* Keep the architecture and topology drawings readable */
+.rst-content img {
+    max-width: 100%;
+    height: auto;
+    margin-bottom: 24px;
+}
+
+/* Inline literals like option names and paths */
+.rst-content code.literal {
+    color: #404040;
+    background: #f5f7f9;
+    border: 1px solid #e1e4e5;
+    white-space: nowrap;
+}
+
+/* Definition lists are used for option references */
+.rst-content dl:not(.docutils) dt {
+    background: #f5f7f9;
+    border-top: 2px solid #6ab0de;
+    color: #404040;
+}

@@ -1,0 +1,271 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>8. Application Setup &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f93e6795" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d00bbc30"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="9. How To Build Your Own App Images" href="building_images.html" />
+    <link rel="prev" title="7. Firecracker Volumes" href="firecracker_volumes.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">3. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">3.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">3.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">3.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">3.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">3.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">4. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">4.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">4.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">4.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">4.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">4.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">4.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">4.7. Pilot Options as Part of the Registration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">5. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">5.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">5.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">5.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">5.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">6. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">6.1. The Concept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">6.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">6.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">6.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">6.2.3. Disconnect an Application</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">6.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">7. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">7.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">7.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">7.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">7.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">7.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">8. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#listing-applications">8.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-flake-registry">8.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#removing-an-application">8.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reference-documentation">8.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">9. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#examples">9.1. Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">10. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">10.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">10.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">10.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">10.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">10.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">10.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">8. </span>Application Setup</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="firecracker_volumes.html" class="btn btn-neutral float-left" title="7. Firecracker Volumes" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="building_images.html" class="btn btn-neutral float-right" title="9. How To Build Your Own App Images" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="application-setup">
+<span id="id1"></span><h1><span class="section-number">8. </span>Application Setup<a class="headerlink" href="#application-setup" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter describes how to inspect the registered applications
+and their instances and where the configuration of a flake lives.</p>
+</div>
+<section id="listing-applications">
+<h2><span class="section-number">8.1. </span>Listing Applications<a class="headerlink" href="#listing-applications" title="Link to this heading"></a></h2>
+<p>After an application is registered, it can be listed via:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>list
+</pre></div>
+</div>
+<p>The instances created from the registered applications can be listed
+per engine via:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>show
+
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>show
+</pre></div>
+</div>
+<p>Like all <code class="docutils literal notranslate"><span class="pre">flake-ctl</span></code> commands these operate on the setup of the
+calling user, see <a class="reference internal" href="getting_started.html#getting-started"><span class="std std-ref">Getting Started</span></a>.</p>
+</section>
+<section id="the-flake-registry">
+<h2><span class="section-number">8.2. </span>The Flake Registry<a class="headerlink" href="#the-flake-registry" title="Link to this heading"></a></h2>
+<p>Each application provides a configuration below <code class="docutils literal notranslate"><span class="pre">/usr/share/flakes/</span></code>
+for system wide registration or <code class="docutils literal notranslate"><span class="pre">~/.config/flakes/</span></code> for user
+specific ones. The term <code class="docutils literal notranslate"><span class="pre">flake</span></code> is a short name for an application
+running inside an isolated environment. For the <code class="docutils literal notranslate"><span class="pre">aws</span></code> flake of
+<a class="reference internal" href="container_apps.html#container-example-aws"><span class="std std-ref">Amazon’s SDK Utility as a Container App</span></a>, the config file structure looks like the
+following:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>~/.config/flakes/
+├── aws.d
+└── aws.yaml
+</pre></div>
+</div>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">NAME.yaml</span></code></dt><dd><p>The flake configuration. It describes the image, the target
+program, the engine options and, for VM applications, the kernel
+commandline of the instance.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NAME.d</span></code></dt><dd><p>A drop-in directory. The files placed here are read in alpha sort
+order and are attached to the master <code class="docutils literal notranslate"><span class="pre">NAME.yaml</span></code> file before it
+is parsed. A setting given again replaces the one from the file
+before, which allows to extend or overrule a registration without
+editing the file written by <code class="docutils literal notranslate"><span class="pre">flake-ctl</span></code>.</p>
+</dd>
+</dl>
+<p>Both are plain text and are meant to be adjusted. A change becomes
+effective with the next call of the application, no re-registration
+is needed.</p>
+</section>
+<section id="removing-an-application">
+<h2><span class="section-number">8.3. </span>Removing an Application<a class="headerlink" href="#removing-an-application" title="Link to this heading"></a></h2>
+<p>A registration is deleted with the <code class="docutils literal notranslate"><span class="pre">remove</span></code> command of the engine
+it belongs to, e.g:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>remove<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/aws
+
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>remove<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/fireshell
+</pre></div>
+</div>
+</section>
+<section id="reference-documentation">
+<h2><span class="section-number">8.4. </span>Reference Documentation<a class="headerlink" href="#reference-documentation" title="Link to this heading"></a></h2>
+<p>Please consult the manual pages for detailed information about the
+contents of the flake setup:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">flake-ctl</span></code> and the manual page of each subcommand</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">podman-pilot</span></code> for container flakes</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">firecracker-pilot</span></code> for VM flakes</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">flake-pilot</span></code> for the registry layout and the user mode</p></li>
+</ul>
+<p>The sources of the manual pages are also available online:</p>
+<p><a class="reference external" href="https://github.com/OSInside/flake-pilot/tree/main/doc">https://github.com/OSInside/flake-pilot/tree/main/doc</a></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="firecracker_volumes.html" class="btn btn-neutral float-left" title="7. Firecracker Volumes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="building_images.html" class="btn btn-neutral float-right" title="9. How To Build Your Own App Images" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on September 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

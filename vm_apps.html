@@ -1,0 +1,314 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>5. Applications From a Virtual Machine &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f93e6795" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d00bbc30"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="6. Firecracker Networking" href="firecracker_networking.html" />
+    <link rel="prev" title="4. Applications From a Container" href="container_apps.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">3. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">3.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">3.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">3.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">3.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">3.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">4. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">4.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">4.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">4.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">4.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">4.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">4.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">4.7. Pilot Options as Part of the Registration</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">5. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#pulling-an-image">5.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-shell-as-a-firecracker-vm-app">5.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#claude-ai-as-a-firecracker-vm-app">5.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#registration-options-in-short">5.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">6. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">6.1. The Concept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">6.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">6.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">6.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">6.2.3. Disconnect an Application</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">6.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">7. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">7.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">7.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">7.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">7.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">7.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">8. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">8.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">8.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">8.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">8.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">9. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#examples">9.1. Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">10. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">10.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">10.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">10.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">10.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">10.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">10.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">5. </span>Applications From a Virtual Machine</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="container_apps.html" class="btn btn-neutral float-left" title="4. Applications From a Container" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="firecracker_networking.html" class="btn btn-neutral float-right" title="6. Firecracker Networking" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="applications-from-a-virtual-machine">
+<span id="vm-apps"></span><h1><span class="section-number">5. </span>Applications From a Virtual Machine<a class="headerlink" href="#applications-from-a-virtual-machine" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter shows how to register applications which are
+provided by a Firecracker virtual machine. All examples register
+the app for the calling user and expect the setup described in
+<a class="reference internal" href="getting_started.html#getting-started"><span class="std std-ref">Getting Started</span></a>.</p>
+</div>
+<p>Registering a VM application takes two steps: the image is pulled
+into the local firecracker registry and the application is registered
+against the name of that image.</p>
+<section id="pulling-an-image">
+<h2><span class="section-number">5.1. </span>Pulling an Image<a class="headerlink" href="#pulling-an-image" title="Link to this heading"></a></h2>
+<p>A firecracker image consists of a kernel, an initrd and a root
+filesystem. <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">pull</span></code> fetches these components
+into <code class="docutils literal notranslate"><span class="pre">/var/lib/firecracker/images/NAME</span></code> for a system wide setup, or
+into <code class="docutils literal notranslate"><span class="pre">~/.config/flakes/firecracker/images/NAME</span></code> for the setup of a
+user.</p>
+<p>The recommended form is a KIS image archive, a single archive which
+carries all components:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>pull<span class="w"> </span>--name<span class="w"> </span>leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kis-image<span class="w"> </span>https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
+</pre></div>
+</div>
+<p>An image pulled this way takes part in a checksum based update check.
+The archive has to be accompanied by a <code class="docutils literal notranslate"><span class="pre">.sha256</span></code> file at the same
+location. Pulling the same name again compares the checksums, fetches
+a new version only if they differ and leaves the registry untouched
+if the image is up to date.</p>
+</section>
+<section id="a-shell-as-a-firecracker-vm-app">
+<span id="vm-example-fireshell"></span><h2><span class="section-number">5.2. </span>A Shell as a Firecracker VM App<a class="headerlink" href="#a-shell-as-a-firecracker-vm-app" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>pull<span class="w"> </span>--name<span class="w"> </span>leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kis-image<span class="w"> </span>https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/leap.x86_64-1.15.6-0.tar.xz
+
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>register<span class="w"> </span>--vm<span class="w"> </span>leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/fireshell<span class="w"> </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span>--overlay-size<span class="w"> </span>20GiB
+
+fireshell
+</pre></div>
+</div>
+<p>This registers an app named <code class="docutils literal notranslate"><span class="pre">fireshell</span></code> to the system. Once called,
+a Firecracker VM, based on the pulled <code class="docutils literal notranslate"><span class="pre">leap</span></code> image, is started and
+drops you into a bash shell. In addition, some write space of 20GB is
+added to the instance.</p>
+<p>The registration creates no network setup. The VM boots without an
+<code class="docutils literal notranslate"><span class="pre">ip=</span></code> option on its kernel commandline, no TAP device is created
+for it and no <code class="docutils literal notranslate"><span class="pre">network-interfaces</span></code> section is passed to
+firecracker. The setup can be added later on, see
+<a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Data transfer from the virtual machine to the host is done through
+the serial console. Alternatively a vsock based communication can
+be used. To do this specify the option <code class="docutils literal notranslate"><span class="pre">--force-vsock</span></code> when
+registering the application.</p>
+</div>
+</section>
+<section id="claude-ai-as-a-firecracker-vm-app">
+<span id="vm-example-claude"></span><h2><span class="section-number">5.3. </span>Claude AI as a Firecracker VM App<a class="headerlink" href="#claude-ai-as-a-firecracker-vm-app" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>pull<span class="w"> </span>--name<span class="w"> </span>claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kis-image<span class="w"> </span>https://github.com/OSInside/flake-pilot/raw/refs/heads/main/appstore/firecracker/claude.x86_64-1.15.6-0.tar.xz
+
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>register<span class="w"> </span>--vm<span class="w"> </span>claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--overlay-size<span class="w"> </span>20GiB<span class="w"> </span>--force-vsock<span class="w"> </span>--resume
+
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>network<span class="w"> </span>init<span class="w"> </span>--outgoing-interface<span class="w"> </span>eth0
+flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>network<span class="w"> </span>add<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude
+
+claude
+</pre></div>
+</div>
+<p>This registers an app named <code class="docutils literal notranslate"><span class="pre">claude</span></code> to the system. Once called, a
+Firecracker VM, based on the pulled <code class="docutils literal notranslate"><span class="pre">claude</span></code> image, is started and
+executes the <code class="docutils literal notranslate"><span class="pre">bash</span></code> shell. The communication is vsock based and the
+VM instance is kept alive after the execution of the target program,
+which allows for further calls to the same instance.</p>
+<p>The two <code class="docutils literal notranslate"><span class="pre">network</span></code> commands connect the application to the outside
+world, they are explained in <a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>.</p>
+<p>In the shell, you can setup access to claude AI for example through
+Google Vertex AI as follows:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_VERTEX_PROJECT_ID</span><span class="o">=</span>YOUR_PROJECT_ID
+gcloud<span class="w"> </span>auth<span class="w"> </span>application-default<span class="w"> </span>login<span class="w"> </span>--project<span class="w"> </span><span class="nv">$ANTHROPIC_VERTEX_PROJECT_ID</span>
+
+claude
+</pre></div>
+</div>
+</section>
+<section id="registration-options-in-short">
+<h2><span class="section-number">5.4. </span>Registration Options in Short<a class="headerlink" href="#registration-options-in-short" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">--vm</span></code></dt><dd><p>The name of the image in the local firecracker registry, the name
+used with <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">pull</span> <span class="pre">--name</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--app</span></code> and <code class="docutils literal notranslate"><span class="pre">--target</span></code></dt><dd><p>The path of the application on the host and the program to call
+inside of the VM, like for container flakes.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--overlay-size</span></code></dt><dd><p>Size of the write space added to the instance. Optional suffixes
+are KiB/MiB/GiB/TiB (1024) or KB/MB/GB/TB (1000).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--resume</span></code></dt><dd><p>Keep the VM alive after the call. Further calls of the app are
+executed inside the running instance.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force-vsock</span></code></dt><dd><p>Use a vsock instead of the serial console to talk to the guest. In
+resume mode a vsock is always required.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--pilot-option</span></code></dt><dd><p>A runtime option of the pilot, e.g <code class="docutils literal notranslate"><span class="pre">%port:2000</span></code> to bind the
+guest to host communication of a resume flake to a port of your
+choice. The option is stored in the <code class="docutils literal notranslate"><span class="pre">pilot_options</span></code> list of the
+flake configuration and is effective on every call. The same
+option given at call time takes precedence. The option can be
+specified multiple times.</p>
+</dd>
+</dl>
+<p>See <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">flake-ctl-firecracker-register</span></code> for the complete list.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="container_apps.html" class="btn btn-neutral float-left" title="4. Applications From a Container" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="firecracker_networking.html" class="btn btn-neutral float-right" title="6. Firecracker Networking" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on September 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

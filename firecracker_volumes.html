@@ -1,0 +1,373 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>7. Firecracker Volumes &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f93e6795" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d00bbc30"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="8. Application Setup" href="application_setup.html" />
+    <link rel="prev" title="6. Firecracker Networking" href="firecracker_networking.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">3. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">3.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">3.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">3.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">3.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">3.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">4. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">4.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">4.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">4.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">4.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">4.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">4.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">4.7. Pilot Options as Part of the Registration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">5. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">5.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">5.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">5.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">5.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">6. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">6.1. The Concept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">6.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">6.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">6.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">6.2.3. Disconnect an Application</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">6.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">7. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#export-a-local-path">7.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#release-a-local-path">7.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#add-a-volume-to-an-application">7.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#remove-a-volume-from-an-application">7.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-result-in-the-flake-configuration">7.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">8. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">8.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">8.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">8.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">8.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">9. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#examples">9.1. Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">10. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">10.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">10.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">10.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">10.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">10.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">10.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">7. </span>Firecracker Volumes</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="firecracker_networking.html" class="btn btn-neutral float-left" title="6. Firecracker Networking" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="application_setup.html" class="btn btn-neutral float-right" title="8. Application Setup" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="firecracker-volumes">
+<span id="id1"></span><h1><span class="section-number">7. </span>Firecracker Volumes<a class="headerlink" href="#firecracker-volumes" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter explains how a local host path is made available
+inside of a Firecracker VM application, which commands create and
+delete that setup and how the result looks in the flake
+configuration.</p>
+</div>
+<p>A Firecracker VM has no way to share a directory with the host
+directly, unlike a container it does not use the host kernel and
+therefore cannot bind mount a host path into the guest. <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code>
+bridges this gap with NFS: a local path is exported by the host and
+mounted by the guest over the private network described in
+<a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>. The setup is created and deleted with
+the <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">volume</span></code> commands, no manual NFS
+configuration is needed.</p>
+<p>The setup works within the following requirements:</p>
+<ul class="simple">
+<li><p>The application has to be connected to the host network with
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">network</span> <span class="pre">add</span></code>, see
+<a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>. The volume setup reads the gateway
+address from that network setup.</p></li>
+<li><p>The guest needs a working network setup at boot and has to provide
+the NFS client tools, in particular the <code class="docutils literal notranslate"><span class="pre">mount.nfs</span></code> helper
+program.</p></li>
+</ul>
+<p>Managing volumes is a two step process: a local path is exported
+through NFS once, independently of any application. It is then added
+to one or more flake instances which mount it at a path of their
+choice.</p>
+<section id="export-a-local-path">
+<h2><span class="section-number">7.1. </span>Export a Local Path<a class="headerlink" href="#export-a-local-path" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--path<span class="w"> </span>/some/local/path
+</pre></div>
+</div>
+<p>Writes a <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> managed entry for the given path to
+<code class="docutils literal notranslate"><span class="pre">/etc/exports</span></code>, restricted to the private firecracker network of
+the host setup, which is <code class="docutils literal notranslate"><span class="pre">172.16.0.0/24</span></code> unless the host uses that
+network already, see <a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>. If the
+<code class="docutils literal notranslate"><span class="pre">nfs-server</span></code> systemd service is not
+running yet it is started, otherwise the export table is reloaded so
+the new export becomes effective right away.</p>
+<p>The command expects an existing directory. As it changes a system
+wide NFS configuration, the required privileged operations are
+executed through <code class="docutils literal notranslate"><span class="pre">sudo</span></code> when needed. Exporting the same path again
+keeps the existing entry unchanged.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The export alone is not enough if a firewall is active on the
+host, it has to allow the NFS traffic of the private firecracker
+network as well. See <a class="reference internal" href="troubleshooting.html#troubleshooting"><span class="std std-ref">Troubleshooting and Known Issues</span></a> for the services to
+open up with <code class="docutils literal notranslate"><span class="pre">firewalld</span></code>, and for the user and group ID the
+exported path is owned by, which the VM has to know as well to
+avoid permission problems.</p>
+</div>
+</section>
+<section id="release-a-local-path">
+<h2><span class="section-number">7.2. </span>Release a Local Path<a class="headerlink" href="#release-a-local-path" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span>release<span class="w"> </span>--path<span class="w"> </span>/some/local/path
+</pre></div>
+</div>
+<p>Removes the <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> managed NFS export entry for the given
+path from <code class="docutils literal notranslate"><span class="pre">/etc/exports</span></code> and restarts the <code class="docutils literal notranslate"><span class="pre">nfs-server</span></code> service so
+the updated export table becomes effective. Only entries previously
+managed by <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> are touched, an export created by other
+means is left in place.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Releasing a path does not check whether it is still in use by a
+flake. Remove it from every flake it was added to first, see
+below, before releasing the export.</p>
+</div>
+</section>
+<section id="add-a-volume-to-an-application">
+<h2><span class="section-number">7.3. </span>Add a Volume to an Application<a class="headerlink" href="#add-a-volume-to-an-application" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span>add<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span>--volume<span class="w"> </span>/some/local/path:/some/guest/path
+</pre></div>
+</div>
+<p>Looks up the flake configuration of the application from its path and
+writes an <code class="docutils literal notranslate"><span class="pre">nfs=</span></code> boot option to it in the form:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>nfs=172.16.0.1:/some/local/path:/some/guest/path
+</pre></div>
+</div>
+<p>The server part of the option is not configurable, it is the gateway
+address of the private network the application is connected to,
+<code class="docutils literal notranslate"><span class="pre">172.16.0.1</span></code>, read from the <code class="docutils literal notranslate"><span class="pre">rd.route=</span></code> boot option written by
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">network</span> <span class="pre">add</span></code>. This is why the network setup
+has to exist before a volume can be added.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">--volume</span></code> option can be given more than once to add several
+volumes in one call:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span>add<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--volume<span class="w"> </span>/some/local/path:/some/guest/path<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--volume<span class="w"> </span>/other/local/path:/other/guest/path
+</pre></div>
+</div>
+<p>As every instance needs its own volume setup if it should differ from
+the application, the command can be called with <code class="docutils literal notranslate"><span class="pre">--instance</span></code> as
+well:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span>add<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--volume<span class="w"> </span>/some/local/path:/some/guest/path<span class="w"> </span>--instance<span class="w"> </span>@id1
+</pre></div>
+</div>
+<p>The volume(s) of an instance take the place of the volumes configured
+for the application itself, they are not merged. Calling the
+application without the <code class="docutils literal notranslate"><span class="pre">&#64;id1</span></code> selector still mounts the volumes
+configured globally, if any.</p>
+<p>A volume is identified by its guest path: adding a volume with a
+guest path that is already configured replaces the entry, e.g to
+point it at a different local path or, after the path was exported
+again, a different server.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The command only changes the flake configuration of the
+application, no privileged operations are required. The local path
+itself still has to be exported, see above, or the mount inside of
+the guest fails.</p>
+</div>
+</section>
+<section id="remove-a-volume-from-an-application">
+<h2><span class="section-number">7.4. </span>Remove a Volume From an Application<a class="headerlink" href="#remove-a-volume-from-an-application" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>volume<span class="w"> </span>remove<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span>--volume<span class="w"> </span>/some/local/path:/some/guest/path
+</pre></div>
+</div>
+<p>Reverts what <code class="docutils literal notranslate"><span class="pre">volume</span> <span class="pre">add</span></code> has performed: the matching entry is
+deleted from the <code class="docutils literal notranslate"><span class="pre">nfs=</span></code> boot option, and the option itself is
+deleted once no volume is left. <code class="docutils literal notranslate"><span class="pre">--volume</span></code> can be repeated the same
+way as with <code class="docutils literal notranslate"><span class="pre">add</span></code>, and <code class="docutils literal notranslate"><span class="pre">--instance</span></code> removes the volume(s) of that
+instance only. A volume is matched by its host and guest path, no
+matter which server it is currently provided from.</p>
+<p>Removing a volume does not release its NFS export nor does it change
+the network setup, both may still be needed by other flakes or
+instances. Release the export explicitly once it is no longer used by
+any application.</p>
+</section>
+<section id="the-result-in-the-flake-configuration">
+<h2><span class="section-number">7.5. </span>The Result in the Flake Configuration<a class="headerlink" href="#the-result-in-the-flake-configuration" title="Link to this heading"></a></h2>
+<p>The flake configuration for the registered <code class="docutils literal notranslate"><span class="pre">claude</span></code> app from
+<a class="reference internal" href="vm_apps.html#vm-example-claude"><span class="std std-ref">Claude AI as a Firecracker VM App</span></a> can be found at:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vi<span class="w"> </span>~/.config/flakes/claude.yaml
+</pre></div>
+</div>
+<p>Adding a volume to the application and another one to its <code class="docutils literal notranslate"><span class="pre">&#64;id1</span></code>
+instance leads to the following settings, on top of the network setup
+from <a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">vm</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">firecracker</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">boot_args</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rd.route=172.16.0.1/24::eth0</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nameserver=8.8.8.8</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nfs=172.16.0.1:/some/local/path:/some/guest/path</span>
+<span class="w">      </span><span class="nt">instance</span><span class="p">:</span>
+<span class="w">        </span><span class="s">"@id1"</span><span class="p p-Indicator">:</span>
+<span class="w">          </span><span class="nt">boot_args</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nfs=172.16.0.1:/other/local/path:/other/guest/path</span>
+</pre></div>
+</div>
+<p>More than one volume of the same section is folded into a single
+<code class="docutils literal notranslate"><span class="pre">nfs=</span></code> option as a comma separated list, which is the format the
+init process of the guest, <code class="docutils literal notranslate"><span class="pre">sci</span></code>, reads the volumes from. It mounts
+each of them with <code class="docutils literal notranslate"><span class="pre">mount</span> <span class="pre">-t</span> <span class="pre">nfs</span></code> before the application is started,
+creating the guest path if it does not exist yet. A volume which
+cannot be parsed, or which fails to mount, is skipped, the remaining
+volumes are still mounted. For details refer to <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">sci</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>As with the network <code class="docutils literal notranslate"><span class="pre">instance</span></code> section, the <code class="docutils literal notranslate"><span class="pre">&#64;</span></code> character is
+reserved in YAML and the key has to be quoted. The plain name
+without the <code class="docutils literal notranslate"><span class="pre">&#64;</span></code> prefix, e.g <code class="docutils literal notranslate"><span class="pre">id1</span></code>, is accepted as a key as
+well.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="firecracker_networking.html" class="btn btn-neutral float-left" title="6. Firecracker Networking" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="application_setup.html" class="btn btn-neutral float-right" title="8. Application Setup" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on September 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

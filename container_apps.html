@@ -1,0 +1,386 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4. Applications From a Container &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f93e6795" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d00bbc30"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="5. Applications From a Virtual Machine" href="vm_apps.html" />
+    <link rel="prev" title="3. Getting Started" href="getting_started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">3. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">3.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">3.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">3.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">3.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">3.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">4. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#amazon-s-sdk-utility-as-a-container-app">4.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#an-editor-as-a-delta-container">4.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#claude-ai-as-a-container-app">4.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#engine-options">4.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#deeper-isolation-with-krun">4.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#calling-a-registered-container-app">4.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pilot-options-as-part-of-the-registration">4.7. Pilot Options as Part of the Registration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">5. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">5.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">5.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">5.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">5.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">6. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">6.1. The Concept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">6.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">6.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">6.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">6.2.3. Disconnect an Application</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">6.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">7. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">7.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">7.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">7.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">7.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">7.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">8. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">8.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">8.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">8.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">8.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">9. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#examples">9.1. Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">10. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">10.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">10.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">10.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">10.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">10.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">10.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">4. </span>Applications From a Container</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="3. Getting Started" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vm_apps.html" class="btn btn-neutral float-right" title="5. Applications From a Virtual Machine" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="applications-from-a-container">
+<span id="container-apps"></span><h1><span class="section-number">4. </span>Applications From a Container<a class="headerlink" href="#applications-from-a-container" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter shows how to register applications which are
+provided by an OCI container. All examples register the app for
+the calling user and expect the setup described in
+<a class="reference internal" href="getting_started.html#getting-started"><span class="std std-ref">Getting Started</span></a>.</p>
+</div>
+<p>A container flake is registered with <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span> <span class="pre">register</span></code>.
+The two options which are always needed are:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">--container</span></code></dt><dd><p>The name of the container as it is known in the local registry,
+the value of the <strong>REPOSITORY</strong> column of <code class="docutils literal notranslate"><span class="pre">podman</span> <span class="pre">images</span></code>. An
+image which is not there yet is pulled by the registration.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--app</span></code></dt><dd><p>The absolute path of the application on the host. This is the
+name the flake is called by, the path the symbolic link to the
+launcher is created at.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">--target</span></code> names the program to call inside of the container. If it
+is not given, the application is called with the same path it has on
+the host. Set it to <code class="docutils literal notranslate"><span class="pre">/</span></code> to use the entry point the image was built
+with.</p>
+<section id="amazon-s-sdk-utility-as-a-container-app">
+<span id="container-example-aws"></span><h2><span class="section-number">4.1. </span>Amazon’s SDK Utility as a Container App<a class="headerlink" href="#amazon-s-sdk-utility-as-a-container-app" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>--container<span class="w"> </span>docker.io/amazon/aws-cli<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/aws<span class="w"> </span>--target<span class="w"> </span>/
+
+aws<span class="w"> </span>ec2<span class="w"> </span><span class="nb">help</span>
+</pre></div>
+</div>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">$HOME/bin/aws</span></code> on your host, which actually launches
+the <code class="docutils literal notranslate"><span class="pre">amazon/aws-cli</span></code> container. The default entry point of the
+container was configured by Amazon to launch their cloud API
+application. Thus, the target program to call inside the container
+doesn’t need to be explicitly configured in the registration and is
+therefore just set to <code class="docutils literal notranslate"><span class="pre">/</span></code>. The call of <code class="docutils literal notranslate"><span class="pre">aws</span> <span class="pre">ec2</span> <span class="pre">help</span></code> launches an
+instance of the container via rootless podman and shows the help text
+for the <code class="docutils literal notranslate"><span class="pre">ec2</span></code> subcommand.</p>
+</section>
+<section id="an-editor-as-a-delta-container">
+<span id="container-example-delta"></span><h2><span class="section-number">4.2. </span>An Editor as a Delta Container<a class="headerlink" href="#an-editor-as-a-delta-container" title="Link to this heading"></a></h2>
+<p>A delta container carries only the difference to a base container.
+The base exists once on the host and is shared by all deltas built
+against it, which keeps the data to pull small:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/joe<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--container<span class="w"> </span>registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/joe<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--base<span class="w"> </span>registry.opensuse.org/home/marcus.schaefer/delta_containers/containers_tw/basesystem<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>/usr/bin/joe
+
+joe
+</pre></div>
+</div>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">$HOME/bin/joe</span></code> which is a simple but nice editor. The
+launch of the container requires a provision step in which the base
+container gets mounted and the delta container is layered on top of
+it. This action unfortunately requires root privileges and is
+forwarded to the system’s <code class="docutils literal notranslate"><span class="pre">sudo</span></code> binary.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Delta containers have to be built against the base they are used
+with. Such containers can be created with KIWI,
+see <a class="reference internal" href="building_images.html#building-images"><span class="std std-ref">How To Build Your Own App Images</span></a>. Additional layers between the base and
+the delta are registered with the <code class="docutils literal notranslate"><span class="pre">--layer</span></code> option, which can be
+given more than once and is evaluated in the order of the
+arguments.</p>
+</div>
+</section>
+<section id="claude-ai-as-a-container-app">
+<span id="container-example-claude"></span><h2><span class="section-number">4.3. </span>Claude AI as a Container App<a class="headerlink" href="#claude-ai-as-a-container-app" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>-p<span class="w"> </span>~/ai
+
+flake-ctl<span class="w"> </span>podman<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--container<span class="w"> </span>public.ecr.aws/b9k1j9y6/ai/claude:latest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--resume<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--net host"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\-ti"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--workdir %HOME/ai"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--volume %HOME/ai:%HOME/ai"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\-e HOME=%HOME"</span>
+
+claude
+</pre></div>
+</div>
+<p>This pulls the claude container from the ai space of a public ECR
+which we use to offer nightly builds of the most popular AI tools.
+The registered flake just starts an isolated shell if you call
+<code class="docutils literal notranslate"><span class="pre">claude</span></code>. Further calls of <code class="docutils literal notranslate"><span class="pre">claude</span></code> will run in the same container
+instance due to the <code class="docutils literal notranslate"><span class="pre">--resume</span></code> option. The <code class="docutils literal notranslate"><span class="pre">ai</span></code> directory is the
+only path shared from the host with the container.</p>
+</section>
+<section id="engine-options">
+<h2><span class="section-number">4.4. </span>Engine Options<a class="headerlink" href="#engine-options" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">--opt</span></code> passes an option to the container engine. The option can be
+given more than once and is written to the flake configuration:</p>
+<ul class="simple">
+<li><p>The leading backslash escapes the dash of the option so that it is
+not taken as an option of <code class="docutils literal notranslate"><span class="pre">flake-ctl</span></code> itself.</p></li>
+<li><p>A word starting with <code class="docutils literal notranslate"><span class="pre">%</span></code> is a placeholder for the environment
+variable of that name and is resolved when the app is called, not
+when it is registered. <code class="docutils literal notranslate"><span class="pre">%HOME</span></code> therefore becomes the home
+directory of the user who calls the flake. A placeholder which
+cannot be resolved is turned into the plain variable name.</p></li>
+<li><p>If no options are specified at all, the container starts with
+terminal emulation, <code class="docutils literal notranslate"><span class="pre">-ti</span></code>, and is removed after the call,
+<code class="docutils literal notranslate"><span class="pre">--rm</span></code>, unless <code class="docutils literal notranslate"><span class="pre">--resume</span></code> or <code class="docutils literal notranslate"><span class="pre">--attach</span></code> is set. As soon as
+one option is given, none of these defaults apply anymore.</p></li>
+</ul>
+</section>
+<section id="deeper-isolation-with-krun">
+<span id="krun-runtime"></span><h2><span class="section-number">4.5. </span>Deeper Isolation With krun<a class="headerlink" href="#deeper-isolation-with-krun" title="Link to this heading"></a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For deeper isolation based on a VM you can either use the
+firecracker pilot from flake-pilot or the krun runtime with podman
+which gives isolation based on KVM and should be preferred for AI
+workloads. Please make sure to install the <code class="docutils literal notranslate"><span class="pre">crun</span></code> package which
+also provides krun.</p>
+</div>
+<p>The krun OCI handler however, does not support the exec command. This
+limitation exists because libkrun runs workloads inside isolated
+microVMs, and there is no built-in mechanism or agent inside the
+lightweight virtual machine to spawn and inject new secondary
+processes. Because of this a krun based app registration cannot use
+the <strong>resume</strong> feature and looks as follows:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--container<span class="w"> </span>public.ecr.aws/b9k1j9y6/ai/claude:latest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--net host"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--runtime=krun"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\-ti"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--workdir %HOME/ai"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--volume %HOME/ai:%HOME/ai"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\-e HOME=%HOME"</span>
+</pre></div>
+</div>
+<p>To switch the podman runtime in a user or system wide scope create
+the file <code class="docutils literal notranslate"><span class="pre">/etc/containers/containers.conf</span></code> for a system wide setup
+or <code class="docutils literal notranslate"><span class="pre">$HOME/.config/containers/containers.conf</span></code> for a user specific
+setup and place the following content:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[engine]</span>
+<span class="na">runtime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"krun"</span>
+</pre></div>
+</div>
+</section>
+<section id="calling-a-registered-container-app">
+<h2><span class="section-number">4.6. </span>Calling a Registered Container App<a class="headerlink" href="#calling-a-registered-container-app" title="Link to this heading"></a></h2>
+<p>Arguments given to the app are passed on to the program inside of the
+container, with two exceptions which are read by the launcher itself:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">&#64;NAME</span></code></dt><dd><p>A selector which allows to distribute the exact same program call
+to different instances, e.g <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">&#64;id1</span></code>. This is useful for
+flakes which are not registered with <code class="docutils literal notranslate"><span class="pre">--resume</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">%OPTION</span></code></dt><dd><p>A runtime option of the pilot, e.g <code class="docutils literal notranslate"><span class="pre">%interactive</span></code> to force the
+interactive call style or <code class="docutils literal notranslate"><span class="pre">%remove</span></code> to delete an instance which
+was kept by <code class="docutils literal notranslate"><span class="pre">--resume</span></code> or <code class="docutils literal notranslate"><span class="pre">--attach</span></code>. See <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span>
+<span class="pre">podman-pilot</span></code> for the complete list.</p>
+</dd>
+</dl>
+</section>
+<section id="pilot-options-as-part-of-the-registration">
+<h2><span class="section-number">4.7. </span>Pilot Options as Part of the Registration<a class="headerlink" href="#pilot-options-as-part-of-the-registration" title="Link to this heading"></a></h2>
+<p>A pilot option which is always needed does not have to be typed at
+every call. <code class="docutils literal notranslate"><span class="pre">--pilot-option</span></code> registers it as part of the flake:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--container<span class="w"> </span>public.ecr.aws/b9k1j9y6/ai/claude:latest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--volume %HOME/ai:%HOME/ai"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--pilot-option<span class="w"> </span><span class="s2">"%ignore_missing_volume_path"</span>
+</pre></div>
+</div>
+<p>The option can be given more than once and is stored in the
+<code class="docutils literal notranslate"><span class="pre">pilot_options</span></code> list of the flake configuration:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">container</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">pilot_options</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"%ignore_missing_volume_path"</span>
+</pre></div>
+</div>
+<p>Registered options are read on every call. An option of the same
+name given at call time takes precedence over the registered one.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="3. Getting Started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vm_apps.html" class="btn btn-neutral float-right" title="5. Applications From a Virtual Machine" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on September 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

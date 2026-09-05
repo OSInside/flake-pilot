@@ -44,8 +44,10 @@ Export a Local Path
    flake-ctl firecracker volume export --path /some/local/path
 
 Writes a ``flake-pilot`` managed entry for the given path to
-``/etc/exports``, restricted to the private firecracker network
-``172.16.0.0/24``. If the ``nfs-server`` systemd service is not
+``/etc/exports``, restricted to the private firecracker network of
+the host setup, which is ``172.16.0.0/24`` unless the host uses that
+network already, see :ref:`firecracker-networking`. If the
+``nfs-server`` systemd service is not
 running yet it is started, otherwise the export table is reloaded so
 the new export becomes effective right away.
 

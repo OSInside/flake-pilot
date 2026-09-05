@@ -34,6 +34,7 @@ use std::fs;
 use std::fs::File;
 
 use crate::defaults;
+use crate::network;
 use crate::{app, app_config};
 
 use crate::fetch::{fetch_file, send_request};
@@ -690,14 +691,22 @@ pub fn run_as(program: &str, user: &str) -> Command {
     call
 }
 
-pub fn export_volume(path: &str) -> bool {
+pub fn export_volume(path: &str, usermode: bool) -> bool {
     /*!
     Export the given host path via NFS for firecracker guests
+
+    The export is limited to the private network between the
+    host and the VMs, which is the network of the host setup
+    created by 'flake-ctl firecracker network init'
     !*/
     if ! validate_volume_export_path(path, true) {
         return false
     }
-    if ! update_nfs_exports(path, true) {
+    let client_network = match network::get_client_network(usermode) {
+        Some(client_network) => client_network,
+        None => return false
+    };
+    if ! update_nfs_exports(path, Some(&client_network)) {
         return false
     }
     if nfs_server_is_running() {
@@ -714,7 +723,7 @@ pub fn release_volume(path: &str) -> bool {
     if ! validate_volume_export_path(path, false) {
         return false
     }
-    if ! update_nfs_exports(path, false) {
+    if ! update_nfs_exports(path, None) {
         return false
     }
     restart_nfs_server()
@@ -746,25 +755,31 @@ fn validate_volume_export_path(path: &str, must_exist: bool) -> bool {
     true
 }
 
-fn update_nfs_exports(path: &str, present: bool) -> bool {
+fn update_nfs_exports(path: &str, client_network: Option<&str>) -> bool {
     /*!
     Add or remove the flake-pilot managed NFS export entry
+
+    The entry is created for the given client network. Without
+    a network the entry is deleted
     !*/
     let exports = match read_nfs_exports() {
         Some(exports) => exports,
         None => return false
     };
-    let desired_entry = nfs_export_entry(path);
+    let desired_entry = client_network.map(
+        |client_network| nfs_export_entry(path, client_network)
+    );
     let managed_entries: Vec<&str> = exports.lines().filter(
         |line| is_flake_pilot_nfs_export(line, path)
     ).collect();
-    if present && managed_entries.len() == 1
-        && managed_entries[0].trim() == desired_entry
-    {
-        info!("Keeping existing NFS export for {path}");
-        return true
-    }
-    if ! present && managed_entries.is_empty() {
+    if let Some(ref desired_entry) = desired_entry {
+        if managed_entries.len() == 1
+            && managed_entries[0].trim() == *desired_entry
+        {
+            info!("Keeping existing NFS export for {path}");
+            return true
+        }
+    } else if managed_entries.is_empty() {
         info!("No flake-pilot NFS export entry found for {path}");
         return true
     }
@@ -772,11 +787,12 @@ fn update_nfs_exports(path: &str, present: bool) -> bool {
     let mut updated_lines: Vec<String> = exports.lines().filter(
         |line| ! is_flake_pilot_nfs_export(line, path)
     ).map(ToOwned::to_owned).collect();
-    if present {
-        info!("Exporting {path} through NFS...");
-        updated_lines.push(desired_entry);
-    } else {
-        info!("Releasing NFS export for {path}...");
+    match desired_entry {
+        Some(desired_entry) => {
+            info!("Exporting {path} through NFS...");
+            updated_lines.push(desired_entry);
+        },
+        None => info!("Releasing NFS export for {path}...")
     }
 
     let mut updated_exports = updated_lines.join("\n");
@@ -833,14 +849,14 @@ fn write_nfs_exports(exports: &str) -> bool {
     run_ok(&mut call, &format!("install {}", defaults::NFS_EXPORTS_FILE))
 }
 
-fn nfs_export_entry(path: &str) -> String {
+fn nfs_export_entry(path: &str, client_network: &str) -> String {
     /*!
     Provide the managed NFS export line for the given path
     !*/
     format!(
         "{} {}({}) {}",
         escape_nfs_export_path(path),
-        defaults::NFS_CLIENT_NETWORK,
+        client_network,
         defaults::NFS_EXPORT_OPTIONS,
         FLAKE_PILOT_NFS_EXPORT_MARKER
     )

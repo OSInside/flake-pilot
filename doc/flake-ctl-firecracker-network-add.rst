@@ -42,10 +42,12 @@ The command performs the following steps:
         - rd.route=172.16.0.1/24::eth0
         - nameserver=8.8.8.8
 
-   Gateway, netmask and name server are not configurable, they
-   describe the private network between the host and the VMs and
-   are compiled into the command. The address is a free address
-   of that network, see ADDRESSES below
+   Gateway and netmask describe the private network between the
+   host and the VMs. That network is the one selected with
+   **flake-ctl-firecracker-network-init**(8), the example above
+   shows the preferred network ``172.16.0.0/24``. The name server
+   is not configurable, it is compiled into the command. The
+   address is a free address of the network, see ADDRESSES below
 
 2. Create the TAP device of the application
 
@@ -77,10 +79,11 @@ As the setup changes the network configuration of the host, the
 commands are called through **sudo**. The calling user therefore
 needs the permission to run them as root.
 
-The outgoing interface is the one the host setup was created for
-with **flake-ctl-firecracker-network-init**(8). If there is no
-record of it, e.g because the host setup was created manually, the
-interface of the default route is used.
+Private network and outgoing interface are the ones the host setup
+was created for with **flake-ctl-firecracker-network-init**(8). If
+there is no record of them, e.g because the host setup was created
+manually, the interface of the default route and a free private
+network are used.
 
 The steps only take effect if the host is prepared for NAT
 networking. Please run **flake-ctl firecracker network init**
@@ -118,10 +121,12 @@ ADDRESSES
 ---------
 
 The address handed out to an application is the lowest free
-address of the ``172.16.0.0/24`` network. An address which is
-already used by another flake registration is never handed out
-twice, and an application which is already configured keeps the
-address it has.
+address of the private network of the host setup, which is
+``172.16.0.0/24`` unless the host uses that network already. An
+address which is already used by another flake registration is
+never handed out twice, and an application which is already
+configured keeps the address it has as long as it belongs to that
+network.
 
 Only registrations which can be read take part in this. In user
 mode these are the registrations of the calling user and the

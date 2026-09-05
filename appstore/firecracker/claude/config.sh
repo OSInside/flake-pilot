@@ -21,7 +21,7 @@ fi
 
 zypper ar https://download.opensuse.org/distribution/leap/16.0/repo/oss Leap
 
-npm install -g @anthropic-ai/claude-code
+npm install -g @anthropic-ai/claude-code@latest
 
 curl https://sdk.cloud.google.com > install.sh
 bash install.sh --disable-prompts --install-dir=/usr/share
@@ -47,3 +47,23 @@ cat > /etc/claude-code/managed-settings.json <<'EOF'
 }
 EOF
 chmod 0644 /etc/claude-code/managed-settings.json
+
+
+cat > /home/ai/.alias <<'EOF'
+alias ll='ls -lhv'
+EOF
+
+cat > /home/ai/.bashrc <<'EOF'
+test -s ~/.alias && . ~/.alias || true
+
+export TERM=xterm-256color
+
+source /etc/profile.d/bash-git-prompt.sh
+
+GIT_PROMPT_ONLY_IN_REPO=0
+GIT_PROMPT_THEME=Crunch
+
+export PATH="$HOME/.local/bin:$PATH"
+
+pushd /home/ai
+EOF

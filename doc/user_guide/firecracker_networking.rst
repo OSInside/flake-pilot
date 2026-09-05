@@ -33,13 +33,33 @@ The Concept
 All VM applications of a host live in one private network which does
 not exist outside of that host:
 
-* Private network: ``172.16.0.0/24``
-* Gateway, the host side of the network: ``172.16.0.1``
+* Private network: ``172.16.0.0/24`` if the host allows it, see below
+* Gateway, the host side of the network: the first address of that
+  network, e.g ``172.16.0.1``
 * Netmask: ``255.255.255.0``
 * Name server: ``8.8.8.8``
 * Name of the network interface in the guest: ``eth0``
 
-These values are compiled into ``flake-ctl`` and are not
+The private network is selected when the host is prepared with
+``flake-ctl firecracker network init``. The preferred network is
+``172.16.0.0/24``. If the host is connected to a network which
+overlaps with it, the next free ``/24`` network of the private
+address space is taken instead, in the order ``172.16.0.0`` to
+``172.31.255.0``, ``192.168.0.0`` to ``192.168.255.0`` and
+``10.0.0.0`` to ``10.255.255.0``. The networks of the host are read
+from the addresses of its interfaces and from its routing table, the
+TAP devices of the flakes are left out.
+
+The selected network is recorded along with the outgoing interface
+and a recorded network is kept as long as the host does not use it.
+Thus all applications of a host share the same network and the
+network stays the same across reboots. Only if the recorded network
+collides with a network of the host, e.g because the host was
+connected to it afterwards, ``init`` selects another one. The
+applications then have to be connected again to receive an address of
+the new network.
+
+The other values are compiled into ``flake-ctl`` and are not
 configurable. Only the address of an application is variable. It is
 assigned once, when the application is connected, and is written to
 its flake configuration. Therefore an application keeps its address
@@ -102,11 +122,12 @@ Prepare the Host
 
    flake-ctl firecracker network init --outgoing-interface eth0
 
-Enables IP forwarding and creates the NAT rules on the given
-interface, the one the traffic of the VMs leaves the host through.
-This is done once per host, and again after a reboot, not once per
-application. The interface is recorded such that the following
-commands know where to route the traffic to.
+Selects the private network of the VMs, enables IP forwarding and
+creates the NAT rules on the given interface, the one the traffic of
+the VMs leaves the host through. This is done once per host, and
+again after a reboot, not once per application. Network and interface
+are recorded such that the following commands use the same network
+and know where to route the traffic to.
 
 .. warning::
 
@@ -173,7 +194,9 @@ The flake configuration for the registered ``claude`` app from
    vi ~/.config/flakes/claude.yaml
 
 Connecting the app and its instances leads to the following network
-related settings:
+related settings. The addresses are the ones of the preferred
+network, on a host which uses ``172.16.0.0/24`` already the
+addresses of the selected network show up instead:
 
 .. code-block:: yaml
 

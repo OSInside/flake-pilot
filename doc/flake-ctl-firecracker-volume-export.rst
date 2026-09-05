@@ -23,7 +23,10 @@ DESCRIPTION
 
 Export the given absolute host path through NFS for firecracker guest
 access. The command writes a flake-pilot managed entry to
-``/etc/exports`` for the private firecracker network ``172.16.0.0/24``.
+``/etc/exports`` for the private firecracker network. That network is
+the one of the host setup created by
+**flake-ctl-firecracker-network-init**(8), which is ``172.16.0.0/24``
+unless the host uses that network already.
 
 If the ``nfs-server`` systemd service is not running yet, it is
 started. If it is already running, the export table is reloaded so the
@@ -44,6 +47,8 @@ FILES
 -----
 
 * /etc/exports
+* /etc/flakes/network.yaml
+* $HOME/.config/flakes/network.yaml
 
 EXAMPLE
 -------

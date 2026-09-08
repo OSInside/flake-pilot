@@ -57,6 +57,12 @@
         <package name="libcap-progs"/>
         <package name="ncurses-utils"/>
         <package name="patterns-openSUSE-base"/>
+        <package name="patterns-devel-C-C++-devel_C_C++"/>
+        <package name="patterns-fonts-fonts"/>
+        <package name="patterns-fonts-fonts_opt"/>
+        <package name="podman"/>
+        <package name="inkscape"/>
+        <package name="ImageMagick"/>
         <package name="systemd"/>
         <package name="bash"/>
         <package name="acl"/>

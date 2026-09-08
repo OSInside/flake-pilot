@@ -39,18 +39,19 @@
 
   <rect class="box" x="56" y="182" width="388" height="122" rx="12"/>
   <text class="monob" x="250" y="220" text-anchor="middle">flake-ctl register</text>
-  <text class="mono"  x="250" y="254" text-anchor="middle">--app /usr/bin/&lt;app&gt;</text>
+  <text class="mono"  x="250" y="254" text-anchor="middle">--app /path/to/&lt;app&gt;</text>
   <text class="mono"  x="250" y="282" text-anchor="middle">--container|--vm &lt;image&gt;</text>
 
   <path class="link" d="M 250 304 L 250 352" marker-end="url(#arrow)"/>
   <text class="tiny" x="264" y="334">creates</text>
 
   <rect class="box" x="56" y="356" width="388" height="176" rx="12"/>
-  <text class="monob" x="80" y="400">/usr/bin/&lt;app&gt;</text>
-  <text class="sub"   x="80" y="426">symbolic link to the pilot</text>
-  <line class="rule" x1="80" y1="448" x2="420" y2="448"/>
-  <text class="monob" x="80" y="490">/usr/share/flakes/&lt;app&gt;.yaml</text>
-  <text class="sub"   x="80" y="516">flake configuration</text>
+  <text class="monob" x="80" y="396">/path/to/&lt;app&gt;</text>
+  <text class="sub"   x="80" y="420">symbolic link to the pilot</text>
+  <line class="rule" x1="80" y1="440" x2="420" y2="440"/>
+  <text class="monob" x="80" y="470">/usr/share/flakes/&lt;app&gt;.yaml</text>
+  <text class="monob" x="80" y="494">~/.config/flakes/&lt;app&gt;.yaml</text>
+  <text class="sub"   x="80" y="520">flake configuration, system or user mode</text>
 
   <text class="tiny" x="250" y="574" text-anchor="middle">no application is installed on the host,</text>
   <text class="tiny" x="250" y="598" text-anchor="middle">only the link and its configuration</text>
@@ -93,7 +94,7 @@
   <text class="title" x="1148" y="222">OCI container</text>
   <text class="sub"   x="1148" y="248">run by podman</text>
   <rect class="inner" x="1080" y="270" width="340" height="48" rx="8"/>
-  <text class="mono" x="1250" y="300" text-anchor="middle">/usr/bin/&lt;app&gt;</text>
+  <text class="mono" x="1250" y="300" text-anchor="middle">/path/to/&lt;app&gt;</text>
 
   <rect class="box" x="1056" y="364" width="388" height="158" rx="12"/>
   <rect class="icon" x="1080" y="386" width="48" height="34" rx="4"/>
@@ -102,7 +103,7 @@
   <text class="title" x="1148" y="404">Firecracker VM</text>
   <text class="sub"   x="1148" y="430">run by firecracker on KVM</text>
   <rect class="inner" x="1080" y="452" width="340" height="48" rx="8"/>
-  <text class="mono" x="1250" y="482" text-anchor="middle">/usr/bin/&lt;app&gt;</text>
+  <text class="mono" x="1250" y="482" text-anchor="middle">/path/to/&lt;app&gt;</text>
 
   <text class="tiny" x="1250" y="574" text-anchor="middle">which of the two runtimes is used was</text>
   <text class="tiny" x="1250" y="598" text-anchor="middle">decided when the app was registered</text>

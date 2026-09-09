@@ -4,6 +4,7 @@ mkdir -p image
 
 podman run \
 	--privileged \
+	--pull=newer \
 	-v $HOME/.kiwi_boxes:/root/.kiwi_boxes \
 	-v $PWD:/claude.kiwi \
 	-v $PWD/image:/claude.kis \

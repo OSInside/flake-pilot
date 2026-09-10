@@ -69,9 +69,37 @@ config
   registration is preferred over the registration in the
   flakes directory of the user the instance belongs to
 
+address
+  Address of the VM in the private network between the host and
+  the VMs, see **flake-ctl-firecracker-network-add**(8). An
+  instance which is not connected to a network shows no address,
+  neither does an instance with a dynamic setup, e.g ``ip=dhcp``
+
+tap
+  Name of the TUN/TAP device the VM is connected to. This is the
+  device the traffic of the instance appears on at the host side.
+  Only shown for an instance which is connected to a network
+
+volumes
+  The NFS volumes attached to the instance, see
+  **flake-ctl-firecracker-volume-add**(8). Each volume is shown
+  in the ``SERVER:HOST_PATH:GUEST_PATH`` notation it is
+  configured in. In the table and the csv format the volumes are
+  provided as a comma separated list, the json format provides
+  them as a list of records with the ``server``, the
+  ``host_path`` and the ``guest_path`` of each volume
+
+The network and the volumes are read from the kernel commandline
+of the VM the same way **firecracker-pilot**(8) does when it
+starts the instance. For an instance called with the **@NAME**
+pilot option this includes the settings from the section of that
+instance, which take the place of the settings of the
+application.
+
 Information which cannot be read is shown as ``-`` in the table
 format, as ``null`` in the json format and as an empty field in
-the csv format.
+the csv format. An instance without volumes provides an empty
+list in the json format.
 
 Please note, a meta data file also exists for an instance which
 is no longer running. The pilots delete them when they run the

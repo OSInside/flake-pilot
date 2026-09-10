@@ -21,7 +21,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use crate::app_config::AppFireCrackerEngine;
 use crate::cli::ListFormat;
+use crate::network::{get_effective_boot_args, get_network_info, NetworkInfo};
+use crate::volume::{get_volume_info, VolumeInfo};
 use crate::{app_config, defaults, output, podman};
 use glob::glob;
 use serde::Serialize;
@@ -46,6 +49,22 @@ pub struct InstanceInfo {
     pub status: String,
     pub image: Option<String>,
     pub config: Option<String>,
+    // The setup of a VM instance is provided along with the
+    // information above, a container instance provides none
+    #[serde(flatten)]
+    pub vm: Option<VmInfo>,
+}
+
+// VmInfo is the part of a VM instance which does not exist
+// for a container instance
+#[derive(Debug, Default, Serialize)]
+pub struct VmInfo {
+    /// Network the VM is connected to. An instance which is not
+    /// connected to a network provides none
+    pub network: Option<NetworkInfo>,
+    /// NFS volumes attached to the VM, an empty list if the
+    /// instance mounts no volume
+    pub volumes: Vec<VolumeInfo>,
 }
 
 pub fn show(engine: &str, usermode: bool, format: ListFormat) {
@@ -57,7 +76,7 @@ pub fn show(engine: &str, usermode: bool, format: ListFormat) {
     match format {
         ListFormat::Table => show_as_table(engine, &instances, usermode),
         ListFormat::Json => output::print_json(&instances),
-        ListFormat::Csv => show_as_csv(&instances),
+        ListFormat::Csv => show_as_csv(engine, &instances),
     }
 }
 
@@ -108,19 +127,25 @@ fn instance_details(
     let name = instance_name(meta_file, engine)?;
     let id = read_meta_file(meta_file)?;
     let config = flake_config_file(&name, uid, usermode);
-    let mut image = None;
-    let mut runas = None;
-    if let Some(ref config_file) = config {
-        (image, runas) = flake_details(config_file, engine);
-    }
+    let FlakeDetails { image, runas, vm } = match config {
+        Some(ref config_file) => flake_details(config_file, engine, &name),
+        None => FlakeDetails::default()
+    };
     let status = if engine == defaults::PODMAN_ENGINE {
         podman_state.status(&id, uid, runas.as_deref(), config.is_some())
     } else {
         vm_status(&id)
     };
+    // Every VM instance provides a setup, no matter if its flake
+    // configuration could be read or not
+    let vm = if engine == defaults::PODMAN_ENGINE {
+        None
+    } else {
+        Some(vm.unwrap_or_default())
+    };
     Some(
         InstanceInfo {
-            name, user: user_name(uid), id, status, image, config
+            name, user: user_name(uid), id, status, image, config, vm
         }
     )
 }
@@ -231,38 +256,93 @@ fn flake_config_file(
     None
 }
 
+// FlakeDetails is the information the show command reads
+// from the configuration of a flake
+#[derive(Default)]
+struct FlakeDetails {
+    /// Name of the image the instance was created from
+    image: Option<String>,
+    /// Name of the user the engine runs as
+    runas: Option<String>,
+    /// Setup of a VM instance, None for a container instance
+    vm: Option<VmInfo>,
+}
+
 fn flake_details(
-    config_file: &str, engine: &str
-) -> (Option<String>, Option<String>) {
+    config_file: &str, engine: &str, name: &str
+) -> FlakeDetails {
     /*!
-    Read the name of the image the instance was created from
-    and the user the engine runs as from the flake config
+    Read the details of the flake the given instance belongs to
+
+    This is the name of the image the instance was created from
+    and the user the engine runs as. A VM instance also provides
+    the network and the volumes attached to it
     !*/
-    match app_config::AppConfig::init_from_file(Path::new(config_file)) {
-        Ok(app_conf) => {
-            if engine == defaults::PODMAN_ENGINE {
-                if let Some(container_conf) = app_conf.container {
-                    return (
-                        Some(container_conf.name),
-                        container_conf.runtime
-                            .and_then(|runtime| runtime.runas)
-                    )
-                }
-            } else if let Some(vm_conf) = app_conf.vm {
-                return (
-                    Some(vm_conf.name),
-                    vm_conf.runtime.and_then(|runtime| runtime.runas)
-                )
-            }
-            (None, None)
-        },
+    let mut details = FlakeDetails::default();
+    let app_conf = match app_config::AppConfig::init_from_file(
+        Path::new(config_file)
+    ) {
+        Ok(app_conf) => app_conf,
         Err(error) => {
             error!(
                 "Ignoring error on load or parse flake config {config_file}: {error:?}"
             );
-            (None, None)
+            return details
         }
+    };
+    if engine == defaults::PODMAN_ENGINE {
+        if let Some(container_conf) = app_conf.container {
+            details.image = Some(container_conf.name);
+            details.runas = container_conf.runtime
+                .and_then(|runtime| runtime.runas);
+        }
+        return details
     }
+    if let Some(vm_conf) = app_conf.vm {
+        details.image = Some(vm_conf.name);
+        let mut engine_section = None;
+        if let Some(runtime) = vm_conf.runtime {
+            details.runas = runtime.runas;
+            engine_section = runtime.firecracker;
+        }
+        details.vm = Some(vm_details(engine_section.as_ref(), name));
+    }
+    details
+}
+
+fn vm_details(
+    engine_section: Option<&AppFireCrackerEngine>, name: &str
+) -> VmInfo {
+    /*!
+    Read the network and the volumes attached to the given
+    VM instance
+
+    Both are configured as options of the kernel commandline of
+    the VM. The options which are in effect for the instance are
+    read the same way the pilot does when it creates the VM
+    !*/
+    let engine_section = match engine_section {
+        Some(engine_section) => engine_section,
+        None => return VmInfo::default()
+    };
+    let boot_args = get_effective_boot_args(
+        engine_section, instance_selector(name)
+    );
+    VmInfo {
+        network: get_network_info(&boot_args, name),
+        volumes: get_volume_info(&boot_args)
+    }
+}
+
+fn instance_selector(name: &str) -> Option<&str> {
+    /*!
+    Provide the @NAME selector the given instance was started with
+
+    The instance name is the name of the flake plus the selectors
+    the application was called with. An instance of the
+    application itself provides none
+    !*/
+    name.find('@').map(|position| &name[position..])
 }
 
 fn vm_status(vmid: &str) -> String {
@@ -440,16 +520,60 @@ fn show_as_table(engine: &str, instances: &[InstanceInfo], usermode: bool) {
     }
     let mut rows: Vec<Vec<String>> = Vec::new();
     for instance in instances {
-        rows.push(vec![
+        let mut row = vec![
             instance.name.to_string(),
             instance.user.to_string(),
             short_id(&instance.id),
             instance.status.to_string(),
             output::column_value(instance.image.as_ref()),
             output::column_value(instance.config.as_ref()),
-        ]);
+        ];
+        if engine != defaults::PODMAN_ENGINE {
+            row.extend(
+                vm_values(instance.vm.as_ref()).iter()
+                    .map(|value| output::column_value(value.as_ref()))
+            );
+        }
+        rows.push(row);
     }
-    output::print_table(&defaults::FLAKE_SHOW_COLUMNS, &rows);
+    let columns: &[&str] = if engine == defaults::PODMAN_ENGINE {
+        &defaults::FLAKE_SHOW_COLUMNS
+    } else {
+        &defaults::FLAKE_SHOW_VM_COLUMNS
+    };
+    output::print_table(columns, &rows);
+}
+
+fn vm_values(vm: Option<&VmInfo>) -> Vec<Option<String>> {
+    /*!
+    Provide the address, the TAP device and the volumes of a VM
+    instance in the order of the columns of the show command.
+    A value which is not configured is provided as None
+    !*/
+    let network = vm.and_then(|vm| vm.network.as_ref());
+    vec![
+        network.and_then(|network| network.address)
+            .map(|address| address.to_string()),
+        network.map(|network| network.tap.to_string()),
+        vm.and_then(|vm| volume_list(&vm.volumes))
+    ]
+}
+
+fn volume_list(volumes: &[VolumeInfo]) -> Option<String> {
+    /*!
+    Table representation of the volumes attached to a VM. The
+    volumes are listed the way they are configured, an instance
+    without a volume provides no value
+    !*/
+    if volumes.is_empty() {
+        return None
+    }
+    Some(
+        volumes.iter()
+            .map(VolumeInfo::to_string)
+            .collect::<Vec<String>>()
+            .join(&defaults::NFS_VOLUME_DELIMITER.to_string())
+    )
 }
 
 fn short_id(id: &str) -> String {
@@ -466,7 +590,7 @@ fn short_id(id: &str) -> String {
     }
 }
 
-fn show_as_csv(instances: &[InstanceInfo]) {
+fn show_as_csv(engine: &str, instances: &[InstanceInfo]) {
     /*!
     Print instances as comma separated values, machine readable.
     Values which could not be read from the flake config are
@@ -474,14 +598,102 @@ fn show_as_csv(instances: &[InstanceInfo]) {
     !*/
     let mut rows: Vec<Vec<String>> = Vec::new();
     for instance in instances {
-        rows.push(vec![
+        let mut row = vec![
             instance.name.to_string(),
             instance.user.to_string(),
             instance.id.to_string(),
             instance.status.to_string(),
             instance.image.as_deref().unwrap_or_default().to_string(),
             instance.config.as_deref().unwrap_or_default().to_string(),
-        ]);
+        ];
+        if engine != defaults::PODMAN_ENGINE {
+            row.extend(
+                vm_values(instance.vm.as_ref()).into_iter()
+                    .map(|value| value.unwrap_or_default())
+            );
+        }
+        rows.push(row);
     }
     output::print_csv(&rows);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::network::NetworkInfo;
+    use crate::volume::VolumeInfo;
+
+    use super::{instance_selector, vm_values, InstanceInfo, VmInfo};
+
+    fn volume(server: &str, host_path: &str, guest_path: &str) -> VolumeInfo {
+        VolumeInfo {
+            server: server.to_string(),
+            host_path: host_path.to_string(),
+            guest_path: guest_path.to_string()
+        }
+    }
+
+    fn instance_info(vm: Option<VmInfo>) -> InstanceInfo {
+        InstanceInfo {
+            name: "myapp".to_string(),
+            user: "root".to_string(),
+            id: "42".to_string(),
+            status: "running".to_string(),
+            image: Some("leap".to_string()),
+            config: Some("/usr/share/flakes/myapp.yaml".to_string()),
+            vm
+        }
+    }
+
+    #[test]
+    fn test_instance_selector() {
+        assert_eq!(None, instance_selector("myapp"));
+        assert_eq!(Some("@one"), instance_selector("myapp@one"));
+        // more than one selector is passed on as it was given
+        assert_eq!(Some("@one@two"), instance_selector("myapp@one@two"));
+    }
+
+    #[test]
+    fn test_vm_values() {
+        let vm = VmInfo {
+            network: Some(
+                NetworkInfo {
+                    address: Some("172.16.0.2".parse().unwrap()),
+                    tap: "tap-myapp".to_string()
+                }
+            ),
+            volumes: vec![
+                volume("172.16.0.1", "/host", "/guest"),
+                volume("172.16.0.1", "/other", "/mnt")
+            ]
+        };
+        assert_eq!(
+            vec![
+                Some("172.16.0.2".to_string()),
+                Some("tap-myapp".to_string()),
+                Some(
+                    "172.16.0.1:/host:/guest,172.16.0.1:/other:/mnt".to_string()
+                )
+            ],
+            vm_values(Some(&vm))
+        );
+        // a VM without a network and without volumes provides
+        // no value, the same as an instance without a config
+        assert_eq!(vec![None, None, None], vm_values(Some(&VmInfo::default())));
+        assert_eq!(vec![None, None, None], vm_values(None));
+    }
+
+    #[test]
+    fn test_serialize_instance() {
+        // the setup of a VM instance is provided along with the
+        // information all instances provide
+        let json = serde_json::to_string(
+            &instance_info(Some(VmInfo::default()))
+        ).unwrap();
+        assert!(json.contains(r#""network":null"#));
+        assert!(json.contains(r#""volumes":[]"#));
+        // a container instance provides none of it
+        let json = serde_json::to_string(&instance_info(None)).unwrap();
+        assert!(! json.contains("network"));
+        assert!(! json.contains("volumes"));
+    }
 }

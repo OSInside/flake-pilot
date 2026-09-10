@@ -90,6 +90,9 @@
         <package name="nfs-client"/>
         <package name="git"/>
         <package name="bash-git-prompt"/>
+        <package name="openssl"/>
+        <package name="libopenssl-3-devel"/>
+        <package name="libopenssl-devel"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

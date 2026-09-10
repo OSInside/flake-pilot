@@ -552,6 +552,120 @@ fn get_boot_args_address(boot_args: &[String]) -> Option<Ipv4Addr> {
         .find_map(|address| address.parse().ok())
 }
 
+// NetworkInfo is the network a VM instance is connected to
+#[derive(Debug, Serialize)]
+pub struct NetworkInfo {
+    /// Address of the VM in the private network between the host
+    /// and the VMs. A dynamic setup, e.g 'ip=dhcp', provides none
+    pub address: Option<Ipv4Addr>,
+    /// Name of the TAP device the VM is connected to
+    pub tap: String
+}
+
+pub fn get_network_info(
+    boot_args: &[String], meta_name: &str
+) -> Option<NetworkInfo> {
+    /*!
+    Provide the network of the instance with the given meta name
+
+    The network is read from the kernel commandline the pilot
+    creates the VM with. An instance which is not connected to
+    a network provides none
+    !*/
+    if ! has_network_setup(boot_args) {
+        return None
+    }
+    Some(
+        NetworkInfo {
+            address: get_boot_args_address(boot_args),
+            tap: get_tap_name(meta_name)
+        }
+    )
+}
+
+fn has_network_setup(boot_args: &[String]) -> bool {
+    /*!
+    Check if the given kernel commandline configures a network
+
+    The interface of a VM is only of use if the guest kernel is
+    told to bring it up. This is done with the 'ip=' option which
+    is written by add(). The values 'off' and 'none' explicitly
+    switch the network of the guest off and are therefore treated
+    like a missing option, the same way the pilot does
+    !*/
+    boot_args.iter()
+        .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
+        .any(|setup| setup != "off" && setup != "none")
+}
+
+pub fn get_effective_boot_args(
+    engine_section: &AppFireCrackerEngine, instance: Option<&str>
+) -> Vec<String> {
+    /*!
+    Provide the kernel commandline of the given instance
+
+    The boot_args of the engine section are the base. An option
+    which is also set in the section of the instance takes the
+    place of the global setting of the same option. Options which
+    are not set globally are appended. This is the same merge the
+    pilot performs when it creates the VM
+    !*/
+    let boot_args = engine_section.boot_args.as_deref().unwrap_or_default();
+    let instance_boot_args = instance
+        .and_then(|instance| get_instance_boot_args(engine_section, instance))
+        .unwrap_or_default();
+    if instance_boot_args.is_empty() {
+        return boot_args.to_vec()
+    }
+    let mut effective_boot_args: Vec<String> = Vec::new();
+    let mut applied: Vec<&str> = Vec::new();
+    for boot_arg in boot_args {
+        let name = boot_arg_name(boot_arg);
+        if ! instance_boot_args.iter().any(
+            |instance_boot_arg| boot_arg_name(instance_boot_arg) == name
+        ) {
+            effective_boot_args.push(boot_arg.to_string());
+            continue
+        }
+        // the instance setting(s) of this option take the place
+        // of the global setting
+        if ! applied.contains(&name) {
+            applied.push(name);
+            effective_boot_args.extend(
+                instance_boot_args.iter()
+                    .filter(
+                        |instance_boot_arg|
+                            boot_arg_name(instance_boot_arg) == name
+                    )
+                    .cloned()
+            );
+        }
+    }
+    // options which are not set globally are appended
+    for boot_arg in instance_boot_args {
+        if ! applied.contains(&boot_arg_name(boot_arg)) {
+            effective_boot_args.push(boot_arg.to_string());
+        }
+    }
+    effective_boot_args
+}
+
+pub fn get_instance_boot_args<'a>(
+    engine_section: &'a AppFireCrackerEngine, instance: &str
+) -> Option<&'a [String]> {
+    /*!
+    Provide the boot_args of the given instance
+
+    A section which is keyed with the plain NAME is accepted as
+    well, the same way the pilot reads it
+    !*/
+    let instances = engine_section.instance.as_ref()?;
+    let instance_section = instances.get(instance).or_else(
+        || instances.get(instance.trim_start_matches('@'))
+    )?;
+    instance_section.boot_args.as_deref()
+}
+
 fn get_used_addresses(usermode: bool) -> Vec<Ipv4Addr> {
     /*!
     Provide the addresses which are in use by flake registrations
@@ -1569,12 +1683,15 @@ fn run_ok(call: &mut Command, action: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::net::Ipv4Addr;
 
+    use crate::app_config::{AppFireCrackerEngine, AppFireCrackerInstance};
+
     use super::{
-        get_address_list_networks, get_free_address, get_network_candidates,
-        get_preferred_network, get_route_list_networks, select_free_network,
-        Ipv4Network
+        get_address_list_networks, get_effective_boot_args, get_free_address,
+        get_network_candidates, get_network_info, get_preferred_network,
+        get_route_list_networks, select_free_network, Ipv4Network
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -1583,6 +1700,40 @@ mod tests {
 
     fn address(address: &str) -> Ipv4Addr {
         address.parse().unwrap()
+    }
+
+    fn boot_args(boot_args: &[&str]) -> Vec<String> {
+        boot_args.iter().map(ToString::to_string).collect()
+    }
+
+    fn engine_section(
+        global: &[&str], instances: &[(&str, &[&str])]
+    ) -> AppFireCrackerEngine {
+        let mut instance_sections: HashMap<String, AppFireCrackerInstance> =
+            HashMap::new();
+        for (instance, instance_boot_args) in instances {
+            instance_sections.insert(
+                instance.to_string(),
+                AppFireCrackerInstance {
+                    boot_args: Some(boot_args(instance_boot_args))
+                }
+            );
+        }
+        AppFireCrackerEngine {
+            boot_args: Some(boot_args(global)),
+            overlay_size: None,
+            rootfs_image_path: None,
+            kernel_image_path: None,
+            initrd_path: None,
+            mem_size_mib: None,
+            vcpu_count: None,
+            cache_type: None,
+            instance: if instance_sections.is_empty() {
+                None
+            } else {
+                Some(instance_sections)
+            }
+        }
     }
 
     #[test]
@@ -1708,5 +1859,93 @@ default via 192.168.1.1 dev eth0 proto dhcp metric 100
         assert_eq!(
             vec![network("192.168.1.0/24")], get_route_list_networks(routes)
         );
+    }
+
+    #[test]
+    fn test_get_effective_boot_args_without_instance() {
+        let engine_section = engine_section(
+            &["ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"],
+            &[("@one", &["ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off"])]
+        );
+        // the setup of an instance is not in effect for the
+        // application itself
+        assert_eq!(
+            boot_args(&["ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"]),
+            get_effective_boot_args(&engine_section, None)
+        );
+        // an instance without a section of its own uses the
+        // global setup
+        assert_eq!(
+            boot_args(&["ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"]),
+            get_effective_boot_args(&engine_section, Some("@other"))
+        );
+    }
+
+    #[test]
+    fn test_get_effective_boot_args_of_instance() {
+        let engine_section = engine_section(
+            &[
+                "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off",
+                "nfs=172.16.0.1:/host:/guest",
+                "nameserver=8.8.8.8"
+            ],
+            &[(
+                "@one",
+                &[
+                    "ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off",
+                    "quiet"
+                ]
+            )]
+        );
+        // the option of the instance takes the place of the
+        // global one, options which are not set globally are
+        // appended
+        assert_eq!(
+            boot_args(&[
+                "ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off",
+                "nfs=172.16.0.1:/host:/guest",
+                "nameserver=8.8.8.8",
+                "quiet"
+            ]),
+            get_effective_boot_args(&engine_section, Some("@one"))
+        );
+    }
+
+    #[test]
+    fn test_get_effective_boot_args_of_instance_without_prefix() {
+        let engine_section = engine_section(
+            &["nfs=172.16.0.1:/host:/guest"],
+            &[("one", &["nfs=172.16.0.1:/other:/mnt"])]
+        );
+        // a section keyed with the plain name is accepted as well
+        assert_eq!(
+            boot_args(&["nfs=172.16.0.1:/other:/mnt"]),
+            get_effective_boot_args(&engine_section, Some("@one"))
+        );
+    }
+
+    #[test]
+    fn test_get_network_info() {
+        let boot_args = boot_args(&[
+            "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off",
+            "rd.route=172.16.0.1/24::eth0"
+        ]);
+        let network_info = get_network_info(&boot_args, "myapp@one").unwrap();
+        assert_eq!(Some(address("172.16.0.2")), network_info.address);
+        assert_eq!("tap-myapp_one", network_info.tap);
+    }
+
+    #[test]
+    fn test_get_network_info_without_setup() {
+        // a flake which is not connected provides no network
+        assert!(get_network_info(&boot_args(&["quiet"]), "myapp").is_none());
+        assert!(get_network_info(&boot_args(&["ip=off"]), "myapp").is_none());
+        assert!(get_network_info(&boot_args(&["ip=none"]), "myapp").is_none());
+        // a dynamic setup provides no address
+        let network_info = get_network_info(
+            &boot_args(&["ip=dhcp"]), "myapp"
+        ).unwrap();
+        assert_eq!(None, network_info.address);
+        assert_eq!("tap-myapp", network_info.tap);
     }
 }

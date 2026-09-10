@@ -21,14 +21,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt;
 use std::net::Ipv4Addr;
 
 use crate::app_config::{AppFireCrackerEngine, AppFireCrackerInstance};
 use crate::defaults;
 use crate::network::{
-    boot_arg_name, get_engine_section, get_flake_config_file, get_instance_key,
-    get_instance_name, read_flake_config, unset_boot_arg, write_flake_config
+    boot_arg_name, get_engine_section, get_flake_config_file,
+    get_instance_boot_args, get_instance_key, get_instance_name,
+    read_flake_config, unset_boot_arg, write_flake_config
 };
 
 pub fn add(
@@ -333,6 +336,60 @@ fn get_nfs_entries(boot_args: &[String]) -> Vec<String> {
         .collect()
 }
 
+// VolumeInfo is a volume attached to a VM instance
+#[derive(Debug, Serialize)]
+pub struct VolumeInfo {
+    /// Name or address of the NFS server the volume is
+    /// exported from
+    pub server: String,
+    /// Path of the volume on that server
+    pub host_path: String,
+    /// Path the volume is mounted at inside of the VM
+    pub guest_path: String
+}
+
+impl fmt::Display for VolumeInfo {
+    fn fmt(&self, format: &mut fmt::Formatter) -> fmt::Result {
+        /*!
+        Provide the volume in the notation it is configured in
+        !*/
+        write!(
+            format, "{}:{}:{}", self.server, self.host_path, self.guest_path
+        )
+    }
+}
+
+pub fn get_volume_info(boot_args: &[String]) -> Vec<VolumeInfo> {
+    /*!
+    Provide the volumes configured in the given boot_args
+
+    The volumes are read from the kernel commandline the pilot
+    creates the VM with. An entry which is not specified in the
+    'NAME_OR_IP:HOST_PATH:GUEST_PATH' format is not a volume sci
+    can mount and is therefore skipped
+    !*/
+    get_nfs_entries(boot_args).iter()
+        .filter_map(|entry| get_entry_volume_info(entry)).collect()
+}
+
+fn get_entry_volume_info(entry: &str) -> Option<VolumeInfo> {
+    /*!
+    Read the server and the paths of the given volume entry
+    !*/
+    let (server, paths) = entry.split_once(':')?;
+    let (host_path, guest_path) = paths.rsplit_once(':')?;
+    if server.is_empty() || host_path.is_empty() || guest_path.is_empty() {
+        return None
+    }
+    Some(
+        VolumeInfo {
+            server: server.to_string(),
+            host_path: host_path.to_string(),
+            guest_path: guest_path.to_string()
+        }
+    )
+}
+
 fn get_entry_paths(entry: &str) -> Option<&str> {
     /*!
     Provide the 'HOST_PATH:GUEST_PATH' pair of a volume entry
@@ -402,19 +459,6 @@ fn get_nfs_server(
     gateway
 }
 
-fn get_instance_boot_args<'a>(
-    engine_section: &'a AppFireCrackerEngine, instance: &str
-) -> Option<&'a [String]> {
-    /*!
-    Provide the boot_args of the given instance
-    !*/
-    let instances = engine_section.instance.as_ref()?;
-    let instance_section = instances.get(instance).or_else(
-        || instances.get(instance.trim_start_matches('@'))
-    )?;
-    instance_section.boot_args.as_deref()
-}
-
 fn get_boot_args_gateway(boot_args: &[String]) -> Option<Ipv4Addr> {
     /*!
     Read the gateway address from the rd.route= option
@@ -434,7 +478,7 @@ fn get_boot_args_gateway(boot_args: &[String]) -> Option<Ipv4Addr> {
 mod tests {
     use super::{
         delete_volumes, get_boot_args_gateway, get_entry_paths, get_nfs_entries,
-        get_volume, get_volumes, set_nfs_boot_arg
+        get_volume, get_volume_info, get_volumes, set_nfs_boot_arg
     };
 
     fn boot_args(boot_args: &[&str]) -> Vec<String> {
@@ -544,6 +588,26 @@ mod tests {
             &get_volumes(&boot_args(&["/host:/guest"])).unwrap()
         );
         assert_eq!(boot_args(&["nameserver=8.8.8.8"]), configured);
+    }
+
+    #[test]
+    fn test_get_volume_info() {
+        let configured = boot_args(&[
+            "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off",
+            "nfs=172.16.0.1:/host:/guest,172.16.0.1:/host:with:colon:/mnt",
+            // an entry which is no volume specification is skipped
+            "nfs=172.16.0.1:/incomplete,no_separator"
+        ]);
+        let volumes = get_volume_info(&configured);
+        assert_eq!(2, volumes.len());
+        assert_eq!("172.16.0.1", volumes[0].server);
+        assert_eq!("/host", volumes[0].host_path);
+        assert_eq!("/guest", volumes[0].guest_path);
+        assert_eq!("172.16.0.1:/host:/guest", volumes[0].to_string());
+        assert_eq!("/host:with:colon", volumes[1].host_path);
+        assert_eq!("/mnt", volumes[1].guest_path);
+        // a flake without volumes provides none
+        assert!(get_volume_info(&boot_args(&["ip=dhcp"])).is_empty());
     }
 
     #[test]

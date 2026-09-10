@@ -80,6 +80,13 @@ pub const FLAKE_LIST_NO_VALUE:&str =
     "-";
 pub const FLAKE_SHOW_COLUMNS:[&str; 6] =
     ["NAME", "USER", "ID", "STATUS", "IMAGE", "CONFIG"];
+// Columns of the show command of the firecracker engine. A VM
+// instance provides the network and the NFS volumes attached to
+// it in addition to the information all instances provide
+pub const FLAKE_SHOW_VM_COLUMNS:[&str; 9] = [
+    "NAME", "USER", "ID", "STATUS", "IMAGE", "CONFIG",
+    "ADDRESS", "TAP", "VOLUMES"
+];
 // Number of characters of the instance ID shown in the table
 // format. Like podman does, the table shows the container ID
 // abbreviated. The machine readable formats show it complete

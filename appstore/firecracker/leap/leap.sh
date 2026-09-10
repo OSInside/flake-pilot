@@ -12,6 +12,6 @@ podman run \
 	-it public.ecr.aws/b9k1j9y6/kiwi:latest \
 	system boxbuild \
 	--box tumbleweed \
-	-- \
+	kiwi \
 	--description /leap.kiwi \
 	--target-dir /leap.kis

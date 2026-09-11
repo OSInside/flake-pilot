@@ -43,6 +43,11 @@ pub const FIRECRACKER_TEMPLATE:&str =
 pub const FIRECRACKER_VSOCK_PREFIX: &str =
     "sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
+// Location the kernel reports the network interfaces of the
+// host below. A TAP device created as part of the host setup
+// with 'flake-ctl firecracker network add' shows up here
+pub const SYS_CLASS_NET: &str =
+    "/sys/class/net";
 pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
 // Port of the instance the window size of the caller's terminal

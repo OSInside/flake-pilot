@@ -216,6 +216,110 @@ pub fn remove(app: &str, instance: Option<&String>, usermode: bool) -> bool {
     true
 }
 
+// ActiveTap is a TAP device of a flake application which is
+// present on the host
+pub struct ActiveTap {
+    /// Name of the TAP device
+    pub name: String,
+    /// The '@NAME' instance selector the device was created for,
+    /// None for the device of the application itself
+    pub instance: Option<String>
+}
+
+pub fn get_active_taps(app: &str, usermode: bool) -> Vec<ActiveTap> {
+    /*!
+    Provide the TAP devices of the given flake application which
+    are present on the host
+
+    An application is connected to the host network per instance,
+    each of them through a TAP device of its own. The devices to
+    look for are therefore the one of the application itself and
+    the ones of the instances configured in its flake
+    configuration, which is the place add() records them in
+    !*/
+    let app_basename = match get_app_basename(app) {
+        Some(app_basename) => app_basename,
+        None => return Vec::new()
+    };
+    get_flake_taps(&app_basename, &get_configured_instances(app, usermode))
+        .into_iter()
+        .filter(|active_tap| tap_exists(&active_tap.name))
+        .collect()
+}
+
+fn get_flake_taps(
+    app_basename: &str, instances: &[String]
+) -> Vec<ActiveTap> {
+    /*!
+    Provide the TAP devices which belong to the given application
+    and its instances
+
+    The device of the application itself comes first, followed by
+    the devices of its instances. As an instance section of the
+    flake configuration is keyed with or without the '@' prefix,
+    the selectors are normalized before the device names are
+    constructed from them
+    !*/
+    let mut instance_names: Vec<String> = instances.iter()
+        .map(|instance| get_instance_name(instance)).collect();
+    instance_names.sort();
+    instance_names.dedup();
+
+    let mut flake_taps: Vec<ActiveTap> = vec![
+        ActiveTap { name: get_tap_name(app_basename), instance: None }
+    ];
+    for instance in instance_names {
+        let meta_name = format!("{app_basename}{instance}");
+        flake_taps.push(
+            ActiveTap {
+                name: get_tap_name(&meta_name), instance: Some(instance)
+            }
+        )
+    }
+    flake_taps
+}
+
+fn get_configured_instances(app: &str, usermode: bool) -> Vec<String> {
+    /*!
+    Provide the instance selectors which are configured in the
+    flake configuration of the given application
+
+    A configuration which does not exist or which is not a VM
+    registration provides none
+    !*/
+    let app_basename = match get_app_basename(app) {
+        Some(app_basename) => app_basename,
+        None => return Vec::new()
+    };
+    let config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    );
+    if ! Path::new(&config_file).exists() {
+        return Vec::new()
+    }
+    read_flake_config(&config_file)
+        .and_then(|yaml_config| yaml_config.vm)
+        .and_then(|vm_config| vm_config.runtime)
+        .and_then(|runtime_section| runtime_section.firecracker)
+        .and_then(|engine_section| engine_section.instance)
+        .map(|instances| instances.into_keys().collect())
+        .unwrap_or_default()
+}
+
+pub fn get_remove_command(app: &str, instance: Option<&str>) -> String {
+    /*!
+    Construct the 'flake-ctl firecracker network remove' call
+    which deletes the network setup of the given instance
+    !*/
+    let mut command = format!(
+        "flake-ctl firecracker network remove --app {app}"
+    );
+    if let Some(instance) = instance {
+        command.push_str(&format!(" --instance {instance}"));
+    }
+    command
+}
+
 // FlakeNetwork is the network identity of a flake application
 struct FlakeNetwork {
     /// Path of the flake configuration file of the application
@@ -1689,9 +1793,10 @@ mod tests {
     use crate::app_config::{AppFireCrackerEngine, AppFireCrackerInstance};
 
     use super::{
-        get_address_list_networks, get_effective_boot_args, get_free_address,
-        get_network_candidates, get_network_info, get_preferred_network,
-        get_route_list_networks, select_free_network, Ipv4Network
+        get_address_list_networks, get_effective_boot_args, get_flake_taps,
+        get_free_address, get_network_candidates, get_network_info,
+        get_preferred_network, get_remove_command, get_route_list_networks,
+        select_free_network, Ipv4Network
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -1734,6 +1839,44 @@ mod tests {
                 Some(instance_sections)
             }
         }
+    }
+
+    #[test]
+    fn test_get_flake_taps() {
+        let instances = vec![
+            "@one".to_string(), "two".to_string(), "@two".to_string()
+        ];
+        let flake_taps = get_flake_taps("myapp", &instances);
+        // the device of the application itself, followed by the
+        // devices of its instances. A section keyed with and
+        // without the '@' prefix refers to the same instance
+        assert_eq!(
+            vec!["tap-myapp", "tap-myapp_one", "tap-myapp_two"],
+            flake_taps.iter()
+                .map(|active_tap| active_tap.name.as_str())
+                .collect::<Vec<&str>>()
+        );
+        assert_eq!(
+            vec![None, Some("@one"), Some("@two")],
+            flake_taps.iter()
+                .map(|active_tap| active_tap.instance.as_deref())
+                .collect::<Vec<Option<&str>>>()
+        );
+        // an application without an instance has one device
+        assert_eq!(1, get_flake_taps("myapp", &[]).len());
+    }
+
+    #[test]
+    fn test_remove_command() {
+        assert_eq!(
+            "flake-ctl firecracker network remove --app /usr/bin/myapp",
+            get_remove_command("/usr/bin/myapp", None)
+        );
+        assert_eq!(
+            "flake-ctl firecracker network remove --app /usr/bin/myapp \
+            --instance @one",
+            get_remove_command("/usr/bin/myapp", Some("@one"))
+        );
     }
 
     #[test]

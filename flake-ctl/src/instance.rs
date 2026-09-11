@@ -116,6 +116,37 @@ pub fn instance_list(engine: &str, usermode: bool) -> Vec<InstanceInfo> {
     instances
 }
 
+pub fn running_instances(
+    engine: &str, flakes: &[String], usermode: bool
+) -> Vec<InstanceInfo> {
+    /*!
+    Provide the instances of the given flakes which are running
+
+    The instances of a flake are the application itself and the
+    ones which were started with an @NAME instance selector. An
+    instance whose status cannot be read, e.g a rootless
+    container of another user, is not reported as running
+    !*/
+    instance_list(engine, usermode).into_iter()
+        .filter(|instance| instance.status == defaults::INSTANCE_RUNNING)
+        .filter(
+            |instance| flakes.iter().any(
+                |flake| flake == flake_name(&instance.name)
+            )
+        )
+        .collect()
+}
+
+fn flake_name(instance_name: &str) -> &str {
+    /*!
+    Provide the name of the flake the given instance belongs to
+
+    The instance name is the name of the flake plus the @NAME
+    selectors the application was called with
+    !*/
+    instance_name.split('@').next().unwrap_or(instance_name)
+}
+
 fn instance_details(
     meta_file: &str, uid: u32, engine: &str, usermode: bool,
     podman_state: &mut PodmanState
@@ -240,7 +271,7 @@ fn flake_config_file(
     The flake is either registered system wide or in the flakes
     directory of the user the instance belongs to
     !*/
-    let flake = name.split('@').next().unwrap_or(name);
+    let flake = flake_name(name);
     let config_file = format!("{}/{}.yaml", get_flakes_dir(usermode), flake);
     if Path::new(&config_file).exists() {
         return Some(config_file)
@@ -622,7 +653,9 @@ mod tests {
     use crate::network::NetworkInfo;
     use crate::volume::VolumeInfo;
 
-    use super::{instance_selector, vm_values, InstanceInfo, VmInfo};
+    use super::{
+        flake_name, instance_selector, vm_values, InstanceInfo, VmInfo
+    };
 
     fn volume(server: &str, host_path: &str, guest_path: &str) -> VolumeInfo {
         VolumeInfo {
@@ -650,6 +683,13 @@ mod tests {
         assert_eq!(Some("@one"), instance_selector("myapp@one"));
         // more than one selector is passed on as it was given
         assert_eq!(Some("@one@two"), instance_selector("myapp@one@two"));
+    }
+
+    #[test]
+    fn test_flake_name() {
+        assert_eq!("myapp", flake_name("myapp"));
+        assert_eq!("myapp", flake_name("myapp@one"));
+        assert_eq!("myapp", flake_name("myapp@one@two"));
     }
 
     #[test]

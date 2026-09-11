@@ -946,6 +946,19 @@ pub fn create_firecracker_config(
         if Lookup::is_debug() {
             debug!("tap device is {tapname}");
         }
+        // Sanity check: A VM configured to use a network can only
+        // be connected to the host if its tap device exists
+        if ! tap_device_exists(&tapname) {
+            return Err(FlakeError::IOError {
+                kind: "FileNotFound".to_string(),
+                message: format!(
+                    "The flake is configured to use a network but its \
+                    tap device {tapname} does not exist. The device is \
+                    part of the host setup, please call '{}' first",
+                    get_network_add_command()
+                )
+            })
+        }
         firecracker_config.network_interfaces[0].host_dev_name = tapname;
     }
 
@@ -986,6 +999,38 @@ pub fn has_network_setup(boot_args: &[&str]) -> bool {
     boot_args.iter()
         .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
         .any(|setup| setup != "off" && setup != "none")
+}
+
+pub fn tap_device_exists(tap: &str) -> bool {
+    /*!
+    Check if the given TAP device is present on the host
+
+    The device is not created by the pilot but is part of the
+    host setup which is created with 'flake-ctl firecracker
+    network add'. All network interfaces of the host are
+    reported by the kernel below /sys/class/net
+    !*/
+    Path::new(defaults::SYS_CLASS_NET).join(tap).exists()
+}
+
+pub fn get_network_add_command() -> String {
+    /*!
+    Construct the 'flake-ctl firecracker network add' call which
+    creates the host network setup for the calling flake
+
+    Each instance of an application needs a network setup of its
+    own. Therefore the @NAME instance selector, if given, is part
+    of the call to report
+    !*/
+    let mut command = format!(
+        "flake-ctl firecracker network add --app {}",
+        config().vm.host_app_path
+    );
+    let instance_name = Lookup::get_instance_name();
+    if ! instance_name.is_empty() {
+        command.push_str(&format!(" --instance {instance_name}"));
+    }
+    command
 }
 
 pub fn get_target_app_path(program_name: &str) -> String {

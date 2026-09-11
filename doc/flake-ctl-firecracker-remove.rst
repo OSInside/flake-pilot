@@ -40,6 +40,20 @@ The command operates in two modes:
    using the specified VM. At the end also the specified
    VM will be removed from the local firecracker registry
 
+A registration which is still in use is not removed. This is the
+case if
+
+* an instance of the flake is still running, as it is shown by
+  **flake-ctl-firecracker-show**(8). The VM would stay behind
+  without the configuration it was created from. Stop the
+  instance(s) first, the registration can be removed afterwards
+
+* a TAP device of the flake is still present on the host, see
+  **flake-ctl-firecracker-network-add**(8). The device belongs to
+  the network configuration of the flake and has to be deleted
+  with **flake-ctl-firecracker-network-remove**(8) first. The
+  command reports the call to use for each of the devices
+
 OPTIONS
 -------
 

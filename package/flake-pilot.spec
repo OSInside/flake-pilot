@@ -19,7 +19,7 @@
 
 
 Name:           flake-pilot
-Version:        3.1.57
+Version:        3.1.58
 Release:        0
 Summary:        Launcher for flake applications
 License:        MIT

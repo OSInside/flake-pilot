@@ -36,6 +36,12 @@ Remove registration(s). The command operates in two modes:
    using the specified container. At the end also the specified
    container will be removed from the local podman registry
 
+A registration which is still in use is not removed. This is the
+case if an instance of the flake is still running, as it is shown
+by **flake-ctl-podman-show**(8). The container would stay behind
+without the configuration it was created from. Stop the
+instance(s) first, the registration can be removed afterwards.
+
 OPTIONS
 -------
 

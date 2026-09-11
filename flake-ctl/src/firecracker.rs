@@ -35,7 +35,7 @@ use std::fs::File;
 
 use crate::defaults;
 use crate::network;
-use crate::{app, app_config};
+use crate::app;
 
 use crate::fetch::{fetch_file, send_request};
 
@@ -1106,27 +1106,13 @@ pub fn purge_vm(vm: &str, usermode: bool) {
     to the VM. Delete all app registrations for this
     VM and also delete the VM from the local registry
     !*/
-    for app_name in app::app_names(usermode) {
-        let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(usermode), app_name
+    for registration in app::image_flakes(
+        vm, defaults::FIRECRACKER_ENGINE, usermode
+    ) {
+        app::remove(
+            &registration.host_app_path,
+            defaults::FIRECRACKER_PILOT, usermode, false, false
         );
-        match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
-            Ok(app_conf) => {
-                if let Some(ref vm_conf) = app_conf.vm {
-                    if vm == vm_conf.name {
-                        app::remove(
-                            &vm_conf.host_app_path,
-                            defaults::FIRECRACKER_PILOT, usermode, false, false
-                        );
-                    }
-                }
-            },
-            Err(error) => {
-                error!(
-                    "Ignoring error on load or parse flake config {config_file}: {error:?}"
-                );
-            }
-        };
     }
     let image_dir = get_image_dir(vm, usermode);
     match fs::remove_dir_all(&image_dir) {

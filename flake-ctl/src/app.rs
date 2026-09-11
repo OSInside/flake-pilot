@@ -23,7 +23,9 @@
 // SOFTWARE.
 //
 use crate::cli::ListFormat;
-use crate::{app_config, defaults, firecracker, output, podman};
+use crate::{
+    app_config, defaults, firecracker, instance, network, output, podman
+};
 use glob::glob;
 use serde::Serialize;
 use std::fs;
@@ -340,6 +342,132 @@ pub fn remove(
         }
     }
     true
+}
+
+// FlakeRegistration is a registered flake application as it
+// is addressed by the remove command
+pub struct FlakeRegistration {
+    /// Name of the flake, the basename of the application on
+    /// the host and the name the instances of the flake are
+    /// named after
+    pub name: String,
+    /// Path of the application on the host
+    pub host_app_path: String
+}
+
+pub fn image_flakes(
+    image: &str, engine: &str, usermode: bool
+) -> Vec<FlakeRegistration> {
+    /*!
+    Provide the flake applications which are registered with the
+    given container or VM image
+    !*/
+    let mut registrations: Vec<FlakeRegistration> = Vec::new();
+    for app_name in app_names(usermode) {
+        let config_file = format!(
+            "{}/{}.yaml", get_flakes_dir(usermode), app_name
+        );
+        let app_conf = match app_config::AppConfig::init_from_file(
+            Path::new(&config_file)
+        ) {
+            Ok(app_conf) => app_conf,
+            Err(error) => {
+                error!(
+                    "Ignoring error on load or parse flake config {config_file}: {error:?}"
+                );
+                continue
+            }
+        };
+        let host_app_path = if engine == defaults::PODMAN_ENGINE {
+            app_conf.container
+                .filter(|container_conf| container_conf.name == image)
+                .map(|container_conf| container_conf.host_app_path)
+        } else {
+            app_conf.vm
+                .filter(|vm_conf| vm_conf.name == image)
+                .map(|vm_conf| vm_conf.host_app_path)
+        };
+        if let Some(host_app_path) = host_app_path {
+            registrations.push(
+                FlakeRegistration {
+                    name: basename(&host_app_path), host_app_path
+                }
+            )
+        }
+    }
+    registrations
+}
+
+pub fn remove_allowed(
+    app: Option<&String>, image: Option<&String>, engine: &str,
+    usermode: bool
+) -> bool {
+    /*!
+    Check if the registration(s) addressed by a remove call
+    may be deleted
+
+    A registration which is still in use has to be kept. This is
+    the case if one of its instances is still running, the
+    instance would stay behind without the configuration it was
+    created from. For a VM registration the same applies to the
+    TAP devices of the host network setup. They belong to the
+    network configuration of the flake and have to be deleted
+    with 'flake-ctl firecracker network remove' first
+    !*/
+    let registrations = match (app, image) {
+        (Some(app), _) => vec![
+            FlakeRegistration {
+                name: basename(app), host_app_path: app.to_string()
+            }
+        ],
+        (None, Some(image)) => image_flakes(image, engine, usermode),
+        // Nothing is addressed, there is nothing to protect
+        (None, None) => return true
+    };
+    let mut allowed = true;
+
+    // instances which are still running
+    let flakes: Vec<String> = registrations.iter()
+        .map(|registration| registration.name.to_string()).collect();
+    let running = instance::running_instances(engine, &flakes, usermode);
+    if ! running.is_empty() {
+        error!("The following instance(s) are still running:");
+        for running_instance in &running {
+            error!(
+                "  {} of user {}", running_instance.name, running_instance.user
+            );
+        }
+        error!("Please stop them before removing the registration");
+        allowed = false
+    }
+
+    // TAP devices of the host network setup
+    if engine == defaults::FIRECRACKER_ENGINE {
+        for registration in &registrations {
+            let active_taps = network::get_active_taps(
+                &registration.host_app_path, usermode
+            );
+            if active_taps.is_empty() {
+                continue
+            }
+            error!(
+                "TAP device(s) of {} are still active:",
+                registration.host_app_path
+            );
+            for active_tap in &active_taps {
+                error!(
+                    "  {}, delete it with '{}'",
+                    active_tap.name,
+                    network::get_remove_command(
+                        &registration.host_app_path,
+                        active_tap.instance.as_deref()
+                    )
+                );
+            }
+            allowed = false
+        }
+    }
+    allowed
 }
 
 pub fn basename(program_path: &String) -> String {

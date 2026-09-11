@@ -203,6 +203,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 },
                 // remove
                 cli::Firecracker::Remove { vm, app, force } => {
+                    // Sanity check: A registration which is still
+                    // in use must not be removed
+                    if ! app::remove_allowed(
+                        app.as_ref(), vm.as_ref(),
+                        defaults::FIRECRACKER_ENGINE, user
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::FIRECRACKER_PILOT,
@@ -296,6 +304,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 },
                 // remove
                 cli::Podman::Remove { container, app, force } => {
+                    // Sanity check: A registration which is still
+                    // in use must not be removed
+                    if ! app::remove_allowed(
+                        app.as_ref(), container.as_ref(),
+                        defaults::PODMAN_ENGINE, user
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
                     if ! app.is_none() && ! app::remove(
                         app.as_ref().map(String::as_str).unwrap(),
                         defaults::PODMAN_PILOT,

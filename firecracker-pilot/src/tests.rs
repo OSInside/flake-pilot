@@ -25,6 +25,7 @@
 use crate::config::config_file;
 use crate::config::config_from_str;
 use crate::firecracker::has_network_setup;
+use crate::firecracker::tap_device_exists;
 use flakes::network::get_valid_interface_name;
 
 #[test]
@@ -175,6 +176,15 @@ fn test_network_setup_of_instance() {
     // the instance takes the place of the global ip=dhcp
     assert!(has_network_setup(&engine_section.get_boot_args("@one")));
     assert!(has_network_setup(&engine_section.get_boot_args("@two")));
+}
+
+#[test]
+fn test_tap_device_exists() {
+    // the loopback device is present on any host, a tap device
+    // which was never created by 'flake-ctl firecracker network
+    // add' is not
+    assert!(tap_device_exists("lo"));
+    assert!(! tap_device_exists("tap-does-not-exist"));
 }
 
 #[test]

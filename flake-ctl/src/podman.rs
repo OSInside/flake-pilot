@@ -28,8 +28,7 @@ use std::path::Path;
 use std::process::Command;
 use glob::glob;
 use crate::defaults;
-use crate::{app, app_config};
-use flakes::config::get_flakes_dir;
+use crate::app;
 use flakes::config::get_podman_storage_conf;
 use flakes::config::read_storage_conf;
 use uzers::{get_current_username};
@@ -200,30 +199,16 @@ pub fn purge_container(container: &str, usermode: bool) {
     container and also delete the container from the local
     registry
     !*/
-    for app_name in app::app_names(usermode) {
-        let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(usermode), app_name
+    for registration in app::image_flakes(
+        container, defaults::PODMAN_ENGINE, usermode
+    ) {
+        app::remove(
+            &registration.host_app_path,
+            defaults::PODMAN_PILOT,
+            usermode,
+            false,
+            false
         );
-        match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
-            Ok(app_conf) => {
-                if let Some(ref container_conf) = app_conf.container {
-                    if container == container_conf.name {
-                        app::remove(
-                            &container_conf.host_app_path,
-                            defaults::PODMAN_PILOT,
-                            usermode,
-                            false,
-                            false
-                        );
-                    }
-                }
-            },
-            Err(error) => {
-                error!(
-                    "Ignoring error on load or parse flake config {config_file}: {error:?}"
-                );
-            }
-        };
     }
     rm(&container.to_string(), usermode);
 }

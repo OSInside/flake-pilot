@@ -3,7 +3,10 @@ set -ex
 
 mkdir -p /root/ai
 
-echo 'export PATH=/root/.opencode/bin:$PATH' > /root/.bashrc 
+# shellcheck disable=SC2016
+echo 'export PATH=/root/.opencode/bin:$PATH' > /root/.bashrc
+
+export HOME=~
 
 curl -fsSL https://opencode.ai/install > opencode.install.sh
 bash opencode.install.sh

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<image schemaversion="7.5" name="kiwi-test-image-gemini">
+<image schemaversion="7.5" name="kiwi-test-image-claude">
     <description type="system">
         <author>Marcus Schäfer</author>
         <contact>marcus.schaefer@suse.com</contact>
-        <specification>gemini cli</specification>
+        <specification>claude cli</specification>
     </description>
     <preferences>
         <version>2.1.0</version>
@@ -14,16 +14,19 @@
         <locale>en_US</locale>
         <keytable>us</keytable>
         <type image="docker">
-            <containerconfig name="gemini"/>
+            <containerconfig name="claude"/>
         </type>
     </preferences>
     <users>
         <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
     </users>
     <repository type="rpm-md">
-        <source path="obsrepositories:/"/>
+        <source path="https://download.opensuse.org/tumbleweed/repo/oss"/>
     </repository>
     <packages type="image">
+        <package name="curl"/>
+        <package name="less"/>
+        <package name="sed"/>
         <package name="libcap-progs"/>
         <package name="ncurses-utils"/>
         <package name="patterns-openSUSE-base"/>
@@ -44,8 +47,11 @@
         <package name="openssh-server"/>
         <package name="npm-default"/>
         <package name="python3"/>
+        <package name="python3-pip"/>
         <package name="rust"/>
         <package name="cargo"/>
+        <package name="vim"/>
+        <package name="which"/>
     </packages>
     <packages type="bootstrap">
         <package name="gawk"/>

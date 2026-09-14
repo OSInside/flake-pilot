@@ -1,0 +1,28 @@
+#!/bin/bash
+
+set -ex
+
+ECR=public.ecr.aws/b9k1j9y6
+
+for entry in $(find -name appliance.kiwi);do
+    dir=$(dirname $entry | sed -e "s@\.\/@@")
+    app=$(basename $dir)
+    if [ -d "${dir}" ]; then
+        pushd $dir
+        # build
+        eval "./${app}.sh"
+        # load to local registry
+        podman load -i ./image/*.tar.xz
+        podman image prune --force
+        rm -rf image
+        # push to public registry
+        aws ecr-public --profile suse-bci get-login-password --region us-east-1 |\
+            podman login \
+                --authfile ~/.config/containers/auth.json \
+                --username AWS \
+                --password-stdin ${ECR}
+        podman push \
+            --authfile ~/.config/containers/auth.json ${app} ${ECR}/${dir}:latest
+        popd
+    fi
+done

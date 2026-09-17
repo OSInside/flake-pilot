@@ -26,12 +26,16 @@ pub const PODMAN_PILOT: &str =
     "/usr/bin/podman-pilot";
 pub const FIRECRACKER_PILOT: &str =
     "/usr/bin/firecracker-pilot";
+pub const BUBBLEWRAP_PILOT: &str =
+    "/usr/bin/bubblewrap-pilot";
 pub const PODMAN_PATH:&str =
     "/usr/bin/podman";
 pub const FLAKE_TEMPLATE_CONTAINER:&str =
     "/etc/flakes/container-flake.yaml";
 pub const FLAKE_TEMPLATE_FIRECRACKER:&str =
     "/etc/flakes/firecracker-flake.yaml";
+pub const FLAKE_TEMPLATE_BUBBLEWRAP:&str =
+    "/etc/flakes/bubblewrap-flake.yaml";
 pub const FIRECRACKER_REGISTRY_DIR:&str =
     "/var/lib/firecracker";
 // Name of the firecracker registry inside of the flakes
@@ -68,10 +72,19 @@ pub const PODMAN_STORAGE_RUNROOT_NAME:&str =
     "runroot";
 pub const PODMAN_STORAGE_DRIVER:&str =
     "overlay";
+// Prefix of the name of the container instance created by
+// 'flake-ctl podman export' to read the file system of a
+// container from. The name is completed with the process ID of
+// the running program such that exports running at the same
+// time do not use the same instance name
+pub const PODMAN_EXPORT_NAME_PREFIX:&str =
+    "flake-ctl-export-";
 pub const PODMAN_ENGINE:&str =
     "podman";
 pub const FIRECRACKER_ENGINE:&str =
     "firecracker";
+pub const BUBBLEWRAP_ENGINE:&str =
+    "bubblewrap";
 pub const FLAKE_LIST_COLUMNS:[&str; 5] =
     ["NAME", "ENGINE", "TARGET APP PATH", "HOST APP PATH", "CONFIG"];
 pub const FLAKE_LIST_COLUMN_SPACING:&str =
@@ -98,9 +111,18 @@ pub const PODMAN_ID_EXTENSION:&str =
     "cid";
 pub const FIRECRACKER_ID_EXTENSION:&str =
     "vmid";
+pub const BUBBLEWRAP_ID_EXTENSION:&str =
+    "bwrapid";
 // Name of the process a firecracker VM ID file points to
 pub const FIRECRACKER_PROCESS_NAME:&str =
     "firecracker";
+// Names of the processes a bubblewrap sandbox ID file points to.
+// The sandbox is either started directly or through sudo if the
+// registration asks for another user than the calling one
+pub const BUBBLEWRAP_PROCESS_NAME:&str =
+    "bwrap";
+pub const SUDO_PROCESS_NAME:&str =
+    "sudo";
 pub const PROC_DIR:&str =
     "/proc";
 pub const INSTANCE_RUNNING:&str =
@@ -111,6 +133,8 @@ pub const INSTANCE_UNKNOWN:&str =
     "unknown";
 pub const SHA256_TOOL:&str =
     "sha256sum";
+pub const TAR_TOOL:&str =
+    "tar";
 pub const IPTABLES_TOOL:&str =
     "iptables";
 pub const IP_TOOL:&str =

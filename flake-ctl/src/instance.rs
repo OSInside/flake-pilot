@@ -32,8 +32,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use flakes::config::{
-    get_firecracker_ids_dir, get_flakes_dir, get_podman_ids_dir,
-    read_storage_conf
+    get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_flakes_dir,
+    get_podman_ids_dir, read_storage_conf
 };
 use flakes::defaults::FLAKES_DIR_USER;
 use uzers::{get_current_uid, get_user_by_uid};
@@ -164,15 +164,17 @@ fn instance_details(
     };
     let status = if engine == defaults::PODMAN_ENGINE {
         podman_state.status(&id, uid, runas.as_deref(), config.is_some())
+    } else if engine == defaults::BUBBLEWRAP_ENGINE {
+        sandbox_status(&id)
     } else {
         vm_status(&id)
     };
     // Every VM instance provides a setup, no matter if its flake
     // configuration could be read or not
-    let vm = if engine == defaults::PODMAN_ENGINE {
-        None
-    } else {
+    let vm = if engine == defaults::FIRECRACKER_ENGINE {
         Some(vm.unwrap_or_default())
+    } else {
+        None
     };
     Some(
         InstanceInfo {
@@ -329,6 +331,14 @@ fn flake_details(
         }
         return details
     }
+    if engine == defaults::BUBBLEWRAP_ENGINE {
+        if let Some(sandbox_conf) = app_conf.sandbox {
+            details.image = Some(sandbox_conf.name);
+            details.runas = sandbox_conf.runtime
+                .and_then(|runtime| runtime.runas);
+        }
+        return details
+    }
     if let Some(vm_conf) = app_conf.vm {
         details.image = Some(vm_conf.name);
         let mut engine_section = None;
@@ -381,12 +391,37 @@ fn vm_status(vmid: &str) -> String {
     Provide the status of the VM with the given VM ID
 
     The VM ID file contains the process ID of the firecracker
-    process. A process ID of zero indicates a VM which was
+    process
+    !*/
+    process_status(vmid, &[defaults::FIRECRACKER_PROCESS_NAME])
+}
+
+fn sandbox_status(sandbox_id: &str) -> String {
+    /*!
+    Provide the status of the sandbox with the given sandbox ID
+
+    The sandbox ID file contains the process ID of the bwrap
+    process. If the sandbox is created for another user than
+    the calling one, bwrap is called through sudo and the
+    process ID belongs to that sudo call
+    !*/
+    process_status(
+        sandbox_id,
+        &[defaults::BUBBLEWRAP_PROCESS_NAME, defaults::SUDO_PROCESS_NAME]
+    )
+}
+
+fn process_status(id: &str, process_names: &[&str]) -> String {
+    /*!
+    Provide the status of the instance with the given ID
+
+    The ID is expected to be the process ID of the instance.
+    A process ID of zero indicates an instance which was
     created but never started. The name of the process is
     checked too, to not report a process which just reuses the
-    ID of an already terminated VM as running
+    ID of an already terminated instance as running
     !*/
-    let pid = match vmid.parse::<u32>() {
+    let pid = match id.parse::<u32>() {
         Ok(pid) => pid,
         Err(_) => return defaults::INSTANCE_UNKNOWN.to_string()
     };
@@ -396,7 +431,7 @@ fn vm_status(vmid: &str) -> String {
     let process_name_file = format!("{}/{}/comm", defaults::PROC_DIR, pid);
     match fs::read_to_string(process_name_file) {
         Ok(process_name) => {
-            if process_name.trim() == defaults::FIRECRACKER_PROCESS_NAME {
+            if process_names.contains(&process_name.trim()) {
                 defaults::INSTANCE_RUNNING.to_string()
             } else {
                 defaults::INSTANCE_STOPPED.to_string()
@@ -501,6 +536,8 @@ fn ids_dir(engine: &str, usermode: bool) -> String {
     !*/
     if engine == defaults::PODMAN_ENGINE {
         get_podman_ids_dir(usermode)
+    } else if engine == defaults::BUBBLEWRAP_ENGINE {
+        get_bubblewrap_ids_dir(usermode)
     } else {
         get_firecracker_ids_dir(usermode)
     }
@@ -513,6 +550,8 @@ fn id_extension(engine: &str) -> &'static str {
     !*/
     if engine == defaults::PODMAN_ENGINE {
         defaults::PODMAN_ID_EXTENSION
+    } else if engine == defaults::BUBBLEWRAP_ENGINE {
+        defaults::BUBBLEWRAP_ID_EXTENSION
     } else {
         defaults::FIRECRACKER_ID_EXTENSION
     }
@@ -559,7 +598,7 @@ fn show_as_table(engine: &str, instances: &[InstanceInfo], usermode: bool) {
             output::column_value(instance.image.as_ref()),
             output::column_value(instance.config.as_ref()),
         ];
-        if engine != defaults::PODMAN_ENGINE {
+        if engine == defaults::FIRECRACKER_ENGINE {
             row.extend(
                 vm_values(instance.vm.as_ref()).iter()
                     .map(|value| output::column_value(value.as_ref()))
@@ -567,10 +606,10 @@ fn show_as_table(engine: &str, instances: &[InstanceInfo], usermode: bool) {
         }
         rows.push(row);
     }
-    let columns: &[&str] = if engine == defaults::PODMAN_ENGINE {
-        &defaults::FLAKE_SHOW_COLUMNS
-    } else {
+    let columns: &[&str] = if engine == defaults::FIRECRACKER_ENGINE {
         &defaults::FLAKE_SHOW_VM_COLUMNS
+    } else {
+        &defaults::FLAKE_SHOW_COLUMNS
     };
     output::print_table(columns, &rows);
 }
@@ -637,7 +676,7 @@ fn show_as_csv(engine: &str, instances: &[InstanceInfo]) {
             instance.image.as_deref().unwrap_or_default().to_string(),
             instance.config.as_deref().unwrap_or_default().to_string(),
         ];
-        if engine != defaults::PODMAN_ENGINE {
+        if engine == defaults::FIRECRACKER_ENGINE {
             row.extend(
                 vm_values(instance.vm.as_ref()).into_iter()
                     .map(|value| value.unwrap_or_default())

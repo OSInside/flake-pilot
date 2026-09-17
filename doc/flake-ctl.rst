@@ -24,6 +24,7 @@ SYNOPSIS
        list         List registered container applications
        podman       Load and register OCI applications
        firecracker  Load and register VM applications
+       bubblewrap   Register applications running in a bubblewrap sandbox
 
 DESCRIPTION
 -----------
@@ -34,6 +35,7 @@ Currently supported runtime engines are:
 
 * podman
 * firecracker
+* bubblewrap
 
 An application registered via flake-ctl can be called on the host like a
 native application just by calling the name used in the
@@ -58,7 +60,7 @@ is no option to select the mode:
 SEE ALSO
 --------
 
-podman-pilot(8), flake-ctl-init(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8), flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-volume-export(8), flake-ctl-firecracker-volume-release(8), flake-ctl-firecracker-volume-add(8), flake-ctl-firecracker-volume-remove(8)
+podman-pilot(8), flake-ctl-init(8), flake-ctl-list(8), flake-ctl-podman-load(8), flake-ctl-podman-export(8), flake-ctl-podman-register(8), flake-ctl-podman-remove(8), flake-ctl-podman-show(8), firecracker-pilot(8), flake-ctl-firecracker-load(8), flake-ctl-firecracker-register(8), flake-ctl-firecracker-remove(8), flake-ctl-firecracker-show(8), flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-volume-export(8), flake-ctl-firecracker-volume-release(8), flake-ctl-firecracker-volume-add(8), flake-ctl-firecracker-volume-remove(8), bubblewrap-pilot(8), flake-ctl-bubblewrap-register(8), flake-ctl-bubblewrap-remove(8), flake-ctl-bubblewrap-show(8)
 
 AUTHOR
 ------

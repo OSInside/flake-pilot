@@ -24,7 +24,9 @@
 use crate::defaults;
 use std::fs;
 use std::path::Path;
-use flakes::config::{get_firecracker_ids_dir, get_podman_ids_dir};
+use flakes::config::{
+    get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_podman_ids_dir
+};
 use flakes::defaults::{FLAKES_CONFIG_USER, FLAKES_DIR_USER};
 use uzers::{get_current_uid, get_user_by_uid};
 use uzers::os::unix::UserExt;
@@ -96,11 +98,13 @@ fn flakes_config(flakes_dir: &str, storage_conf: &str) -> String {
     !*/
     let podman_ids_dir = get_podman_ids_dir(false);
     let firecracker_ids_dir = get_firecracker_ids_dir(false);
+    let bubblewrap_ids_dir = get_bubblewrap_ids_dir(false);
     format!(
 "generic:
   flakes_dir: {flakes_dir}
   podman_ids_dir: {podman_ids_dir}
   firecracker_ids_dir: {firecracker_ids_dir}
+  bubblewrap_ids_dir: {bubblewrap_ids_dir}
   podman_storage_conf: {storage_conf}
 "
     )

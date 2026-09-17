@@ -25,7 +25,7 @@
 use std::fs;
 use std::env;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use glob::glob;
 use crate::defaults;
 use crate::app;
@@ -114,6 +114,176 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
             .status();
     }
     status_code
+}
+
+pub fn export(
+    container: &str, directory: &str, force: bool, usermode: bool
+) -> bool {
+    /*!
+    Export the file system of the given container to a directory
+
+    An existing directory is taken as an export which was done
+    before and is left untouched. Only with force the container
+    is exported again, in this case the file system is unpacked
+    on top of the contents of that directory
+    !*/
+    let directory_exists = Path::new(directory).exists();
+    if directory_exists && ! force {
+        error!("Directory '{directory}' already exists");
+        return false
+    }
+    if ! directory_exists {
+        info!("Creating {directory}");
+        if let Err(error) = fs::create_dir_all(directory) {
+            error!("Failed to create {directory}: {error}");
+            return false
+        }
+    }
+    info!("Exporting container {container} to {directory}...");
+    let exported = export_container(container, directory, usermode);
+    if ! exported && ! directory_exists {
+        // A directory created for an export which failed must not
+        // stay behind. It would let the next call believe the
+        // container was exported already
+        if let Err(error) = fs::remove_dir_all(directory) {
+            error!("Failed to delete {directory}: {error}");
+        }
+    }
+    exported
+}
+
+fn export_container(
+    container: &str, directory: &str, usermode: bool
+) -> bool {
+    /*!
+    Create a container instance, unpack its file system into
+    the given directory and delete the instance afterwards
+    !*/
+    let instance = format!(
+        "{}{}", defaults::PODMAN_EXPORT_NAME_PREFIX, std::process::id()
+    );
+    if ! create_instance(container, &instance, usermode) {
+        return false
+    }
+    let unpacked = unpack_instance(&instance, directory, usermode);
+    // The instance only exists to provide the file system of the
+    // container to the export and is deleted in any case
+    delete_instance(&instance, usermode);
+    unpacked
+}
+
+fn create_instance(container: &str, instance: &str, usermode: bool) -> bool {
+    /*!
+    Create the container instance the export reads from
+
+    The instance is not started, it only provides the file
+    system of the container
+    !*/
+    info!("podman create --name {instance} {container}");
+    let mut call = setup_podman_call(usermode);
+    call.arg("create")
+        .arg("--name")
+        .arg(instance)
+        .arg(container)
+        .stdout(Stdio::null());
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                error!("Failed, error message(s) reported");
+                return false
+            }
+            true
+        },
+        Err(error) => {
+            error!("Failed to execute podman create: {error:?}");
+            false
+        }
+    }
+}
+
+fn unpack_instance(instance: &str, directory: &str, usermode: bool) -> bool {
+    /*!
+    Unpack the file system of the given container instance
+    into directory
+
+    'podman export' provides the file system as a tar stream
+    which is read by tar unpacking it into the directory
+    !*/
+    let tool = defaults::TAR_TOOL;
+    info!("podman export {instance} | {tool} -x -C {directory}");
+    let mut call = setup_podman_call(usermode);
+    call.arg("export")
+        .arg(instance)
+        .stdout(Stdio::piped());
+    let mut export = match call.spawn() {
+        Ok(export) => export,
+        Err(error) => {
+            error!("Failed to execute podman export: {error:?}");
+            return false
+        }
+    };
+    // The stream of the export is handed over to tar. Without it
+    // there is nothing to unpack
+    let export_stream = match export.stdout.take() {
+        Some(export_stream) => export_stream,
+        None => {
+            error!("Failed to read the output of podman export");
+            let _ = export.wait();
+            return false
+        }
+    };
+    let mut unpack = Command::new(tool);
+    unpack.arg("-x")
+        .arg("-C")
+        .arg(directory)
+        .stdin(Stdio::from(export_stream));
+    let unpack_status = match unpack.status() {
+        Ok(unpack_status) => unpack_status,
+        Err(error) => {
+            error!("Failed to execute {tool}: {error:?}");
+            // The export writes into a pipe nobody reads anymore,
+            // this lets it terminate
+            let _ = export.wait();
+            return false
+        }
+    };
+    let export_status = match export.wait() {
+        Ok(export_status) => export_status,
+        Err(error) => {
+            error!("Failed to wait for podman export: {error:?}");
+            return false
+        }
+    };
+    if ! export_status.success() {
+        error!("Failed, error message(s) reported");
+        return false
+    }
+    if ! unpack_status.success() {
+        error!("{tool} failed: {unpack_status:?}");
+        return false
+    }
+    true
+}
+
+fn delete_instance(instance: &str, usermode: bool) {
+    /*!
+    Delete the container instance created for the export
+    !*/
+    info!("podman rm {instance}");
+    let mut call = setup_podman_call(usermode);
+    call.arg("rm")
+        .arg(instance)
+        .stdout(Stdio::null());
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                error!("Failed to delete container instance {instance}");
+            }
+        },
+        Err(error) => {
+            error!("Failed to execute podman rm: {error:?}");
+        }
+    }
 }
 
 pub fn rm(container: &String, usermode: bool) {
@@ -273,4 +443,21 @@ pub fn setup_podman_call(usermode: bool) -> Command {
     }
     call.arg(defaults::PODMAN_PATH);
     call
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_export_into_existing_directory() {
+        // The export of a directory which exists is refused
+        // unless it is forced. No container is touched in
+        // this case
+        let directory = tempdir().unwrap();
+        assert!(! export(
+            "name", directory.path().to_str().unwrap(), false, true
+        ));
+    }
 }

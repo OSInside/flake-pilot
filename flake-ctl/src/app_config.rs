@@ -38,6 +38,7 @@ pub struct AppConfig {
     pub include: AppInclude,
     pub container: Option<AppContainer>,
     pub vm: Option<AppFireCracker>,
+    pub sandbox: Option<AppSandbox>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,6 +58,19 @@ pub struct AppContainerRuntime {
     pub attach: Option<bool>,
     pub pilot_options: Option<Vec<String>>,
     pub podman: Option<Vec<String>>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppSandbox {
+    pub name: String,
+    pub target_app_path: String,
+    pub host_app_path: String,
+    pub runtime: Option<AppSandboxRuntime>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppSandboxRuntime {
+    pub runas: Option<String>,
+    pub pilot_options: Option<Vec<String>>,
+    pub bubblewrap: Option<Vec<String>>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppInclude {
@@ -190,6 +204,70 @@ impl AppConfig {
             container_config.runtime.as_mut().unwrap().pilot_options = Some(
                 normalize_pilot_options(pilot_options)
             );
+        }
+
+        let config = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(config_file)
+            .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
+        serde_yaml::to_writer(config, &yaml_config).unwrap();
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_sandbox(
+        config_file: &Path,
+        rootfs: &str,
+        target_app_path: &str,
+        host_app_path: &str,
+        run_as: Option<&String>,
+        opts: Option<Vec<String>>,
+        pilot_options: Option<Vec<String>>,
+    ) -> Result<(), GenericError> {
+        /*!
+        save stores an AppConfig to the given file
+        !*/
+        let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_BUBBLEWRAP)
+            .unwrap_or_else(|_| panic!(
+                "Failed to open {}", defaults::FLAKE_TEMPLATE_BUBBLEWRAP)
+            );
+        let mut yaml_config: AppConfig =
+            serde_yaml::from_reader(template).expect(
+                "Failed to import config template"
+            );
+        let sandbox_config = yaml_config.sandbox.as_mut().unwrap();
+
+        sandbox_config.name = rootfs.to_string();
+        sandbox_config.target_app_path = target_app_path.to_string();
+        sandbox_config.host_app_path = host_app_path.to_string();
+
+        if let Some(run_as) = run_as {
+            sandbox_config.runtime.as_mut().unwrap()
+                .runas = Some(run_as.to_string());
+        }
+        if let Some(pilot_options) = &pilot_options {
+            sandbox_config.runtime.as_mut().unwrap().pilot_options = Some(
+                normalize_pilot_options(pilot_options)
+            );
+        }
+        // Custom sandbox options are added to the options provided
+        // by the template. Unlike other engines the options of the
+        // sandbox are mostly mount specifications which adds up to
+        // the standard setup of the sandbox
+        if let Some(opts) = &opts {
+            let runtime = sandbox_config.runtime.as_mut().unwrap();
+            let mut final_opts: Vec<String> = runtime.bubblewrap
+                .as_ref().cloned().unwrap_or_default();
+            for opt in opts {
+                if let Some(stripped_opt) = opt.strip_prefix('\\') {
+                    final_opts.push(stripped_opt.to_string())
+                } else {
+                    final_opts.push(opt.to_string())
+                }
+            }
+            runtime.bubblewrap = Some(final_opts);
         }
 
         let config = std::fs::OpenOptions::new()
@@ -366,5 +444,34 @@ impl AppConfig {
                 "Failed to import config file"
             );
         Ok(yaml_config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppConfig;
+
+    fn read_template(name: &str) -> AppConfig {
+        let template_file = format!(
+            "{}/template/{}", env!("CARGO_MANIFEST_DIR"), name
+        );
+        let template = std::fs::File::open(&template_file)
+            .unwrap_or_else(|_| panic!("Failed to open {template_file}"));
+        serde_yaml::from_reader(template).expect(
+            "Failed to import config template"
+        )
+    }
+
+    #[test]
+    fn test_flake_templates() {
+        // Every registration is created from a template. They
+        // have to match with the app config model, a mismatch
+        // would let the register command panic
+        assert!(read_template("container-flake.yaml").container.is_some());
+        assert!(read_template("firecracker-flake.yaml").vm.is_some());
+        let sandbox = read_template("bubblewrap-flake.yaml").sandbox.unwrap();
+        let runtime = sandbox.runtime.unwrap();
+        assert_eq!(Some("any".to_string()), runtime.runas);
+        assert_eq!(5, runtime.bubblewrap.unwrap().len());
     }
 }

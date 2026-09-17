@@ -13,6 +13,7 @@ pilots see:
 
 - man podman-pilot
 - man firecracker-pilot
+- man bubblewrap-pilot
 
 The flake registration tool `flake-ctl` is the management utility
 to list, register, remove, and-more... flake applications
@@ -45,6 +46,11 @@ FILES
        # started through the firecracker-pilot
        firecracker_ids_dir: /tmp/flakes
 
+       # Metadata directory for the bubblewrap-pilot to store
+       # sandbox PID files from the sandbox instances
+       # started through the bubblewrap-pilot
+       bubblewrap_ids_dir: /tmp/flakes
+
        # Path to the podman storage configuration file
        # this information is used by the podman-pilot to
        # launch containers with a custom storage setup
@@ -67,7 +73,7 @@ FILES
 SEE ALSO
 --------
 
-flake-ctl(8), flake-ctl-init(8), podman-pilot(8), firecracker-pilot(8)
+flake-ctl(8), flake-ctl-init(8), podman-pilot(8), firecracker-pilot(8), bubblewrap-pilot(8)
 
 AUTHOR
 ------

@@ -46,6 +46,11 @@ pub enum Commands {
         #[clap(subcommand)]
         command: Firecracker,
     },
+    /// Register applications running in a bubblewrap sandbox
+    Bubblewrap {
+        #[clap(subcommand)]
+        command: Bubblewrap,
+    },
     /// Create the setup to run flake applications
     Init {
         /// Create the configuration files from scratch, even if
@@ -344,6 +349,85 @@ pub enum Volume {
 }
 
 #[derive(Subcommand)]
+pub enum Bubblewrap {
+    /// Register sandbox application
+    Register {
+        /// An absolute path to the root filesystem tree on the
+        /// host. The tree is mounted as the read-only layer of
+        /// an overlay which becomes the root filesystem of the
+        /// sandbox the application runs in
+        #[clap(long)]
+        rootfs: String,
+
+        /// An absolute path to the application on the host.
+        /// If not specified via the target option, the
+        /// application will be called with that path inside
+        /// of the sandbox.
+        #[clap(long)]
+        app: String,
+
+        /// An absolute path to the application in the sandbox.
+        /// Use this option if the application path on the host
+        /// should be different to the application path inside
+        /// of the sandbox.
+        #[clap(long)]
+        target: Option<String>,
+
+        /// Name of the user to run bubblewrap. If not specified
+        /// the sandbox is created by the user calling the
+        /// application. Any other user requires the permission
+        /// to call sudo
+        #[clap(long)]
+        run_as: Option<String>,
+
+        /// Sandbox runtime option, and optional value, used to
+        /// create the sandbox, e.g "--ro-bind /etc/hosts /etc/hosts".
+        /// The options are passed to the bwrap call in addition to
+        /// the default options of the sandbox. This option can be
+        /// specified multiple times.
+        #[clap(long, multiple = true)]
+        opt: Option<Vec<String>>,
+
+        /// Pilot option, and optional value, in the format
+        /// %name or %name:value. Pilot options are not passed
+        /// to the application call but control the behavior of
+        /// bubblewrap-pilot. An option registered here is always
+        /// effective and does not have to be given at call time.
+        /// This option can be specified multiple times. For the
+        /// list of available pilot options please consult the
+        /// bubblewrap-pilot manual page.
+        #[clap(long, multiple = true)]
+        pilot_option: Option<Vec<String>>,
+
+        /// Force writing the registration even if a registration
+        /// of the same name already exists
+        #[clap(long)]
+        force: bool,
+    },
+    /// Show sandbox instances
+    Show {
+        /// Output format. The table format is meant for humans,
+        /// the json and csv formats are meant to be parsed by
+        /// scripts and other programs
+        #[clap(long, arg_enum, value_name = "FORMAT", default_value = "table")]
+        format: ListFormat,
+    },
+    /// Remove application registration
+    Remove {
+        /// Application absolute path to be removed from host
+        #[clap(long)]
+        app: String,
+
+        /// Force removing the registration, do not raise an
+        /// error if no registration exists. Do not apply
+        /// the check for a flake registered app and remove
+        /// when present. Use with care !
+        #[clap(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum Podman {
     /// Pull container
     Pull {
@@ -359,6 +443,25 @@ pub enum Podman {
         /// image if there is a match
         #[clap(long)]
         oci: String,
+    },
+    /// Export container to directory
+    Export {
+        /// A container name. The name must match with a
+        /// name in the local podman registry
+        #[clap(long)]
+        container: String,
+
+        /// Path to the directory the file system of the
+        /// container is exported to. The directory is
+        /// created if it does not exist yet
+        #[clap(long)]
+        directory: String,
+
+        /// Export the container even if the given directory
+        /// exists. The file system of the container is
+        /// unpacked on top of the contents of that directory
+        #[clap(long)]
+        force: bool,
     },
     /// Show container instances
     Show {

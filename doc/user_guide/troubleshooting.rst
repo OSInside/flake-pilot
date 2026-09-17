@@ -12,7 +12,7 @@ Troubleshooting and Known Issues
 Debugging a Flake
 =================
 
-Both pilots report the details of their work if the following
+All pilots report the details of their work if the following
 environment variable is set:
 
 .. code-block:: bash
@@ -23,7 +23,10 @@ The output shows which flake configuration was read, which engine
 command was constructed from it and, for VM applications, which
 kernel commandline and which TAP device name the instance is started
 with. This is the first thing to look at whenever an application does
-not behave as expected.
+not behave as expected. For a sandbox flake the constructed ``bwrap``
+call also shows the complete list of mounts the application is given,
+which is usually what a missing file inside the sandbox comes down
+to.
 
 Known Issues
 ============

@@ -223,6 +223,61 @@ pub fn create_vm_config(
     }
 }
 
+pub fn create_sandbox_config(
+    rootfs: &str,
+    app: Option<&String>,
+    target: Option<&String>,
+    run_as: Option<&String>,
+    opts: Option<Vec<String>>,
+    pilot_options: Option<Vec<String>>,
+    usermode: bool,
+) -> bool {
+    /*!
+    Create app configuration for the bubblewrap engine.
+
+    Create an app configuration file as get_flakes_dir()/app.yaml
+    containing the required information to launch the
+    application inside of a bubblewrap sandbox.
+    !*/
+    if ! rootfs.starts_with('/') {
+        error!("Rootfs {rootfs:?} must be specified with an absolute path");
+        return false;
+    }
+    if ! Path::new(rootfs).is_dir() {
+        // The rootfs is expected to exist at call time of the
+        // application. Registering it ahead of its creation is
+        // allowed but most probably a typo
+        warn!("Rootfs {rootfs} does not exist or is not a directory");
+    }
+    let host_app_path = app.unwrap();
+    let target_app_path = target.unwrap_or(host_app_path);
+    let app_basename = Path::new(host_app_path)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let app_config_file = format!(
+        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    );
+    match app_config::AppConfig::save_sandbox(
+        Path::new(&app_config_file),
+        rootfs,
+        target_app_path,
+        host_app_path,
+        run_as,
+        opts,
+        pilot_options,
+    ) {
+        Ok(_) => true,
+        Err(error) => {
+            error!(
+                "Failed to create AppConfig {app_config_file}: {error:?}"
+            );
+            false
+        }
+    }
+}
+
 pub fn remove(
     app: &str, engine: &str, usermode: bool, silent: bool, force: bool
 ) -> bool {
@@ -570,6 +625,12 @@ pub fn app_list(usermode: bool) -> Vec<FlakeInfo> {
             flake.target = Some(vm_conf.target_app_path.to_string());
             flake.host_app_path = Some(
                 vm_conf.host_app_path.to_string()
+            );
+        } else if let Some(ref sandbox_conf) = details.sandbox {
+            flake.engine = Some(defaults::BUBBLEWRAP_ENGINE.to_string());
+            flake.target = Some(sandbox_conf.target_app_path.to_string());
+            flake.host_app_path = Some(
+                sandbox_conf.host_app_path.to_string()
             );
         }
         flakes.push(flake);

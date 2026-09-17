@@ -38,6 +38,7 @@ sourcetar:
 	cp -a completion package/flake-pilot/
 	cp -a common package/flake-pilot/
 	cp -a podman-pilot package/flake-pilot/
+	cp -a bubblewrap-pilot package/flake-pilot/
 	cp -a flake-ctl package/flake-pilot/
 	cp -a firecracker-pilot package/flake-pilot/
 	cp -a doc package/flake-pilot/
@@ -60,11 +61,13 @@ compile_sci_static:
 clean:
 	cd common && cargo -v clean
 	cd podman-pilot && cargo -v clean
+	cd bubblewrap-pilot && cargo -v clean
 	cd firecracker-pilot && cargo -v clean
 	cd flake-ctl && cargo -v clean
 	cd firecracker-pilot/guestvm-tools/sci && cargo -v clean
 	rm -rf common/vendor
 	rm -rf podman-pilot/vendor
+	rm -rf bubblewrap-pilot/vendor
 	rm -rf flake-ctl/vendor
 	rm -rf firecracker-pilot/guestvm-tools/sci/vendor
 	rm -rf package/build
@@ -87,12 +90,16 @@ install:
 		$(DESTDIR)$(BINDIR)/podman-pilot
 	install -m 755 target/release/firecracker-pilot \
 		$(DESTDIR)$(BINDIR)/firecracker-pilot
+	install -m 755 target/release/bubblewrap-pilot \
+		$(DESTDIR)$(BINDIR)/bubblewrap-pilot
 	install -m 755 target/release/flake-ctl \
 		$(DESTDIR)$(BINDIR)/flake-ctl
 	install -m 644 flake-ctl/template/container-flake.yaml \
 		$(DESTDIR)$(TEMPLATEDIR)/container-flake.yaml
 	install -m 644 flake-ctl/template/firecracker-flake.yaml \
 		$(DESTDIR)$(TEMPLATEDIR)/firecracker-flake.yaml
+	install -m 644 flake-ctl/template/bubblewrap-flake.yaml \
+		$(DESTDIR)$(TEMPLATEDIR)/bubblewrap-flake.yaml
 	install -m 644 firecracker-pilot/template/firecracker.json \
 		$(DESTDIR)$(TEMPLATEDIR)/firecracker.json
 	install -m 644 podman-pilot/registry/storage.conf \
@@ -115,6 +122,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/flake-ctl
 	rm -f $(DESTDIR)$(BINDIR)/podman-pilot
 	rm -f $(DESTDIR)$(BINDIR)/firecracker-pilot
+	rm -f $(DESTDIR)$(BINDIR)/bubblewrap-pilot
 	rm -rf $(DESTDIR)$(SHAREDIR) $(DESTDIR)$(TEMPLATEDIR)
 
 man:

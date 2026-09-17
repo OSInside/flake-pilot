@@ -27,6 +27,8 @@ per engine via:
 
    flake-ctl firecracker show
 
+   flake-ctl bubblewrap show
+
 Like all ``flake-ctl`` commands these operate on the setup of the
 calling user, see :ref:`getting-started`.
 
@@ -47,9 +49,10 @@ following:
    └── aws.yaml
 
 ``NAME.yaml``
-   The flake configuration. It describes the image, the target
-   program, the engine options and, for VM applications, the kernel
-   commandline of the instance.
+   The flake configuration. It describes the image or, for sandbox
+   applications, the root filesystem tree, the target program, the
+   engine options and, for VM applications, the kernel commandline of
+   the instance.
 
 ``NAME.d``
    A drop-in directory. The files placed here are read in alpha sort
@@ -74,6 +77,8 @@ it belongs to, e.g:
 
    flake-ctl firecracker remove --app $HOME/bin/fireshell
 
+   flake-ctl bubblewrap remove --app $HOME/bin/leapshell
+
 Reference Documentation
 =======================
 
@@ -83,6 +88,7 @@ contents of the flake setup:
 * ``man 8 flake-ctl`` and the manual page of each subcommand
 * ``man 8 podman-pilot`` for container flakes
 * ``man 8 firecracker-pilot`` for VM flakes
+* ``man 8 bubblewrap-pilot`` for sandbox flakes
 * ``man 8 flake-pilot`` for the registry layout and the user mode
 
 The sources of the manual pages are also available online:

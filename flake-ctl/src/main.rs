@@ -230,6 +230,79 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 }
             }
         },
+        // bubblewrap engine
+        cli::Commands::Bubblewrap { command } => {
+            init_flakes_dir(user)?;
+            match &command {
+                // register
+                cli::Bubblewrap::Register {
+                    rootfs, app, target, run_as, opt, pilot_option, force
+                } => {
+                    if *force {
+                        app::remove(
+                            app,
+                            defaults::BUBBLEWRAP_PILOT,
+                            user,
+                            true,
+                            *force
+                        );
+                    }
+                    if app::init(Some(app), user) {
+                        let mut ok = app::register(
+                            Some(app), target.as_ref(),
+                            defaults::BUBBLEWRAP_PILOT,
+                            user
+                        );
+                        if ok {
+                            ok = app::create_sandbox_config(
+                                rootfs,
+                                Some(app),
+                                target.as_ref(),
+                                run_as.as_ref(),
+                                opt.as_ref().cloned(),
+                                pilot_option.as_ref().cloned(),
+                                user,
+                            );
+                        }
+                        if ! ok {
+                            app::remove(
+                                app, defaults::BUBBLEWRAP_PILOT,
+                                user,
+                                true,
+                                *force
+                            );
+                            return Ok(ExitCode::FAILURE)
+                        }
+                    } else {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                },
+                // show
+                cli::Bubblewrap::Show { format } => {
+                    instance::show(defaults::BUBBLEWRAP_ENGINE, user, *format);
+                },
+                // remove
+                cli::Bubblewrap::Remove { app, force } => {
+                    // Sanity check: A registration which is still
+                    // in use must not be removed
+                    if ! app::remove_allowed(
+                        Some(app), None,
+                        defaults::BUBBLEWRAP_ENGINE, user
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                    if ! app::remove(
+                        app,
+                        defaults::BUBBLEWRAP_PILOT,
+                        user,
+                        false,
+                        *force
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                }
+            }
+        },
         // podman engine
         cli::Commands::Podman { command } => {
             init_flakes_dir(user)?;
@@ -241,6 +314,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // load
                 cli::Podman::Load { oci } => {
                     exit(podman::load(oci, user));
+                },
+                // export
+                cli::Podman::Export { container, directory, force } => {
+                    if ! podman::export(container, directory, *force, user) {
+                        return Ok(ExitCode::FAILURE)
+                    }
                 },
                 // register
                 cli::Podman::Register {

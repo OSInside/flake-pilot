@@ -119,6 +119,22 @@ pub fn get_firecracker_ids_dir(user: bool) -> String {
     }
 }
 
+pub fn get_bubblewrap_ids_dir(user: bool) -> String {
+    let GenericData { bubblewrap_ids_dir, .. } = &flakes_config(user).generic;
+    if bubblewrap_ids_dir.is_none() {
+        if ! user {
+            defaults::BUBBLEWRAP_IDS_DIR.to_string()
+        } else {
+            error!("No bubblewrap_ids_dir configured");
+            error!("Please check {}", get_user_flakes_config());
+            error!("Run 'flake-ctl init' to create the setup");
+            exit(1);
+        }
+    } else {
+        bubblewrap_ids_dir.clone().unwrap()
+    }
+}
+
 fn flakes_config(user: bool) -> &'static FlakesConfig {
     if user {
         &FLAKES_CONFIG_USER
@@ -164,6 +180,7 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
         flakes_dir: ~
         podman_ids_dir: ~
         firecracker_ids_dir: ~
+        bubblewrap_ids_dir: ~
         podman_storage_conf: ~
     !*/
     if Path::new(&flake_config_path).exists() {
@@ -184,6 +201,7 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
                 flakes_dir: None::<String>,
                 podman_ids_dir: None::<String>,
                 firecracker_ids_dir: None::<String>,
+                bubblewrap_ids_dir: None::<String>,
                 podman_storage_conf: None::<String>
             }
         }
@@ -235,6 +253,9 @@ struct GenericData {
 
     /// ID files directory for firecracker registrations
     firecracker_ids_dir: Option<String>,
+
+    /// ID files directory for bubblewrap registrations
+    bubblewrap_ids_dir: Option<String>,
 
     /// Container storage conf for podman pilot
     podman_storage_conf: Option<String>

@@ -104,5 +104,8 @@ Where to Continue
 * :ref:`vm-apps` for applications provided by a Firecracker virtual
   machine
 
+* :ref:`sandbox-apps` for applications provided by a directory tree
+  on the host which is mounted as the root system of a sandbox
+
 * :ref:`application-setup` for the layout of the registry and the
   contents of a flake configuration

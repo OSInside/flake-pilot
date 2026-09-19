@@ -14,7 +14,7 @@ What Is Flake Pilot
 
 Flake Pilot is software to register, provision, and launch
 applications that are actually provided inside a runtime environment
-like an OCI container or a Firecracker VM.
+like an OCI container, a Firecracker VM or a bubblewrap sandbox.
 
 The user of such an application does not have to know this. The
 application is called by its path like any other program, it receives
@@ -48,9 +48,9 @@ The Launchers
 
 The launcher binary. Each application that was registered as a flake
 is redirected to a launcher binary. As of today, support for the
-``podman`` and ``firecracker`` engines is implemented, leading to the
-respective ``podman-pilot`` and ``firecracker-pilot`` launcher
-binaries.
+``podman``, ``firecracker`` and ``bubblewrap`` engines are implemented,
+leading to the respective ``podman-pilot``, ``firecracker-pilot`` and
+``bubblewrap-pilot`` launcher binaries.
 
 A launcher, also called a pilot, reads the flake configuration that
 belongs to the name it was called with, provisions the instance and
@@ -63,9 +63,9 @@ The Flake Registration Tool
 
 ``flake-ctl`` is the management utility to list, register, remove,
 and more... flake applications on your host. It provides one
-subcommand per engine, e.g ``flake-ctl podman`` and
-``flake-ctl firecracker``, plus the commands which are common to all
-engines like ``flake-ctl list``.
+subcommand per engine, e.g ``flake-ctl podman``,
+``flake-ctl firecracker`` and ``flake-ctl bubblewrap``, plus the
+commands which are common to all engines like ``flake-ctl list``.
 
 Use Cases
 =========
@@ -96,7 +96,7 @@ Use Cases
 Choosing an Engine
 ==================
 
-Both engines provide isolation, but on a different level and at a
+All engines provide isolation, but on a different level and at a
 different price:
 
 ``podman``
@@ -110,6 +110,13 @@ different price:
    kernel inside a microVM, which separates it from the host much
    more strictly at the cost of a boot and of an explicit network
    setup, see :ref:`vm-apps`.
+
+``bubblewrap``
+   Sandbox based isolation. The application runs in a new root
+   system which is an overlay of a directory tree of the host, the
+   tree itself is never modified. There is no image registry and no
+   daemon involved, which makes this the lightest of the three, see
+   :ref:`sandbox-apps`.
 
 .. note::
 

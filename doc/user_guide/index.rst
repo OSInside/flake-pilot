@@ -8,7 +8,8 @@ Flake Pilot User Guide
 
 Flake Pilot registers, provisions and launches applications that are
 not installed on your host but are provided inside a runtime
-environment such as an OCI container or a Firecracker virtual machine.
+environment such as an OCI container, a Firecracker virtual machine or
+a bubblewrap sandbox.
 The registered application behaves like any other program on the
 system: it is called by its name, it reads and writes the data you
 point it to, and it returns its exit code to your shell. Everything
@@ -27,9 +28,9 @@ About This Guide
 This guide is written for administrators and developers who want to
 provide isolated applications on a Linux host. It explains the
 concepts behind flakes, shows how to register applications for the
-``podman`` and ``firecracker`` engines, describes the network setup
-for virtual machines and documents the layout of the flake
-configuration.
+``podman``, ``firecracker`` and ``bubblewrap`` engines, describes the
+network setup for virtual machines and documents the layout of the
+flake configuration.
 
 The guide is organized as follows:
 
@@ -53,6 +54,9 @@ The guide is organized as follows:
 
 * :ref:`firecracker-volumes` explains how a local host path is
   shared with a virtual machine over NFS.
+
+* :ref:`sandbox-apps` covers applications provided by a directory
+  tree on the host which is mounted as the root system of a sandbox.
 
 * :ref:`application-setup` documents the registry layout, the flake
   configuration and the tools to inspect a running setup.
@@ -80,6 +84,7 @@ matter.
    vm_apps
    firecracker_networking
    firecracker_volumes
+   sandbox_apps
    application_setup
    building_images
    troubleshooting

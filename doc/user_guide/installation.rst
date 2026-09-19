@@ -33,9 +33,14 @@ Install the following packages:
   The ``firecracker-pilot`` launcher, the ``sci`` guest init and the
   ``flake-ctl firecracker`` subcommands.
 
-The engine itself is not part of these packages. Install ``podman``
-and/or ``firecracker`` in addition, depending on which of them you
-want to use.
+* ``flake-pilot-bubblewrap``
+
+  The ``bubblewrap-pilot`` launcher and the
+  ``flake-ctl bubblewrap`` subcommands.
+
+The engine itself is not part of these packages. Install ``podman``,
+``firecracker`` and/or ``bubblewrap`` in addition, depending on which
+of them you want to use.
 
 Building From Source
 ====================

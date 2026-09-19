@@ -12,6 +12,8 @@ serde_json = { version = "1.0", optional = true }
 log = { version = "0.4" }
 thiserror = { version = "1.0" }
 serde_yaml = { version = "0.9" }
+yaml-rust = { version = "0.4" }
+which = { version = "4.2" }
 lazy_static = { version = "1.4" }
 uzers = { version = "0.12" }
 rust-ini = { version = "0.21" }

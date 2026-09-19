@@ -33,8 +33,8 @@ use std::process::{ExitCode, Termination};
 use config::config;
 use env_logger::Env;
 use flakes::error::FlakeError;
+use flakes::registration;
 
-pub mod app_path;
 pub mod podman;
 pub mod defaults;
 pub mod config;
@@ -57,8 +57,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), FlakeError> {
-    let program_path = app_path::program_abs_path();
-    let program_name = app_path::basename(&program_path);
+    let program_name = registration::program_name();
 
     let container = podman::create(&program_name)?;
     let cid = &container.0;

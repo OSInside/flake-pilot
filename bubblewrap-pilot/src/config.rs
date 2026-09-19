@@ -21,18 +21,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::path::Path;
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use std::{env, path::PathBuf, fs};
-use flakes::config::get_flakes_dir;
+use flakes::registration;
 
 lazy_static! {
-    static ref CONFIG: Config<'static> = load_config();
+    static ref PROGRAM: String = registration::program_name();
 }
 
 lazy_static! {
-    static ref USERMODE: bool = is_usermode();
+    static ref USERMODE: bool = registration::is_usermode(&PROGRAM);
+}
+
+lazy_static! {
+    static ref CONFIG: Config<'static> = registration::load_config(
+        &PROGRAM, *USERMODE
+    );
 }
 
 /// Returns the config singleton
@@ -53,106 +57,12 @@ pub fn usermode() -> bool {
     *USERMODE
 }
 
-fn get_base_path() -> PathBuf {
-    which::which(env::args().next().expect("Arg 0 must be present")).expect("Symlink should exist")
-}
-
-fn is_usermode() -> bool {
-    /*!
-    Check if the flake is registered for the calling user only
-    !*/
-    let base_path = get_base_path();
-    let base_path = base_path.file_name().unwrap().to_str().unwrap();
-    ! Path::new(&config_file(base_path, false)).exists()
-}
-
-fn load_config() -> Config<'static> {
-    /*!
-    Read sandbox runtime configuration for given program
-
-    FLAKE_DIR/
-       ├── program_name.d
-       │   └── other.yaml
-       └── program_name.yaml
-
-    Config files below program_name.d are read in alpha sort order
-    and attached to the master program_name.yaml file. The result
-    is send to the Yaml parser
-    !*/
-    // the system wide registration takes precedence over the
-    // registration of the calling user
-    let usermode = is_usermode();
-
-    let base_path = get_base_path();
-    let base_path = base_path.file_name().unwrap().to_str().unwrap();
-    let base_file = config_file(base_path, usermode);
-
-    if ! Path::new(&base_file).exists() {
-        panic!(
-            "No user/system wide flake registration found for: {}",
-            base_path
-        )
-    }
-
-    let base_yaml = fs::read_to_string(&base_file);
-
-    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir(base_path, usermode))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|x| x.path()).collect();
-
-    extra_yamls.sort();
-
-    let full_yaml: String = base_yaml.into_iter().chain(
-        extra_yamls.into_iter().flat_map(fs::read_to_string)
-    ).collect();
-    config_from_str(&full_yaml, usermode)
-}
-
-pub fn config_from_str(input: &str, usermode: bool) -> Config<'static> {
-    // Parse into a generic YAML to remove duplicate keys
-    let yaml_documents = match yaml_rust::YamlLoader::load_from_str(input) {
-        Ok(yaml_documents) => {
-            yaml_documents
-        }
-        Err(error) => {
-            panic!(
-                "Failed to parse yaml input at: {:?}: {}",
-                config_file(
-                    get_base_path().file_name().unwrap().to_str().unwrap(),
-                    usermode
-                ), error
-            )
-        }
-    };
-
-    let yaml = yaml_documents.first();
-    if let Some(yaml) = yaml {
-        let mut buffer = String::new();
-        yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
-
-        // Convert to a String and leak it to make it static
-        // Can not use serde_yaml::from_value because of lifetime limitations
-        // Safety: This does not cause a reocurring memory leak
-        // since `load_config` is only called once
-        let content = Box::leak(buffer.into_boxed_str());
-
-        serde_yaml::from_str(content).unwrap()
-    } else {
-        panic!(
-            "No configuration data provided for {:?} in {} or {}",
-            get_base_path(), get_flakes_dir(false), get_flakes_dir(true)
-        )
-    }
-}
-
-pub fn config_file(program: &str, usermode: bool) -> String {
-    format!("{}/{}.yaml", get_flakes_dir(usermode), program)
-}
-
-fn config_dir(program: &str, usermode: bool) -> String {
-    format!("{}/{}.d", get_flakes_dir(usermode), program)
+/// Reads the given sandbox runtime configuration
+///
+/// The yaml document is expected to be the registration of
+/// the calling program, see `flakes::registration`
+pub fn config_from_str(input: &str) -> Config<'static> {
+    registration::config_from_str(input, &PROGRAM)
 }
 
 #[derive(Deserialize)]

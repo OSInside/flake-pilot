@@ -26,12 +26,13 @@ use crate::cli::ListFormat;
 use crate::{
     app_config, defaults, firecracker, instance, network, output, podman
 };
-use glob::glob;
 use serde::Serialize;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use flakes::config::get_flakes_dir;
+use flakes::registration;
+use flakes::registration::basename;
 use uzers::{get_current_username};
 
 pub fn register(
@@ -81,14 +82,8 @@ pub fn register(
     }
 
     // creating default app configuration
-    let app_basename = Path::new(app.unwrap())
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let app_config_dir = format!(
-        "{}/{}.d", get_flakes_dir(usermode), app_basename
-    );
+    let app_basename = basename(host_app_path);
+    let app_config_dir = registration::config_dir(&app_basename, usermode);
     match fs::create_dir_all(&app_config_dir) {
         Ok(dir) => dir,
         Err(error) => {
@@ -134,13 +129,8 @@ pub fn create_container_config(
 
     let target_app_path = target.unwrap_or(host_app_path);
 
-    let app_basename = Path::new(app.unwrap())
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    let app_config_file = registration::config_file(
+        &basename(host_app_path), usermode
     );
     match app_config::AppConfig::save_container(
         Path::new(&app_config_file),
@@ -191,13 +181,8 @@ pub fn create_vm_config(
     !*/
     let host_app_path = app.unwrap();
     let target_app_path = target.unwrap_or(host_app_path);
-    let app_basename = Path::new(host_app_path)
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    let app_config_file = registration::config_file(
+        &basename(host_app_path), usermode
     );
     match app_config::AppConfig::save_vm(
         Path::new(&app_config_file),
@@ -251,13 +236,8 @@ pub fn create_sandbox_config(
     }
     let host_app_path = app.unwrap();
     let target_app_path = target.unwrap_or(host_app_path);
-    let app_basename = Path::new(host_app_path)
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let app_config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
+    let app_config_file = registration::config_file(
+        &basename(host_app_path), usermode
     );
     match app_config::AppConfig::save_sandbox(
         Path::new(&app_config_file),
@@ -297,13 +277,9 @@ pub fn remove(
     }
 
     // sanity checks
-    let app_basename = basename(&app.to_string());
-    let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
-    );
-    let app_config_dir = format!(
-        "{}/{}.d", get_flakes_dir(usermode), app_basename
-    );
+    let app_basename = basename(app);
+    let config_file = registration::config_file(&app_basename, usermode);
+    let app_config_dir = registration::config_dir(&app_basename, usermode);
     let config_file_exists = Path::new(&config_file).exists();
     let app_config_dir_exists = Path::new(&app_config_dir).exists();
     let app_exists = Path::new(&app).exists();
@@ -419,9 +395,7 @@ pub fn image_flakes(
     !*/
     let mut registrations: Vec<FlakeRegistration> = Vec::new();
     for app_name in app_names(usermode) {
-        let config_file = format!(
-            "{}/{}.yaml", get_flakes_dir(usermode), app_name
-        );
+        let config_file = registration::config_file(&app_name, usermode);
         let app_conf = match app_config::AppConfig::init_from_file(
             Path::new(&config_file)
         ) {
@@ -525,46 +499,17 @@ pub fn remove_allowed(
     allowed
 }
 
-pub fn basename(program_path: &String) -> String {
-    /*!
-    Get basename from given program path
-    !*/
-    let mut program_name = String::new();
-    program_name.push_str(
-        Path::new(program_path)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap(),
-    );
-    program_name
-}
-
 pub fn app_names(usermode: bool) -> Vec<String> {
     /*!
     Read all flake config files
     !*/
     let mut flakes: Vec<String> = Vec::new();
-    let glob_pattern = format!("{}/*.yaml", get_flakes_dir(usermode));
-    for config_file in glob(&glob_pattern).unwrap() {
-        match config_file {
-            Ok(filepath) => {
-                let base_config_file = basename(
-                    &filepath.into_os_string().into_string().unwrap()
-                );
-                match base_config_file.split('.').next() {
-                    Some(value) => {
-                        let mut app_name = String::new();
-                        app_name.push_str(value);
-                        flakes.push(app_name);
-                    }
-                    None => error!(
-                        "Ignoring invalid config_file: {base_config_file}"
-                    ),
-                }
-            }
-            Err(error) => error!(
-                "Error while traversing flakes folder: {error:?}"
+    for config_file in registration::config_files(usermode) {
+        let base_config_file = basename(&config_file.to_string_lossy());
+        match base_config_file.split('.').next() {
+            Some(value) => flakes.push(value.to_string()),
+            None => error!(
+                "Ignoring invalid config_file: {base_config_file}"
             ),
         }
     }
@@ -575,7 +520,7 @@ pub fn app_details(app: &str, usermode: bool) -> app_config::AppConfig {
     /*!
     Read app config for given app base name
     !*/
-    let config_file = format!("{}/{}.yaml", get_flakes_dir(usermode), app);
+    let config_file = registration::config_file(app, usermode);
     match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
         Ok(app_conf) => {
             app_conf
@@ -608,7 +553,7 @@ pub fn app_list(usermode: bool) -> Vec<FlakeInfo> {
     let mut app_names = app_names(usermode);
     app_names.sort();
     for app in app_names {
-        let config = format!("{}/{}.yaml", get_flakes_dir(usermode), app);
+        let config = registration::config_file(&app, usermode);
         let details = app_details(&app, usermode);
         let mut flake = FlakeInfo {
             name: app, engine: None, target: None,

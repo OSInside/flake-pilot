@@ -21,10 +21,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use flakes::config::get_flakes_dir;
 use flakes::defaults::TAP_DEVICE_PREFIX;
 use flakes::network::get_tap_name;
-use glob::glob;
+use flakes::registration;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -291,9 +290,7 @@ fn get_configured_instances(app: &str, usermode: bool) -> Vec<String> {
         Some(app_basename) => app_basename,
         None => return Vec::new()
     };
-    let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
-    );
+    let config_file = registration::config_file(&app_basename, usermode);
     if ! Path::new(&config_file).exists() {
         return Vec::new()
     }
@@ -382,9 +379,7 @@ pub fn get_flake_config_file(app: &str, usermode: bool) -> Option<String> {
     the flake registry the caller operates on
     !*/
     let app_basename = get_app_basename(app)?;
-    let config_file = format!(
-        "{}/{}.yaml", get_flakes_dir(usermode), app_basename
-    );
+    let config_file = registration::config_file(&app_basename, usermode);
     if ! Path::new(&config_file).exists() {
         error!("No flake configuration found at {config_file}");
         error!("Please register the application first");
@@ -780,37 +775,30 @@ fn get_used_addresses(usermode: bool) -> Vec<Ipv4Addr> {
     the calling user
     !*/
     let mut used: Vec<Ipv4Addr> = Vec::new();
-    let mut flakes_dirs = vec![get_flakes_dir(usermode)];
+    let mut config_files = registration::config_files(usermode);
     if usermode {
-        let system_flakes_dir = get_flakes_dir(false);
-        if Path::new(&system_flakes_dir).is_dir() {
-            flakes_dirs.push(system_flakes_dir);
-        }
+        config_files.extend(registration::config_files(false));
     }
-    for flakes_dir in flakes_dirs {
-        let glob_pattern = format!("{flakes_dir}/*.yaml");
-        for config_file in glob(&glob_pattern).unwrap().flatten() {
-            let config_file = config_file.to_string_lossy().to_string();
-            let yaml_config = match read_flake_config(&config_file) {
-                Some(yaml_config) => yaml_config,
-                None => continue
-            };
-            let engine_section = match yaml_config.vm.as_ref()
-                .and_then(|vm_config| vm_config.runtime.as_ref())
-                .and_then(|runtime_section| runtime_section.firecracker.as_ref())
-            {
-                Some(engine_section) => engine_section,
-                None => continue
-            };
-            if let Some(boot_args) = engine_section.boot_args.as_ref() {
-                used.extend(get_boot_args_address(boot_args));
-            }
-            if let Some(instances) = engine_section.instance.as_ref() {
-                for instance_section in instances.values() {
-                    if let Some(boot_args) = instance_section.boot_args.as_ref()
-                    {
-                        used.extend(get_boot_args_address(boot_args));
-                    }
+    for config_file in config_files {
+        let config_file = config_file.to_string_lossy().to_string();
+        let yaml_config = match read_flake_config(&config_file) {
+            Some(yaml_config) => yaml_config,
+            None => continue
+        };
+        let engine_section = match yaml_config.vm.as_ref()
+            .and_then(|vm_config| vm_config.runtime.as_ref())
+            .and_then(|runtime_section| runtime_section.firecracker.as_ref())
+        {
+            Some(engine_section) => engine_section,
+            None => continue
+        };
+        if let Some(boot_args) = engine_section.boot_args.as_ref() {
+            used.extend(get_boot_args_address(boot_args));
+        }
+        if let Some(instances) = engine_section.instance.as_ref() {
+            for instance_section in instances.values() {
+                if let Some(boot_args) = instance_section.boot_args.as_ref() {
+                    used.extend(get_boot_args_address(boot_args));
                 }
             }
         }
@@ -872,17 +860,10 @@ pub fn read_flake_config(config_file: &str) -> Option<AppConfig> {
     drop-in files from the '.d' directory next to it are not
     merged in because the result is written back to this file
     !*/
-    let yaml_data = match fs::read_to_string(config_file) {
-        Ok(yaml_data) => yaml_data,
-        Err(error) => {
-            error!("Failed to read {config_file}: {error:?}");
-            return None
-        }
-    };
-    match serde_yaml::from_str(&yaml_data) {
+    match AppConfig::from_file(Path::new(config_file)) {
         Ok(yaml_config) => Some(yaml_config),
         Err(error) => {
-            error!("Failed to parse {config_file}: {error:?}");
+            error!("Failed to read {config_file}: {error:?}");
             None
         }
     }
@@ -892,14 +873,7 @@ pub fn write_flake_config(config_file: &str, yaml_config: &AppConfig) -> bool {
     /*!
     Write back the given flake configuration
     !*/
-    let config = match fs::File::create(config_file) {
-        Ok(config) => config,
-        Err(error) => {
-            error!("Failed to open {config_file}: {error:?}");
-            return false
-        }
-    };
-    match serde_yaml::to_writer(config, yaml_config) {
+    match yaml_config.to_file(Path::new(config_file)) {
         Ok(_) => true,
         Err(error) => {
             error!("Failed to write {config_file}: {error:?}");

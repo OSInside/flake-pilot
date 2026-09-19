@@ -30,6 +30,7 @@ pub mod user;
 pub mod command;
 pub mod error;
 pub mod config;
+pub mod registration;
 pub mod flakelog;
 pub mod defaults;
 pub mod io;

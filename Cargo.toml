@@ -14,9 +14,10 @@ strip = false
 [workspace]
 resolver = "2"
 members = [
-    "flake-ctl", 
-    "podman-pilot", 
-    "firecracker-pilot", 
+    "flake-ctl",
+    "podman-pilot",
+    "bubblewrap-pilot",
+    "firecracker-pilot",
     "firecracker-pilot/guestvm-tools/sci", 
     "common"
 ]

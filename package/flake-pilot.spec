@@ -77,6 +77,15 @@ Requires:       sudo
 %description -n flake-pilot-podman
 Launcher for OCI containers based applications through podman
 
+%package -n flake-pilot-bubblewrap
+Summary:        Bubblewrap pilot
+Group:          System/Management
+Requires:       bubblewrap
+Requires:       sudo
+
+%description -n flake-pilot-bubblewrap
+Launcher for applications running in a bubblewrap sandbox
+
 %package -n flake-pilot-firecracker
 Summary:        FireCracker pilot
 Group:          System/Management
@@ -241,12 +250,21 @@ fi
 %config /etc/flakes/storage.conf
 /usr/bin/podman-pilot
 /usr/sbin/flake-registry
+%doc /usr/share/man/man8/flake-ctl-podman-export.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-load.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-register.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-remove.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-show.8.gz
 %doc /usr/share/man/man8/podman-pilot.8.gz
+
+%files -n flake-pilot-bubblewrap
+%config /etc/flakes/bubblewrap-flake.yaml
+/usr/bin/bubblewrap-pilot
+%doc /usr/share/man/man8/flake-ctl-bubblewrap-register.8.gz
+%doc /usr/share/man/man8/flake-ctl-bubblewrap-remove.8.gz
+%doc /usr/share/man/man8/flake-ctl-bubblewrap-show.8.gz
+%doc /usr/share/man/man8/bubblewrap-pilot.8.gz
 
 %files -n flake-pilot-firecracker
 %if 0%{?suse_version} >= 1600

@@ -9,7 +9,10 @@ SDK
 TAP
 YAML
 backslash
+bubblewrap
 bumpversion
+bwrap
+chroot
 commandline
 config
 dracut
@@ -23,6 +26,7 @@ libkrun
 microVM
 microVMs
 namespace
+namespaces
 netfilter
 podman
 pre

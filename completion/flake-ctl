@@ -65,6 +65,31 @@ __flake_ctl_firecracker_volume() {
     __comp_reply "help export release add remove"
 }
 
+__flake_ctl_bubblewrap_help() {
+    __comp_reply ""
+}
+
+__flake_ctl_bubblewrap_register() {
+    __comp_reply_unused "
+        --app
+        --opt
+        --pilot-option
+        --rootfs
+        --run-as
+        --target
+        --force
+        --help
+    "
+}
+
+__flake_ctl_bubblewrap_remove() {
+    __comp_reply_unused "--app --help --force"
+}
+
+__flake_ctl_bubblewrap_show() {
+    __flake_ctl_show
+}
+
 __flake_ctl_show() {
     declare prev="${prev}"
     if [ "${prev}" = "--format" ];then
@@ -130,6 +155,10 @@ __flake_ctl_podman_load() {
     __comp_reply_unused "--oci --help"
 }
 
+__flake_ctl_podman_export() {
+    __comp_reply_unused "--container --directory --force --help"
+}
+
 __flake_ctl_complete_command() {
     local command="$1"
     local completion_func="__flake_ctl_${command//-/_}"
@@ -168,6 +197,7 @@ __flake_ctl_main() {
         for comp in ${COMP_WORDS[1]}_${COMP_WORDS[2]};do
             case "$comp" in
             podman_load| \
+            podman_export| \
             podman_help| \
             podman_pull| \
             podman_register| \
@@ -179,8 +209,17 @@ __flake_ctl_main() {
             firecracker_pull| \
             firecracker_show| \
             firecracker_register| \
-            firecracker_volume)
+            firecracker_volume| \
+            bubblewrap_help| \
+            bubblewrap_register| \
+            bubblewrap_remove| \
+            bubblewrap_show)
                 __flake_ctl_complete_command "${comp}" && return 0
+                ;;
+            bubblewrap_*)
+                command="bubblewrap" && __comp_reply "
+                    help register remove show
+                " && return 0
                 ;;
             firecracker_*)
                 command="firecracker" && __comp_reply "
@@ -189,7 +228,7 @@ __flake_ctl_main() {
                 ;;
             podman_*)
                 command="podman" && __comp_reply "
-                    help load pull register remove show
+                    help export load pull register remove show
                 " && return 0
                 ;;
             help_*)
@@ -211,6 +250,7 @@ __flake_ctl_main() {
         __comp_reply "
             --help
             --version
+            bubblewrap
             firecracker
             help
             init

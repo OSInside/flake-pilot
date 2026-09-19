@@ -101,8 +101,9 @@ pub async fn send_request(
         .https_only(! allow_insecure)
         .build()?;
 
+    let user_agent = "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0";
     let response = client
-        .get(url)
+        .get(url).header("User-Agent", user_agent)
         .send()
         .await?;
 

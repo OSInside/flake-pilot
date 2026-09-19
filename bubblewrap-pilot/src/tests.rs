@@ -21,11 +21,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use crate::app_path::program_abs_path;
-use crate::app_path::basename;
 use crate::bubblewrap::get_instance_name;
 use crate::bubblewrap::get_sandbox_options;
-use crate::config::config_file;
 use crate::config::config_from_str;
 use crate::overlay::{get_dir, get_mount_options};
 
@@ -57,30 +54,12 @@ fn sandbox_root_options() -> Vec<&'static str> {
 }
 
 #[test]
-fn test_program_abs_path() {
-    let program_path = program_abs_path();
-    assert!(program_path.starts_with('/'));
-}
-
-#[test]
-fn test_basename() {
-    let base_name = basename(&"/some/name".to_string());
-    assert_eq!("name", base_name);
-}
-
-#[test]
-fn test_program_config_file() {
-    let config_file = config_file("app", false);
-    assert_eq!("/usr/share/flakes/app.yaml", config_file);
-}
-
-#[test]
 fn simple_config() {
     let cfg = config_from_str(
 r#"sandbox:
  name: /var/lib/flakes/leap
  host_app_path: /myapp
-"#, false);
+"#);
     assert_eq!(cfg.sandbox.name, "/var/lib/flakes/leap");
     assert_eq!(cfg.sandbox.host_app_path, "/myapp");
     assert_eq!(cfg.sandbox.target_app_path, None);
@@ -97,7 +76,7 @@ r#"sandbox:
 sandbox:
  name: /var/lib/flakes/tumbleweed
  host_app_path: /other
-"#, false);
+"#);
     assert_eq!(cfg.sandbox.name, "/var/lib/flakes/tumbleweed");
 }
 
@@ -115,7 +94,7 @@ r#"sandbox:
   bubblewrap:
     - "--ro-bind /etc/resolv.conf /etc/resolv.conf"
     - "--unshare-pid"
-"#, false)
+"#)
 }
 
 #[test]
@@ -148,7 +127,7 @@ fn test_no_pilot_options_configured() {
 r#"sandbox:
  name: /var/lib/flakes/leap
  host_app_path: /myapp
-"#, false);
+"#);
     assert!(cfg.pilot_options().is_empty());
 }
 

@@ -36,6 +36,15 @@ pub const FLAKE_TEMPLATE_FIRECRACKER:&str =
     "/etc/flakes/firecracker-flake.yaml";
 pub const FLAKE_TEMPLATE_BUBBLEWRAP:&str =
     "/etc/flakes/bubblewrap-flake.yaml";
+// Packages providing the pilot of an engine including
+// its registration template. Used to tell the user which
+// package to install if a template is missing
+pub const FLAKE_PACKAGE_CONTAINER:&str =
+    "flake-pilot-podman";
+pub const FLAKE_PACKAGE_FIRECRACKER:&str =
+    "flake-pilot-firecracker";
+pub const FLAKE_PACKAGE_BUBBLEWRAP:&str =
+    "flake-pilot-bubblewrap";
 pub const FIRECRACKER_REGISTRY_DIR:&str =
     "/var/lib/firecracker";
 // Name of the firecracker registry inside of the flakes

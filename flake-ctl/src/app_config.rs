@@ -157,6 +157,26 @@ impl AppInclude {
     }
 }
 
+pub fn template_exists(template_file: &str, pilot_package: &str) -> bool {
+    /*!
+    Check for the presence of an engine registration template
+
+    The templates are shipped with the pilot packages. A missing
+    template therefore means the pilot required for this type of
+    registration is not installed
+    !*/
+    if Path::new(template_file).exists() {
+        return true
+    }
+    error!(
+        "Registration template {} does not exist", template_file
+    );
+    error!(
+        "Please install the {} package first", pilot_package
+    );
+    false
+}
+
 impl AppConfig {
     fn from_template(template_file: &str) -> AppConfig {
         /*!
@@ -423,12 +443,24 @@ impl AppConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::AppConfig;
+    use super::{AppConfig, template_exists};
+
+    fn template_path(name: &str) -> String {
+        format!("{}/template/{}", env!("CARGO_MANIFEST_DIR"), name)
+    }
 
     fn read_template(name: &str) -> AppConfig {
-        AppConfig::from_template(&format!(
-            "{}/template/{}", env!("CARGO_MANIFEST_DIR"), name
-        ))
+        AppConfig::from_template(&template_path(name))
+    }
+
+    #[test]
+    fn test_template_exists() {
+        assert!(template_exists(
+            &template_path("container-flake.yaml"), "flake-pilot-podman"
+        ));
+        assert!(! template_exists(
+            &template_path("no-such-flake.yaml"), "flake-pilot-podman"
+        ));
     }
 
     #[test]

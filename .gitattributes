@@ -1,2 +1,0 @@
-*.xz filter=lfs diff=lfs merge=lfs -text
-*.xz !text !filter !merge !diff

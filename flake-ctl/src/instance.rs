@@ -32,10 +32,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use flakes::config::{
-    get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_flakes_dir,
+    get_bubblewrap_ids_dir, get_firecracker_ids_dir,
     get_podman_ids_dir, read_storage_conf
 };
 use flakes::defaults::FLAKES_DIR_USER;
+use flakes::registration;
 use uzers::{get_current_uid, get_user_by_uid};
 use uzers::os::unix::UserExt;
 
@@ -274,7 +275,7 @@ fn flake_config_file(
     directory of the user the instance belongs to
     !*/
     let flake = flake_name(name);
-    let config_file = format!("{}/{}.yaml", get_flakes_dir(usermode), flake);
+    let config_file = registration::config_file(flake, usermode);
     if Path::new(&config_file).exists() {
         return Some(config_file)
     }

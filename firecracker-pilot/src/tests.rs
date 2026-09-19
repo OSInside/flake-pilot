@@ -22,7 +22,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use crate::config::config_file;
 use crate::config::config_from_str;
 use crate::firecracker::has_network_setup;
 use crate::firecracker::tap_device_exists;
@@ -185,12 +184,6 @@ fn test_tap_device_exists() {
     // add' is not
     assert!(tap_device_exists("lo"));
     assert!(! tap_device_exists("tap-does-not-exist"));
-}
-
-#[test]
-fn test_program_config_file() {
-    let config_file = config_file("app", false);
-    assert_eq!("/usr/share/flakes/app.yaml", config_file);
 }
 
 #[test]

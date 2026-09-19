@@ -27,6 +27,7 @@ use std::io::{Error, ErrorKind};
 use std::path::Path;
 use serde::{Serialize, Deserialize};
 use serde_yaml::{self};
+use flakes::registration;
 use crate::defaults;
 use crate::firecracker;
 
@@ -129,7 +130,67 @@ fn normalize_pilot_options(pilot_options: &[String]) -> Vec<String> {
     ).collect()
 }
 
+fn normalize_engine_options(opts: &[String]) -> Vec<String> {
+    /*!
+    Provide the engine options as they are passed to the engine
+
+    An option is allowed to be escaped with a leading backslash.
+    This is needed to pass options which would otherwise be
+    eaten by the argument parser of flake-ctl
+    !*/
+    opts.iter().map(
+        |opt| opt.strip_prefix('\\').unwrap_or(opt).to_string()
+    ).collect()
+}
+
+impl AppInclude {
+    fn set(&mut self, tar: Option<Vec<String>>, path: Option<Vec<String>>) {
+        /*!
+        Set the data to sync into the instance of the flake
+        !*/
+        if tar.is_some() {
+            self.tar = tar;
+        }
+        if path.is_some() {
+            self.path = path;
+        }
+    }
+}
+
 impl AppConfig {
+    fn from_template(template_file: &str) -> AppConfig {
+        /*!
+        Read the registration template of an engine
+
+        Every registration is created from a template which
+        provides the defaults of the engine it belongs to
+        !*/
+        let template = std::fs::File::open(template_file)
+            .unwrap_or_else(|_| panic!("Failed to open {}", template_file));
+        serde_yaml::from_reader(template).expect(
+            "Failed to import config template"
+        )
+    }
+
+    pub fn from_file(config_file: &Path) -> Result<AppConfig, GenericError> {
+        /*!
+        Returns an instance of AppConfig by reading and
+        deserializing the given yaml configuration
+
+        Only the configuration file itself is read. The optional
+        drop-in files from the '.d' directory next to it are not
+        merged in, which makes the result safe to write back
+        !*/
+        Ok(serde_yaml::from_str(&std::fs::read_to_string(config_file)?)?)
+    }
+
+    pub fn to_file(&self, config_file: &Path) -> Result<(), GenericError> {
+        /*!
+        Store the configuration to the given yaml file
+        !*/
+        Ok(serde_yaml::to_writer(std::fs::File::create(config_file)?, self)?)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn save_container(
         config_file: &Path,
@@ -150,10 +211,9 @@ impl AppConfig {
         /*!
         save stores an AppConfig to the given file
         !*/
-        let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_CONTAINER)
-            .unwrap_or_else(|_| panic!("Failed to open {}", defaults::FLAKE_TEMPLATE_CONTAINER));
-        let mut yaml_config: AppConfig =
-            serde_yaml::from_reader(template).expect("Failed to import config template");
+        let mut yaml_config = AppConfig::from_template(
+            defaults::FLAKE_TEMPLATE_CONTAINER
+        );
         let container_config = yaml_config.container.as_mut().unwrap();
 
         container_config.name = container.to_string();
@@ -181,23 +241,9 @@ impl AppConfig {
             container_config.runtime.as_mut().unwrap()
                 .runas = Some(run_as.to_string());
         }
-        if let Some(includes_tar) = &includes_tar {
-            yaml_config.include.tar = Some(includes_tar.to_vec());
-        }
-        if let Some(includes_path) = &includes_path {
-            yaml_config.include.path = Some(includes_path.to_vec());
-        }
         if let Some(opts) = &opts {
-            let mut final_opts: Vec<String> = Vec::new();
-            for opt in opts {
-                if let Some(stripped_opt) = opt.strip_prefix('\\') {
-                    final_opts.push(stripped_opt.to_string())
-                } else {
-                    final_opts.push(opt.to_string())
-                }
-            }
             container_config.runtime.as_mut().unwrap().podman = Some(
-                final_opts
+                normalize_engine_options(opts)
             );
         }
         if let Some(pilot_options) = &pilot_options {
@@ -205,15 +251,9 @@ impl AppConfig {
                 normalize_pilot_options(pilot_options)
             );
         }
+        yaml_config.include.set(includes_tar, includes_path);
 
-        let config = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(config_file)
-            .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
-        serde_yaml::to_writer(config, &yaml_config).unwrap();
-        Ok(())
+        yaml_config.to_file(config_file)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -229,14 +269,9 @@ impl AppConfig {
         /*!
         save stores an AppConfig to the given file
         !*/
-        let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_BUBBLEWRAP)
-            .unwrap_or_else(|_| panic!(
-                "Failed to open {}", defaults::FLAKE_TEMPLATE_BUBBLEWRAP)
-            );
-        let mut yaml_config: AppConfig =
-            serde_yaml::from_reader(template).expect(
-                "Failed to import config template"
-            );
+        let mut yaml_config = AppConfig::from_template(
+            defaults::FLAKE_TEMPLATE_BUBBLEWRAP
+        );
         let sandbox_config = yaml_config.sandbox.as_mut().unwrap();
 
         sandbox_config.name = rootfs.to_string();
@@ -260,24 +295,11 @@ impl AppConfig {
             let runtime = sandbox_config.runtime.as_mut().unwrap();
             let mut final_opts: Vec<String> = runtime.bubblewrap
                 .as_ref().cloned().unwrap_or_default();
-            for opt in opts {
-                if let Some(stripped_opt) = opt.strip_prefix('\\') {
-                    final_opts.push(stripped_opt.to_string())
-                } else {
-                    final_opts.push(opt.to_string())
-                }
-            }
+            final_opts.extend(normalize_engine_options(opts));
             runtime.bubblewrap = Some(final_opts);
         }
 
-        let config = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(config_file)
-            .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
-        serde_yaml::to_writer(config, &yaml_config).unwrap();
-        Ok(())
+        yaml_config.to_file(config_file)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -299,56 +321,39 @@ impl AppConfig {
         save stores an AppConfig to the given file
         !*/
         let image_dir = firecracker::get_image_dir(vm, usermode);
-        let template = std::fs::File::open(defaults::FLAKE_TEMPLATE_FIRECRACKER)
-            .unwrap_or_else(|_| panic!(
-                "Failed to open {}", defaults::FLAKE_TEMPLATE_FIRECRACKER)
-            );
-        let mut yaml_config: AppConfig =
-            serde_yaml::from_reader(template).expect(
-                "Failed to import config template"
-            );
+        let mut yaml_config = AppConfig::from_template(
+            defaults::FLAKE_TEMPLATE_FIRECRACKER
+        );
         let vm_config = yaml_config.vm.as_mut().unwrap();
 
         vm_config.name = vm.to_string();
         vm_config.target_app_path = target_app_path.to_string();
         vm_config.host_app_path = host_app_path.to_string();
 
+        let runtime = vm_config.runtime.as_mut().unwrap();
         if resume {
-            vm_config.runtime.as_mut().unwrap()
-                .resume = Some(resume);
+            runtime.resume = Some(resume);
         }
         if force_vsock {
-            vm_config.runtime.as_mut().unwrap()
-                .force_vsock = Some(force_vsock);
+            runtime.force_vsock = Some(force_vsock);
         }
         if let Some(run_as) = run_as {
-            vm_config.runtime.as_mut().unwrap()
-                .runas = Some(run_as.to_string());
-        }
-        if let Some(includes_tar) = &includes_tar {
-            yaml_config.include.tar = Some(includes_tar.to_vec());
-        }
-        if let Some(includes_path) = &includes_path {
-            yaml_config.include.path = Some(includes_path.to_vec());
+            runtime.runas = Some(run_as.to_string());
         }
         if let Some(pilot_options) = &pilot_options {
-            vm_config.runtime.as_mut().unwrap().pilot_options = Some(
+            runtime.pilot_options = Some(
                 normalize_pilot_options(pilot_options)
             );
         }
+
+        let firecracker_section = runtime.firecracker.as_mut().unwrap();
         if let Some(overlay_size) = overlay_size {
-            vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap()
-                .overlay_size = Some(overlay_size.to_string());
+            firecracker_section.overlay_size = Some(overlay_size.to_string());
         }
         let rootfs_image_path = format!(
             "{}/{}", image_dir, defaults::FIRECRACKER_ROOTFS_NAME
         );
-        if Path::new(&rootfs_image_path).exists() {
-            vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap()
-                .rootfs_image_path = Some(rootfs_image_path);
-        } else {
+        if ! Path::new(&rootfs_image_path).exists() {
             return Err(
                 Box::new(Error::new(
                     ErrorKind::NotFound,
@@ -356,15 +361,12 @@ impl AppConfig {
                 ))
             )
         }
+        firecracker_section.rootfs_image_path = Some(rootfs_image_path);
 
         let kernel_image_path = format!(
             "{}/{}", image_dir, defaults::FIRECRACKER_KERNEL_NAME
         );
-        if Path::new(&kernel_image_path).exists() {
-            vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap()
-                .kernel_image_path = Some(kernel_image_path);
-        } else {
+        if ! Path::new(&kernel_image_path).exists() {
             return Err(
                 Box::new(Error::new(
                     ErrorKind::NotFound,
@@ -372,52 +374,29 @@ impl AppConfig {
                 ))
             )
         }
+        firecracker_section.kernel_image_path = Some(kernel_image_path);
 
         let initrd_path = format!(
             "{}/{}", image_dir, defaults::FIRECRACKER_INITRD_NAME
         );
         if Path::new(&initrd_path).exists() {
-            vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap()
-                .initrd_path = Some(initrd_path);
+            firecracker_section.initrd_path = Some(initrd_path);
         }
 
         // The registration creates no network setup. The 'ip=' option
         // is deleted from the kernel commandline of the VM. The setup
         // can be created later on with 'flake-ctl firecracker network add'
-        let mut boot_args: Vec<String> = Vec::new();
-        let firecracker_section = vm_config.runtime.as_mut().unwrap()
-            .firecracker.as_mut().unwrap();
-        for boot_arg in
-            firecracker_section.boot_args.as_mut().unwrap().iter().cloned()
-        {
-            if ! boot_arg.starts_with("ip=") {
-                boot_args.push(boot_arg);
-            }
+        let boot_args = firecracker_section.boot_args.as_mut().unwrap();
+        boot_args.retain(|boot_arg| ! boot_arg.starts_with("ip="));
+        if resume {
+            boot_args.push("sci_resume=1".to_string());
         }
-        firecracker_section.boot_args = Some(boot_args);
-
-        if resume || force_vsock {
-            let firecracker_section = vm_config.runtime.as_mut().unwrap()
-                .firecracker.as_mut().unwrap();
-            if resume {
-                firecracker_section.boot_args.as_mut().unwrap()
-                    .push("sci_resume=1".to_string());
-            }
-            if force_vsock {
-                firecracker_section.boot_args.as_mut().unwrap()
-                    .push("sci_force_vsock=1".to_string());
-            }
+        if force_vsock {
+            boot_args.push("sci_force_vsock=1".to_string());
         }
+        yaml_config.include.set(includes_tar, includes_path);
 
-        let config = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(config_file)
-            .unwrap_or_else(|_| panic!("Failed to open {:?}", config_file));
-        serde_yaml::to_writer(config, &yaml_config).unwrap();
-        Ok(())
+        yaml_config.to_file(config_file)
     }
 
     pub fn init_from_file(
@@ -426,19 +405,14 @@ impl AppConfig {
         /*!
         Returns an instance of AppConfig by reading and
         deserializing the data from a given yaml configuration
+
+        The optional drop-in files from the '.d' directory next
+        to the configuration are merged in
         !*/
-        let base_config = std::fs::read_to_string(config_file);
-        let mut config_dir = config_file.display().to_string();
-        config_dir = config_dir.replace(".yaml", ".d");
-        let mut extra_yamls: Vec<_> = std::fs::read_dir(config_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|x| x.path()).collect();
-        extra_yamls.sort();
-        let full_yaml: String = base_config.into_iter().chain(
-            extra_yamls.into_iter().flat_map(std::fs::read_to_string)
-        ).collect();
+        let base_file = config_file.display().to_string();
+        let full_yaml = registration::merge_config(
+            &base_file, &base_file.replace(".yaml", ".d")
+        );
         let yaml_config: AppConfig =
             serde_yaml::from_str(&full_yaml).expect(
                 "Failed to import config file"
@@ -452,14 +426,9 @@ mod tests {
     use super::AppConfig;
 
     fn read_template(name: &str) -> AppConfig {
-        let template_file = format!(
+        AppConfig::from_template(&format!(
             "{}/template/{}", env!("CARGO_MANIFEST_DIR"), name
-        );
-        let template = std::fs::File::open(&template_file)
-            .unwrap_or_else(|_| panic!("Failed to open {template_file}"));
-        serde_yaml::from_reader(template).expect(
-            "Failed to import config template"
-        )
+        ))
     }
 
     #[test]

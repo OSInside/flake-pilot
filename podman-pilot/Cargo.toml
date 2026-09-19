@@ -5,15 +5,12 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-which = { version = "4.2" }
-yaml-rust = { version = "0.4" }
 log = { version = "0.4" }
 env_logger = { version = "0.9" }
 tempfile = { version = "3.4" }
 spinoff = { version = "0.7" }
 lazy_static = { version = "1.4" }
 serde = { version = "1.0", features = ["derive"]}
-serde_yaml = { version = "0.9" }
 regex = { version = "1.9" }
 flakes = { version = "3.1.58", path = "../common" }
 rust-ini = { version = "0.21" }

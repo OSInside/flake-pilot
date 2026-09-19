@@ -32,8 +32,8 @@ use std::process::{ExitCode, Termination};
 use config::config;
 use env_logger::Env;
 use flakes::error::FlakeError;
+use flakes::registration;
 
-pub mod app_path;
 pub mod bubblewrap;
 pub mod defaults;
 pub mod config;
@@ -63,8 +63,7 @@ fn run() -> Result<ExitCode, FlakeError> {
     The exit code of the application in the sandbox is passed
     on as the exit code of this pilot
     !*/
-    let program_path = app_path::program_abs_path();
-    let program_name = app_path::basename(&program_path);
+    let program_name = registration::program_name();
 
     let sandbox_id_file = bubblewrap::create(&program_name)?;
     bubblewrap::start(&program_name, &sandbox_id_file)

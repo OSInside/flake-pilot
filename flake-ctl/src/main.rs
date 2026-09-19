@@ -100,6 +100,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     force_vsock, include_tar, include_path, pilot_option,
                     force
                 } => {
+                    // Sanity check: Registering requires the pilot
+                    // of this engine and its registration template
+                    if ! app_config::template_exists(
+                        defaults::FLAKE_TEMPLATE_FIRECRACKER,
+                        defaults::FLAKE_PACKAGE_FIRECRACKER
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
                     if *force {
                         app::remove(
                             app,
@@ -238,6 +246,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Bubblewrap::Register {
                     rootfs, app, target, run_as, opt, pilot_option, force
                 } => {
+                    // Sanity check: Registering requires the pilot
+                    // of this engine and its registration template
+                    if ! app_config::template_exists(
+                        defaults::FLAKE_TEMPLATE_BUBBLEWRAP,
+                        defaults::FLAKE_PACKAGE_BUBBLEWRAP
+                    ) {
+                        return Ok(ExitCode::FAILURE)
+                    }
                     if *force {
                         app::remove(
                             app,
@@ -330,6 +346,14 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     if *info {
                         podman::print_container_info(container);
                     } else {
+                        // Sanity check: Registering requires the pilot
+                        // of this engine and its registration template
+                        if ! app_config::template_exists(
+                            defaults::FLAKE_TEMPLATE_CONTAINER,
+                            defaults::FLAKE_PACKAGE_CONTAINER
+                        ) {
+                            return Ok(ExitCode::FAILURE)
+                        }
                         if *force {
                             app::remove(
                                 app.as_ref().map(String::as_str).unwrap(),

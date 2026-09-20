@@ -283,14 +283,15 @@ pub fn get_sandbox_options(
     inside of the sandbox. The overlay of the rootfs is the first
     source of that mount. A flake which configures further
     --overlay-src options stacks them on top of it, in the order
-    they are given, they are therefore moved in front of the
-    mount. All other options are added after it. If the flake
-    configures no options at all, a default setup which provides
-    the standard pseudo filesystems and a writable /tmp is used.
-    A variable reference in the format %NAME is replaced by the
-    value of the environment variable of that name. The given
-    workdir is the directory the application is called in, unless
-    the flake configures one
+    they are given, they are therefore sorted to the top of the
+    option list and end up in front of the mount. All other
+    options are added after it. If the flake configures no
+    options at all, a default setup which provides the standard
+    pseudo filesystems and a writable /tmp is used. A variable
+    reference in the format %NAME is replaced by the value of the
+    environment variable of that name. The given workdir is the
+    directory the application is called in, unless the flake
+    configures one
     !*/
     let configured_options = options.unwrap_or_default();
     let engine_options = if configured_options.is_empty() {
@@ -298,6 +299,8 @@ pub fn get_sandbox_options(
     } else {
         configured_options
     };
+    let engine_options = sort_overlay_sources(engine_options);
+
     // An option can be configured together with its value(s) in
     // one entry, e.g "--ro-bind /etc /etc". bwrap expects them
     // as separate arguments
@@ -308,7 +311,9 @@ pub fn get_sandbox_options(
 
     // The sources of the root of the sandbox. The overlay of the
     // rootfs on the host is the lowest one of them, the sources
-    // configured by the flake are stacked on top of it
+    // configured by the flake are stacked on top of it. They are
+    // on top of the option list and are taken from it here, the
+    // mount they belong to is created after them
     let mut sandbox_options = vec![
         defaults::BWRAP_OVERLAY_SRC_OPTION.to_string(),
         expand_variables(&format!("%{}", defaults::OVERLAY_ROOT_VAR))?
@@ -346,6 +351,41 @@ pub fn get_sandbox_options(
         sandbox_options.push(workdir.to_string());
     }
     Ok(sandbox_options)
+}
+
+fn sort_overlay_sources(engine_options: Vec<&str>) -> Vec<&str> {
+    /*!
+    Sort the engine options such that all --overlay-src options
+    are on top of the list
+
+    bwrap reads the sources of an overlay before the mount they
+    belong to. An option which provides a source is therefore
+    moved to the top of the list. The order of the sources is
+    kept, they are stacked in exactly the order they are
+    configured. A source which is configured in an entry of its
+    own, next to the option it belongs to, is moved along with
+    that option. All other options keep their order as well
+    !*/
+    let mut sources: Vec<&str> = Vec::new();
+    let mut other_options: Vec<&str> = Vec::new();
+    let mut engine_options = engine_options.into_iter();
+    while let Some(option) = engine_options.next() {
+        let mut option_parts = option.split_whitespace();
+        if option_parts.next() != Some(defaults::BWRAP_OVERLAY_SRC_OPTION) {
+            other_options.push(option);
+            continue
+        }
+        sources.push(option);
+        if option_parts.next().is_none() {
+            // the option was configured without its value, the
+            // source is expected in the entry after it
+            if let Some(source) = engine_options.next() {
+                sources.push(source);
+            }
+        }
+    }
+    sources.extend(other_options);
+    sources
 }
 
 fn expand_variables(option: &str) -> Result<String, FlakeError> {

@@ -213,6 +213,28 @@ fn test_configured_overlay_sources() {
 }
 
 #[test]
+fn test_overlay_source_configured_without_its_value() {
+    // an option can be configured in an entry of its own. The
+    // source which follows it is sorted to the top of the list
+    // together with the option it belongs to
+    let mut expected = vec![
+        "--overlay-src".to_string(), get_dir("myapp", "merged"),
+        "--overlay-src".to_string(), "/data/one".to_string(),
+        "--overlay".to_string(),
+        get_dir("myapp", "rw"), get_dir("myapp", "work"),
+        "/".to_string()
+    ];
+    expected.extend(options(&["--unshare-all", "--chdir", "/"]));
+    assert_eq!(
+        expected,
+        sandbox_options(
+            Some(vec!["--unshare-all", "--overlay-src", "/data/one"]),
+            "/"
+        )
+    );
+}
+
+#[test]
 fn test_configured_working_directory_is_kept() {
     // no default working directory is added if the flake
     // configures one

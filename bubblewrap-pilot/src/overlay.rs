@@ -90,7 +90,7 @@ pub fn mount(
     for name in [defaults::OVERLAY_UPPER_NAME, defaults::OVERLAY_WORK_NAME] {
         if let Err(error) = mkdir(
             &format!("{tmpfs_dir}/{name}"),
-            defaults::OVERLAY_DIR_MODE, User::ROOT
+            defaults::OVERLAY_DIR_MODE, user
         ) {
             // The setup is incomplete, its tmpfs must not stay behind
             umount_dir(&tmpfs_dir);

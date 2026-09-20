@@ -120,12 +120,15 @@ created and the application is called inside of it. Prior to the
 call of bwrap the pilot mounts the rootfs of the flake as an
 overlay filesystem on the host. The rootfs is the lower, read only
 layer of that overlay, its upper and work directory live in a
-tmpfs which is created for the instance. For an instance named
-`myapp@one` the following setup is used:
+tmpfs which is created for the instance. The directories of the
+setup are created below `/var/tmp`, in a directory which is named
+after the ID of the calling user. Thus two users running the same
+flake do not use the same paths. For an instance named `myapp@one`
+of the user with the ID 1000 the following setup is used:
 
 .. code:: bash
 
-   /var/tmp/
+   /var/tmp/bwrap_1000/
        ├── myapp@one_merged   <- overlay mount of the rootfs
        ├── myapp@one_overlay  <- tmpfs with the upper/work dirs
        ├── myapp@one_rw       <- upper dir of the sandbox root
@@ -144,13 +147,14 @@ the sandbox:
 .. code:: bash
 
    --overlay-src %OVERLAYROOT
-   --overlay /var/tmp/myapp@one_rw /var/tmp/myapp@one_work /
+   --overlay /var/tmp/bwrap_1000/myapp@one_rw \
+             /var/tmp/bwrap_1000/myapp@one_work /
 
 The variable **%OVERLAYROOT** resolves to the merged directory of
-the instance, `/var/tmp/myapp@one_merged` in the above example. It
-can also be referenced in the bwrap runtime arguments of the flake
-to access the root filesystem of the sandbox as it exists on the
-host.
+the instance, `/var/tmp/bwrap_1000/myapp@one_merged` in the above
+example. It can also be referenced in the bwrap runtime arguments
+of the flake to access the root filesystem of the sandbox as it
+exists on the host.
 
 A flake can provide further directories for the root of the
 sandbox by configuring **--overlay-src** options of its own. As
@@ -172,9 +176,10 @@ the sandbox is created with:
 
 .. code:: bash
 
-   --overlay-src /var/tmp/myapp@one_merged
+   --overlay-src /var/tmp/bwrap_1000/myapp@one_merged
    --overlay-src /data/tools
-   --overlay /var/tmp/myapp@one_rw /var/tmp/myapp@one_work /
+   --overlay /var/tmp/bwrap_1000/myapp@one_rw \
+             /var/tmp/bwrap_1000/myapp@one_work /
    --unshare-pid
 
 When the application has terminated the overlay mount and the
@@ -269,7 +274,7 @@ FILES
 * /usr/share/flakes
 * $HOME/.config/flakes
 * /tmp/flakes
-* /var/tmp
+* /var/tmp/bwrap_USERID
 * /etc/flakes.yml
 
 SEE ALSO

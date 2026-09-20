@@ -49,11 +49,19 @@ pub const SANDBOX_ROOT: &str = "/";
 // on the host and can be referenced as %OVERLAYROOT in the
 // options of the flake configuration
 pub const OVERLAY_ROOT_VAR: &str = "OVERLAYROOT";
-// Directory the overlay setup of an instance is created in
+// Directory the overlay setups are created in. It is shared
+// between all users of the system, the setup of an instance
+// therefore lives in a directory of its own below it, see
+// OVERLAY_USER_DIR_NAME
 pub const OVERLAY_BASE_DIR: &str = "/var/tmp";
+// Name of the directory which keeps the overlay setups of one
+// user. It is suffixed with the ID of that user, which makes
+// the path of a setup unique also if two users run the same
+// flake, e.g /var/tmp/bwrap_1000
+pub const OVERLAY_USER_DIR_NAME: &str = "bwrap";
 // Names of the directories of the overlay setup. Each of them
 // is prefixed with the name of the instance it belongs to, e.g
-// /var/tmp/myapp@one_merged
+// /var/tmp/bwrap_1000/myapp@one_merged
 pub const OVERLAY_MERGED_NAME: &str = "merged";
 pub const OVERLAY_TMPFS_NAME: &str = "overlay";
 pub const OVERLAY_RW_NAME: &str = "rw";

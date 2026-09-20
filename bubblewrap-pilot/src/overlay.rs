@@ -28,6 +28,8 @@ use flakes::error::FlakeError;
 use flakes::lookup::Lookup;
 use flakes::user::{User, mkdir};
 
+use uzers::get_current_uid;
+
 use std::process::Command;
 
 pub fn mount(
@@ -42,9 +44,10 @@ pub fn mount(
     written to the root of the sandbox is kept in memory and the
     rootfs on the host stays untouched.
 
-    The setup of an instance named myapp@one looks as follows:
+    The setup of an instance named myapp@one, created by the
+    user with the ID 1000, looks as follows:
 
-    /var/tmp/
+    /var/tmp/bwrap_1000/
        ├── myapp@one_merged   <- overlay mount of the rootfs
        ├── myapp@one_overlay  <- tmpfs with the upper/work dirs
        ├── myapp@one_rw       <- upper dir of the sandbox root
@@ -57,7 +60,10 @@ pub fn mount(
     !*/
     // 1. Create the directories of the setup. The rw and the work
     //    directory are the writable layer of the sandbox root and
-    //    are therefore created for the user of the sandbox
+    //    are therefore created for the user of the sandbox. The
+    //    user directory which keeps them is created first, to not
+    //    leave its permissions to the umask of the caller
+    mkdir(&get_user_dir(), defaults::OVERLAY_DIR_MODE, user)?;
     for name in [
         defaults::OVERLAY_RW_NAME,
         defaults::OVERLAY_WORK_NAME,
@@ -125,14 +131,33 @@ pub fn umount(instance: &str) {
     umount_dir(&get_dir(instance, defaults::OVERLAY_TMPFS_NAME));
 }
 
+pub fn get_user_dir() -> String {
+    /*!
+    Provide the directory which keeps the overlay setups of the
+    calling user
+
+    The base directory of the setups is shared between all users
+    of the system. Each of them therefore gets a directory of its
+    own below it, named after its user ID, e.g /var/tmp/bwrap_1000.
+    Without it two users running the same flake would use the
+    same paths for their setups
+    !*/
+    format!(
+        "{}/{}_{}",
+        defaults::OVERLAY_BASE_DIR,
+        defaults::OVERLAY_USER_DIR_NAME,
+        get_current_uid()
+    )
+}
+
 pub fn get_dir(instance: &str, name: &str) -> String {
     /*!
     Provide the path of the given directory of the overlay setup
 
     All directories of the setup belong to one instance and are
-    therefore named after it, e.g /var/tmp/myapp@one_merged
+    therefore named after it, e.g /var/tmp/bwrap_1000/myapp@one_merged
     !*/
-    format!("{}/{}_{}", defaults::OVERLAY_BASE_DIR, instance, name)
+    format!("{}/{}_{}", get_user_dir(), instance, name)
 }
 
 pub fn get_mount_options(instance: &str, rootfs: &str) -> String {

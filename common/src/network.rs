@@ -21,7 +21,59 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+use serde::{Serialize, Deserialize};
+use std::fs;
+
+use crate::config::get_user_home;
 use crate::defaults;
+
+// NetworkConfig is the record of the host network setup created
+// by 'flake-ctl firecracker network init'
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetworkConfig {
+    /// Interface the traffic of the VMs is routed to the
+    /// outside world through
+    pub outgoing_interface: String,
+    /// The private network between the host and the VMs in its
+    /// ADDRESS/PREFIX_LEN notation. Records which were written
+    /// before the network became selectable provide none, they
+    /// were created for the preferred network
+    #[serde(default)]
+    pub network: Option<String>,
+}
+
+pub fn get_network_config_file(usermode: bool) -> String {
+    /*!
+    Provide the path of the host network setup record
+
+    The system wide setup is recorded next to the other flake
+    configuration files, the setup a user created is recorded
+    in the home directory of that user
+    !*/
+    if ! usermode {
+        return defaults::NETWORK_CONFIG.to_string()
+    }
+    format!("{}/{}", get_user_home(), defaults::NETWORK_CONFIG_USER)
+}
+
+pub fn read_network_config(usermode: bool) -> Option<NetworkConfig> {
+    /*!
+    Read the record of the host network setup
+
+    There is no record if the host was never prepared with
+    'flake-ctl firecracker network init' or if the setup was
+    created by hand
+    !*/
+    let config_file = get_network_config_file(usermode);
+    let yaml_data = fs::read_to_string(&config_file).ok()?;
+    match serde_yaml::from_str(&yaml_data) {
+        Ok(network_config) => Some(network_config),
+        Err(error) => {
+            error!("Failed to parse {config_file}: {error:?}");
+            None
+        }
+    }
+}
 
 pub fn get_tap_name(meta_name: &str) -> String {
     /*!
@@ -90,4 +142,35 @@ fn name_hash(name: &str) -> u64 {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_network_config_file, NetworkConfig};
+
+    #[test]
+    fn test_get_network_config_file() {
+        assert_eq!(
+            "/etc/flakes/network.yaml", get_network_config_file(false)
+        );
+        assert!(get_network_config_file(true).ends_with(
+            "/.config/flakes/firecracker/network.yaml"
+        ));
+    }
+
+    #[test]
+    fn test_read_network_record() {
+        let network_config: NetworkConfig = serde_yaml::from_str(
+            "outgoing_interface: eth0\nnetwork: 172.16.0.0/24\n"
+        ).unwrap();
+        assert_eq!("eth0", network_config.outgoing_interface);
+        assert_eq!(Some("172.16.0.0/24".to_string()), network_config.network);
+        // a record which predates the selection of the network
+        // provides no network
+        let network_config: NetworkConfig = serde_yaml::from_str(
+            "outgoing_interface: eth0\n"
+        ).unwrap();
+        assert_eq!("eth0", network_config.outgoing_interface);
+        assert_eq!(None, network_config.network);
+    }
 }

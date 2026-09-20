@@ -143,7 +143,7 @@ fn flakes_config(user: bool) -> &'static FlakesConfig {
     }
 }
 
-fn get_user_home() -> String {
+pub fn get_user_home() -> String {
     /*!
     Home directory of the user calling the program
     !*/

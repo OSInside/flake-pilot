@@ -111,6 +111,10 @@ The traffic of an instance takes the following path:
    Only the address in the flake configuration is persistent. IP
    forwarding, the netfilter rules and the TAP devices are runtime
    state of the host, after a reboot they have to be created again.
+   An application which is configured to use a network does not
+   start if its TAP device or the netfilter rules of the host are
+   missing. The error message names the command which creates the
+   missing part.
 
 The Commands
 ============

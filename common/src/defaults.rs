@@ -43,3 +43,12 @@ pub const IFNAMSIZ: usize = 16;
 // Number of hex digits used to make shortened
 // network interface names unique
 pub const IFNAME_HASH_LEN: usize = 6;
+// Record of the host network setup created by
+// 'flake-ctl firecracker network init'. The record is written
+// by flake-ctl and read by the pilot and therefore has to be
+// looked up at the same place by both of them
+pub const NETWORK_CONFIG: &str = "/etc/flakes/network.yaml";
+// User specific location of that record, relative to the
+// home directory of the user calling the program
+pub const NETWORK_CONFIG_USER: &str =
+    ".config/flakes/firecracker/network.yaml";

@@ -48,6 +48,12 @@ pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 // with 'flake-ctl firecracker network add' shows up here
 pub const SYS_CLASS_NET: &str =
     "/sys/class/net";
+// Tool to look up the netfilter rules of the host setup created
+// with 'flake-ctl firecracker network init'. Reading them
+// requires root privileges, therefore the tool is called
+// through sudo
+pub const IPTABLES_TOOL: &str =
+    "iptables";
 pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
 // Port of the instance the window size of the caller's terminal

@@ -168,14 +168,6 @@ pub const NFS_VOLUME_DELIMITER:char =
 // outgoing interface of the host
 pub const PROC_IP_FORWARD:&str =
     "/proc/sys/net/ipv4/ip_forward";
-// Record of the host network setup created by
-// 'flake-ctl firecracker network init'
-pub const NETWORK_CONFIG:&str =
-    "/etc/flakes/network.yaml";
-// User specific location of that record, relative to the
-// home directory of the user calling the program
-pub const NETWORK_CONFIG_USER:&str =
-    ".config/flakes/firecracker/network.yaml";
 // Setup of the private network between the host and the VMs.
 // The addresses only exist between the TAP device of an instance
 // and the VM behind it. The traffic to the outside world is

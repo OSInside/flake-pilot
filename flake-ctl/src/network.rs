@@ -22,9 +22,11 @@
 // SOFTWARE.
 //
 use flakes::defaults::TAP_DEVICE_PREFIX;
-use flakes::network::get_tap_name;
+use flakes::network::{
+    get_network_config_file, get_tap_name, read_network_config, NetworkConfig
+};
 use flakes::registration;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -38,27 +40,6 @@ use crate::app_config::{
 };
 use crate::defaults;
 use crate::firecracker::run_as;
-use crate::setup::user_home;
-
-// NetworkConfig is the record of the host network setup
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NetworkConfig {
-    pub outgoing_interface: String,
-    // The private network between the host and the VMs in its
-    // ADDRESS/PREFIX_LEN notation. Records which were written
-    // before the network became selectable provide none, they
-    // were created for the preferred network
-    #[serde(default = "preferred_network_record")]
-    pub network: String,
-}
-
-fn preferred_network_record() -> String {
-    /*!
-    Provide the network of a record which predates the selection
-    of the network
-    !*/
-    get_preferred_network().to_string()
-}
 
 pub fn init(outgoing_interface: &str, usermode: bool) -> bool {
     /*!
@@ -954,12 +935,18 @@ fn read_recorded_network(usermode: bool) -> RecordedNetwork {
         Some(network_config) => network_config,
         None => return RecordedNetwork::Missing
     };
-    match Ipv4Network::parse(&network_config.network) {
+    // A record which predates the selection of the network
+    // provides none, it was created for the preferred network
+    let recorded_network = match network_config.network {
+        Some(recorded_network) => recorded_network,
+        None => return RecordedNetwork::Network(get_preferred_network())
+    };
+    match Ipv4Network::parse(&recorded_network) {
         Some(network) => RecordedNetwork::Network(network),
         None => {
             error!(
-                "Invalid network {:?} in the network setup record",
-                network_config.network
+                "Invalid network {recorded_network:?} in the \
+                network setup record"
             );
             RecordedNetwork::Invalid
         }
@@ -1352,41 +1339,6 @@ impl fmt::Display for Ipv4Network {
     }
 }
 
-fn get_network_config_file(usermode: bool) -> Option<String> {
-    /*!
-    Provide the path of the host network setup record
-
-    The system wide setup is recorded next to the other flake
-    configuration files, the setup a user created is recorded
-    in the home directory of that user
-    !*/
-    if ! usermode {
-        return Some(defaults::NETWORK_CONFIG.to_string())
-    }
-    match user_home() {
-        Some(home) => Some(format!("{}/{}", home, defaults::NETWORK_CONFIG_USER)),
-        None => {
-            error!("Failed to lookup the home directory of the caller");
-            None
-        }
-    }
-}
-
-fn read_network_config(usermode: bool) -> Option<NetworkConfig> {
-    /*!
-    Read the record of the host network setup
-    !*/
-    let config_file = get_network_config_file(usermode)?;
-    let yaml_data = fs::read_to_string(&config_file).ok()?;
-    match serde_yaml::from_str(&yaml_data) {
-        Ok(network_config) => Some(network_config),
-        Err(error) => {
-            error!("Failed to parse {config_file}: {error:?}");
-            None
-        }
-    }
-}
-
 fn write_network_config(
     outgoing_interface: &str, network: &Ipv4Network, usermode: bool
 ) -> bool {
@@ -1397,13 +1349,10 @@ fn write_network_config(
     interface their traffic has to be routed to and the private
     network their addresses are taken from
     !*/
-    let config_file = match get_network_config_file(usermode) {
-        Some(config_file) => config_file,
-        None => return false
-    };
+    let config_file = get_network_config_file(usermode);
     let network_config = NetworkConfig {
         outgoing_interface: outgoing_interface.to_string(),
-        network: network.to_string()
+        network: Some(network.to_string())
     };
     let yaml_data = match serde_yaml::to_string(&network_config) {
         Ok(yaml_data) => yaml_data,
@@ -1770,7 +1719,7 @@ mod tests {
         get_address_list_networks, get_effective_boot_args, get_flake_taps,
         get_free_address, get_network_candidates, get_network_info,
         get_preferred_network, get_remove_command, get_route_list_networks,
-        select_free_network, Ipv4Network
+        select_free_network, Ipv4Network, NetworkConfig
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -1838,6 +1787,18 @@ mod tests {
         );
         // an application without an instance has one device
         assert_eq!(1, get_flake_taps("myapp", &[]).len());
+    }
+
+    #[test]
+    fn test_network_config_record() {
+        // the record is written here and read by the pilot,
+        // both of them have to agree on its format
+        let record = serde_yaml::to_string(&NetworkConfig {
+            outgoing_interface: "eth0".to_string(),
+            network: Some("172.16.0.0/24".to_string())
+        }).unwrap();
+        assert!(record.contains("outgoing_interface: eth0"));
+        assert!(record.contains("network: 172.16.0.0/24"));
     }
 
     #[test]

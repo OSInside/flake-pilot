@@ -23,6 +23,7 @@
 // SOFTWARE.
 //
 use crate::config::config_from_str;
+use crate::firecracker::get_network_init_command;
 use crate::firecracker::has_network_setup;
 use crate::firecracker::tap_device_exists;
 use flakes::network::get_valid_interface_name;
@@ -184,6 +185,14 @@ fn test_tap_device_exists() {
     // add' is not
     assert!(tap_device_exists("lo"));
     assert!(! tap_device_exists("tap-does-not-exist"));
+}
+
+#[test]
+fn test_network_init_command() {
+    assert_eq!(
+        "flake-ctl firecracker network init --outgoing-interface eth0",
+        get_network_init_command("eth0")
+    );
 }
 
 #[test]

@@ -32,6 +32,7 @@ use flakes::error::{FlakeError, OperationError};
 use flakes::user::{User, mkdir, chmod};
 use flakes::lookup::Lookup;
 use flakes::network::get_tap_name as get_tap_device_name;
+use flakes::network::read_network_config;
 use spinoff::{Spinner, spinners, Color};
 use ubyte::ByteUnit;
 use std::path::Path;
@@ -40,7 +41,7 @@ use std::env;
 use std::fs;
 use std::fs::DirBuilder;
 use std::os::unix::fs::DirBuilderExt;
-use crate::config::{config, RuntimeSection, EngineSection};
+use crate::config::{config, is_usermode, RuntimeSection, EngineSection};
 use tempfile::{NamedTempFile, tempdir};
 use std::io::{self, Write, SeekFrom, Seek};
 use std::fs::File;
@@ -959,6 +960,27 @@ pub fn create_firecracker_config(
                 )
             })
         }
+        // Sanity check: The traffic of the VM only reaches the
+        // outside world if the netfilter rules of the host setup
+        // are active
+        if let Some(outgoing_interface) = get_outgoing_interface() {
+            if let Some(missing_rule) = get_missing_nat_rule(
+                &outgoing_interface
+            ) {
+                return Err(FlakeError::IOError {
+                    kind: "NetworkSetupMissing".to_string(),
+                    message: format!(
+                        "The flake is configured to use a network but the \
+                        {missing_rule} rule which lets its traffic pass \
+                        through the outgoing interface \
+                        {outgoing_interface} is not active. The rules are \
+                        part of the host setup and are lost on reboot, \
+                        please call '{}' first",
+                        get_network_init_command(&outgoing_interface)
+                    )
+                })
+            }
+        }
         firecracker_config.network_interfaces[0].host_dev_name = tapname;
     }
 
@@ -1011,6 +1033,162 @@ pub fn tap_device_exists(tap: &str) -> bool {
     reported by the kernel below /sys/class/net
     !*/
     Path::new(defaults::SYS_CLASS_NET).join(tap).exists()
+}
+
+pub fn get_outgoing_interface() -> Option<String> {
+    /*!
+    Provide the interface the traffic of the VM is routed to
+
+    This is the interface the host setup was created for. It is
+    read from the record 'flake-ctl firecracker network init'
+    writes. Without a record there is no configured interface,
+    e.g because the setup was created by hand, and the netfilter
+    rules of the host cannot be checked.
+
+    The record belonging to the registration is the one to look
+    at first. As the system wide setup can be used by a flake of
+    a user and the other way round, the record of the other
+    setup is taken if there is none
+    !*/
+    let outgoing_interface = read_network_config(is_usermode())
+        .or_else(|| read_network_config(! is_usermode()))
+        .map(|network_config| network_config.outgoing_interface);
+    if Lookup::is_debug() {
+        match &outgoing_interface {
+            Some(interface) => debug!("outgoing interface is {interface}"),
+            None => debug!("No network setup record found")
+        }
+    }
+    outgoing_interface
+}
+
+struct NatRule<'a> {
+    /// Name of the iptables table, None for the default table
+    table: Option<&'a str>,
+    /// Name of the chain the rule belongs to
+    chain: &'a str,
+    /// Match and target of the rule
+    spec: Vec<&'a str>
+}
+
+pub fn get_missing_nat_rule(outgoing_interface: &str) -> Option<String> {
+    /*!
+    Provide the chain of the first netfilter rule of the host
+    setup which is not active, None if the setup is complete
+
+    The rules are the ones 'flake-ctl firecracker network init'
+    creates. They are not created by the pilot but are part of
+    the host setup and, as runtime state of the host, are gone
+    after a reboot.
+
+    A rule which cannot be read, e.g because the caller is not
+    allowed to look at the netfilter rules, is not reported as
+    missing. In that case there is nothing to check
+    !*/
+    let nat_rules = [
+        // Rewrite the sender of all outgoing traffic to the
+        // address of the outgoing interface
+        NatRule {
+            table: Some("nat"),
+            chain: "POSTROUTING",
+            spec: vec!["-o", outgoing_interface, "-j", "MASQUERADE"]
+        },
+        // Let the answers to that traffic pass back to the VM
+        NatRule {
+            table: None,
+            chain: "FORWARD",
+            spec: vec![
+                "-m", "conntrack",
+                "--ctstate", "RELATED,ESTABLISHED",
+                "-j", "ACCEPT"
+            ]
+        }
+    ];
+    for rule in nat_rules {
+        if nat_rule_exists(&rule) {
+            continue
+        }
+        if ! nat_chain_readable(&rule) {
+            if Lookup::is_debug() {
+                debug!(
+                    "Cannot read the {} rules, skipping the check", rule.chain
+                );
+            }
+            return None
+        }
+        return Some(rule.chain.to_string())
+    }
+    None
+}
+
+fn nat_rule_exists(rule: &NatRule) -> bool {
+    /*!
+    Check if the given rule is active on the host
+    !*/
+    iptables_ok(&mut iptables(rule.table, "-C", rule.chain, &rule.spec))
+}
+
+fn nat_chain_readable(rule: &NatRule) -> bool {
+    /*!
+    Check if the rules of the chain of the given rule can be read
+
+    Reading the netfilter rules requires root privileges. Telling
+    a chain without the searched rule apart from one which could
+    not be read at all needs this extra look, both of them let
+    the search for the rule fail
+    !*/
+    iptables_ok(&mut iptables(rule.table, "-S", rule.chain, &[]))
+}
+
+fn iptables(
+    table: Option<&str>, command: &str, chain: &str, spec: &[&str]
+) -> Command {
+    /*!
+    Create an iptables call applying the given command,
+    e.g '-S' or '-C', to the given chain or rule
+
+    The netfilter rules are only readable for root, therefore the
+    call is passed to sudo the same way 'flake-ctl firecracker
+    network init' calls the tool which created the rules
+    !*/
+    let mut call = User::ROOT.run(defaults::IPTABLES_TOOL);
+    if let Some(table) = table {
+        call.arg("-t").arg(table);
+    }
+    call.arg(command).arg(chain).args(spec);
+    call
+}
+
+fn iptables_ok(call: &mut Command) -> bool {
+    /*!
+    Run the given iptables call and tell whether it succeeded
+
+    A rule which is not active and a chain which cannot be read
+    are reported on stdout/stderr. Neither of them is an error
+    in this context and therefore not shown
+    !*/
+    if Lookup::is_debug() {
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
+    }
+    match call.stdout(Stdio::null()).stderr(Stdio::null()).status() {
+        Ok(status) => status.success(),
+        Err(_) => false
+    }
+}
+
+pub fn get_network_init_command(outgoing_interface: &str) -> String {
+    /*!
+    Construct the 'flake-ctl firecracker network init' call which
+    creates the netfilter rules of the host setup
+
+    The setup is created for the interface the traffic of all VMs
+    of the host leaves through. Therefore the call to report is
+    the same for every flake
+    !*/
+    format!(
+        "flake-ctl firecracker network init \
+        --outgoing-interface {outgoing_interface}"
+    )
 }
 
 pub fn get_network_add_command() -> String {

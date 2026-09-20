@@ -49,6 +49,12 @@ pub fn config() -> &'static Config<'static> {
     &CONFIG
 }
 
+/// Returns whether the calling program is registered for the
+/// calling user only, see `flakes::registration`
+pub fn is_usermode() -> bool {
+    *USERMODE
+}
+
 /// Reads the given firecracker runtime configuration
 ///
 /// The yaml document is expected to be the registration of

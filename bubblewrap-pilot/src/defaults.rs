@@ -76,8 +76,8 @@ pub const OVERLAY_DIR_MODE: &str = "755";
 pub const OVERLAY_TYPE: &str = "overlay";
 pub const TMPFS_TYPE: &str = "tmpfs";
 // Programs which create and delete the mounts on the host
-pub const MOUNT_TOOL: &str = "mount";
-pub const UMOUNT_TOOL: &str = "umount";
+pub const MOUNT_TOOL: &str = "/usr/bin/mount";
+pub const UMOUNT_TOOL: &str = "/usr/bin/umount";
 // Pilot option which selects the working directory of the
 // application in the sandbox
 pub const PILOT_CHDIR_OPTION: &str = "%chdir";

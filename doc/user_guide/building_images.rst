@@ -36,6 +36,7 @@ used in the context of this documentation here:
 * https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers
 
 * https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker
+  (https://ddrasqgvrmpt8.cloudfront.net)
 
 * https://github.com/OSInside/flake-pilot/tree/main/appstore/podman
   (https://gallery.ecr.aws/b9k1j9y6?page=1)

@@ -19,7 +19,7 @@ fi
 #--------------------------------------
 /usr/sbin/sshd-gen-keys-start
 
-zypper ar https://download.opensuse.org/distribution/leap/16.0/repo/oss Leap
+zypper ar https://download.opensuse.org/distribution/leap/15.6/repo/oss Leap
 
 npm install -g @anthropic-ai/claude-code@latest
 

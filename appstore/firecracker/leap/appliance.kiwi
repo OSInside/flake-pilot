@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<image schemaversion="7.5" name="firecracker-basesystem">
+<image schemaversion="7.5" name="leap">
     <description type="system">
         <author>Marcus Schäfer</author>
         <contact>marcus.schaefer@gmail.com</contact>
         <specification>FireCracker Base System for Testing</specification>
     </description>
     <preferences>
-        <version>1.15.4</version>
+        <version>1.16.0</version>
         <packagemanager>zypper</packagemanager>
         <locale>en_US</locale>
         <keytable>us</keytable>
@@ -20,13 +20,10 @@
         <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
     </users>
     <repository type="rpm-md">
-        <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_15.6"/>
+        <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_16.0"/>
     </repository>
     <repository type="rpm-md">
-        <source path="https://download.opensuse.org/update/leap/15.6/sle/"/>
-    </repository>
-    <repository type="rpm-md">
-        <source path="https://download.opensuse.org/distribution/leap/15.6/repo/oss"/>
+        <source path="https://download.opensuse.org/distribution/leap/16.0/repo/oss"/>
     </repository>
     <packages type="image">
         <!-- kernel -->
@@ -72,8 +69,8 @@
         <package name="rsync"/>
         <package name="openssh-server"/>
         <package name="npm-default"/>
-        <package name="python311"/>
-        <package name="python311-pip"/>
+        <package name="python313"/>
+        <package name="python313-pip"/>
         <package name="rust"/>
         <package name="cargo"/>
         <package name="vim"/>

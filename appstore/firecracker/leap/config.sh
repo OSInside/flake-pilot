@@ -13,7 +13,10 @@ ls -l /boot 1>&2
 # then taken by kiwi of no other kernel image is present
 if [ "$(uname -m)" = "x86_64" ];then
     rm -f /boot/vmlinuz*
-    gzip -d /boot/vmlinux*
+    rm -f /lib/modules/*/vmlinuz
+    cp /usr/lib/modules/*/vmlinux.xz /boot/vmlinux.xz
+    xz -d /boot/vmlinux.xz
+    cp /boot/vmlinux /lib/modules/*/
 fi
 
 /usr/sbin/sshd-gen-keys-start

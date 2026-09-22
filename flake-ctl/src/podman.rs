@@ -29,9 +29,14 @@ use std::process::{Command, Stdio};
 use glob::glob;
 use crate::defaults;
 use crate::app;
+use crate::app_config;
+use crate::network;
+use flakes::config::get_podman_ids_dir;
 use flakes::config::get_podman_storage_conf;
 use flakes::config::read_storage_conf;
-use uzers::{get_current_username};
+use flakes::io::IO;
+use flakes::lookup::Lookup;
+use uzers::{get_current_uid, get_current_username};
 
 pub fn pull(uri: &String, usermode: bool) -> i32 {
     /*!
@@ -168,7 +173,7 @@ fn export_container(
     let unpacked = unpack_instance(&instance, directory, usermode);
     // The instance only exists to provide the file system of the
     // container to the export and is deleted in any case
-    delete_instance(&instance, usermode);
+    delete_instance(&instance, false, usermode);
     unpacked
 }
 
@@ -265,23 +270,368 @@ fn unpack_instance(instance: &str, directory: &str, usermode: bool) -> bool {
     true
 }
 
-fn delete_instance(instance: &str, usermode: bool) {
+fn delete_instance(instance: &str, force: bool, usermode: bool) -> bool {
     /*!
-    Delete the container instance created for the export
+    Delete the given container instance
+
+    An instance which is still running is only deleted if the
+    deletion is forced
     !*/
-    info!("podman rm {instance}");
+    let force_option = if force { " --force" } else { "" };
+    info!("podman rm{force_option} {instance}");
     let mut call = setup_podman_call(usermode);
-    call.arg("rm")
-        .arg(instance)
+    call.arg("rm");
+    if force {
+        call.arg("--force");
+    }
+    call.arg(instance)
         .stdout(Stdio::null());
     match call.status() {
         Ok(status) => {
             if ! status.success() {
                 error!("Failed to delete container instance {instance}");
+                return false
             }
+            true
         },
         Err(error) => {
             error!("Failed to execute podman rm: {error:?}");
+            false
+        }
+    }
+}
+
+pub fn reset(
+    app: &str, instance: Option<&String>, usermode: bool
+) -> bool {
+    /*!
+    Stop and delete the container instance of a resume flake
+
+    An application registered with the resume option keeps its
+    container instance in running state such that the next call
+    of the application is done inside of that instance. This
+    command deletes the instance which lets the next call start
+    from a freshly created container.
+
+    Called without an instance selector the container of the
+    application itself is deleted. Instances started with a
+    '@NAME' selector each run in their own container and are
+    addressed by providing that selector
+    !*/
+    let config_file = match network::get_flake_config_file(app, usermode) {
+        Some(config_file) => config_file,
+        None => return false
+    };
+    // Only a resume flake keeps a container instance behind which
+    // could be reset. The engine of the flake runs as the
+    // configured user, its instances live in the podman storage
+    // of that user
+    let runas = match get_resume_runas(&config_file) {
+        Some(runas) => runas,
+        None => return false
+    };
+    let podman_usermode = runas != "root";
+
+    let cid_file = match get_cid_file(app, instance, usermode) {
+        Some(cid_file) => cid_file,
+        None => return false
+    };
+    if fs::symlink_metadata(&cid_file).is_err() {
+        info!("No container instance of {app} found");
+        return true
+    }
+    let cid = match read_cid_file(&cid_file) {
+        Some(cid) => cid,
+        None => return false
+    };
+    match container_exists(&cid, podman_usermode) {
+        Some(true) => {
+            if ! stop_instance(&cid, podman_usermode) {
+                return false
+            }
+            if ! delete_instance(&cid, true, podman_usermode) {
+                return false
+            }
+        },
+        Some(false) => {
+            info!("Container {cid} does not exist (anymore)");
+        },
+        // The state of the container could not be read, deleting
+        // the meta data of an instance which might still be
+        // around would orphan it
+        None => return false
+    }
+    // The meta data file is only valid along with the instance
+    // it was written for
+    info!("Deleting {cid_file}");
+    if let Err(error) = fs::remove_file(&cid_file) {
+        error!("Failed to delete {cid_file}: {error:?}");
+        return false
+    }
+    true
+}
+
+fn get_resume_runas(config_file: &str) -> Option<String> {
+    /*!
+    Provide the user the engine of the given flake runs as
+
+    The flake is required to be a container application which is
+    registered with the resume option. Only such a flake keeps
+    its container instance running after the application ended
+    !*/
+    let app_conf = match app_config::AppConfig::init_from_file(
+        Path::new(config_file)
+    ) {
+        Ok(app_conf) => app_conf,
+        Err(error) => {
+            error!("Failed to load or parse {config_file}: {error:?}");
+            return None
+        }
+    };
+    let container_conf = match app_conf.container {
+        Some(container_conf) => container_conf,
+        None => {
+            error!("{config_file} is not a container registration");
+            return None
+        }
+    };
+    let runtime_conf = container_conf.runtime;
+    if runtime_conf.as_ref()
+        .and_then(|runtime_conf| runtime_conf.resume) != Some(true)
+    {
+        error!("{config_file} is not registered with 'resume: true'");
+        error!("Only a resume flake keeps a container instance running");
+        return None
+    }
+    Some(
+        runtime_conf.and_then(|runtime_conf| runtime_conf.runas)
+            .unwrap_or_else(|| "root".to_string())
+    )
+}
+
+fn get_cid_file(
+    app: &str, instance: Option<&String>, usermode: bool
+) -> Option<String> {
+    /*!
+    Provide the path of the container ID file which podman-pilot
+    wrote for the given flake instance
+
+    The file is named after the application plus the '@NAME'
+    instance selector it was called with and is stored in the
+    private meta data directory of the calling user
+    !*/
+    let mut meta_name = network::get_app_basename(app)?;
+    if let Some(instance) = instance {
+        let instance = network::get_instance_name(instance);
+        if ! Lookup::is_safe_instance_name(&instance) {
+            error!(
+                "The instance name {instance} contains characters \
+                which are not allowed"
+            );
+            return None
+        }
+        meta_name.push_str(&instance);
+    }
+    Some(
+        format!(
+            "{}/{}/{}.{}",
+            get_podman_ids_dir(usermode), get_current_uid(),
+            meta_name, defaults::PODMAN_ID_EXTENSION
+        )
+    )
+}
+
+fn read_cid_file(cid_file: &str) -> Option<String> {
+    /*!
+    Read the container ID from the given container ID file
+
+    The file is stored in a directory which is shared with the
+    other users of the system. A symbolic link placed there by
+    somebody else is not followed, it would cause the read of
+    an unexpected target
+    !*/
+    if let Err(error) = IO::no_symlink(cid_file) {
+        error!("{error}");
+        return None
+    }
+    let cid = match fs::read_to_string(cid_file) {
+        Ok(cid) => cid.trim().to_string(),
+        Err(error) => {
+            error!("Failed to read {cid_file}: {error:?}");
+            return None
+        }
+    };
+    if cid.is_empty() {
+        error!("No container ID found in {cid_file}");
+        return None
+    }
+    Some(cid)
+}
+
+fn container_exists(cid: &str, usermode: bool) -> Option<bool> {
+    /*!
+    Check if the container with the given ID is known to podman
+
+    A container which is not known is reported as false. If the
+    lookup itself failed no statement about the container can be
+    made and none is provided
+    !*/
+    let mut call = setup_podman_call(usermode);
+    call.arg("ps")
+        .arg("--all")
+        .arg("--format").arg("{{.ID}}");
+    let output = match call.output() {
+        Ok(output) => output,
+        Err(error) => {
+            error!("Failed to execute podman ps: {error:?}");
+            return None
+        }
+    };
+    if ! output.status.success() {
+        error!(
+            "Failed to read the list of containers: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return None
+    }
+    Some(is_known_container(cid, &String::from_utf8_lossy(&output.stdout)))
+}
+
+fn is_known_container(cid: &str, ps_output: &str) -> bool {
+    /*!
+    Look up the given container ID in the output of a
+    'podman ps --all --format {{.ID}}' call
+    !*/
+    ps_output.lines()
+        .filter(|known_cid| ! known_cid.is_empty())
+        // podman reports the container IDs abbreviated
+        .any(|known_cid| cid.starts_with(known_cid))
+}
+
+fn stop_instance(cid: &str, usermode: bool) -> bool {
+    /*!
+    Stop the container instance of a resume flake
+
+    The instance is kept in running state by a sleep process
+    which podman-pilot starts as the entry point of the
+    container. As long as this process is alive the container
+    stays up, it is therefore killed before podman is asked to
+    stop the instance
+    !*/
+    for pid in get_resume_pids(cid, usermode) {
+        kill_process(cid, &pid, usermode);
+    }
+    info!("podman stop {cid}");
+    let mut call = setup_podman_call(usermode);
+    call.arg("stop")
+        .arg(cid)
+        .stdout(Stdio::null());
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                error!("Failed to stop container instance {cid}");
+                return false
+            }
+            true
+        },
+        Err(error) => {
+            error!("Failed to execute podman stop: {error:?}");
+            false
+        }
+    }
+}
+
+fn get_resume_pids(cid: &str, usermode: bool) -> Vec<String> {
+    /*!
+    Provide the IDs of the sleep processes which keep the given
+    container instance in running state
+
+    The IDs are the ones inside of the container because this is
+    where the processes are killed. A container which provides
+    no such process, e.g because it is not running anymore,
+    provides an empty list
+    !*/
+    let sleep_process = defaults::PODMAN_RESUME_PROCESS_NAME;
+    info!("podman top {cid} pid comm");
+    let mut call = setup_podman_call(usermode);
+    call.arg("top")
+        .arg(cid)
+        .arg("pid")
+        .arg("comm");
+    let output = match call.output() {
+        Ok(output) => output,
+        Err(error) => {
+            error!("Failed to execute podman top: {error:?}");
+            return Vec::new()
+        }
+    };
+    if ! output.status.success() {
+        error!(
+            "Failed to read the processes of {cid}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Vec::new()
+    }
+    let pids = get_pids_of_process(
+        &String::from_utf8_lossy(&output.stdout), sleep_process
+    );
+    if pids.is_empty() {
+        warn!("No {sleep_process} process found in {cid}");
+    }
+    pids
+}
+
+fn get_pids_of_process(top_output: &str, process_name: &str) -> Vec<String> {
+    /*!
+    Read the IDs of the given process from the output of a
+    'podman top CID pid comm' call
+
+    The output is a table of the processes of the container with
+    the process ID in its first and the process name in its
+    second column
+    !*/
+    let mut pids: Vec<String> = Vec::new();
+    // The first line of the output is the header of the table
+    for process in top_output.lines().skip(1) {
+        let mut columns = process.split_whitespace();
+        if let (Some(pid), Some(command)) = (columns.next(), columns.next()) {
+            if command == process_name {
+                pids.push(pid.to_string())
+            }
+        }
+    }
+    pids
+}
+
+fn kill_process(cid: &str, pid: &str, usermode: bool) -> bool {
+    /*!
+    Kill the process with the given ID inside of the container
+
+    Killing the process which keeps the container alive lets the
+    container terminate. The call is therefore allowed to fail,
+    this happens if the container is gone before podman could
+    report the result of the exec
+    !*/
+    let kill = defaults::KILL_TOOL;
+    info!("podman exec {cid} {kill} -9 {pid}");
+    let mut call = setup_podman_call(usermode);
+    call.arg("exec")
+        .arg(cid)
+        .arg(kill)
+        .arg("-9")
+        .arg(pid)
+        .stdout(Stdio::null());
+    match call.status() {
+        Ok(status) => {
+            if ! status.success() {
+                warn!("Failed to kill process {pid} in {cid}");
+                return false
+            }
+            true
+        },
+        Err(error) => {
+            warn!("Failed to execute podman exec: {error:?}");
+            false
         }
     }
 }
@@ -459,5 +809,67 @@ mod tests {
         assert!(! export(
             "name", directory.path().to_str().unwrap(), false, true
         ));
+    }
+
+    #[test]
+    fn test_get_cid_file() {
+        let meta_dir = format!("/tmp/flakes/{}", get_current_uid());
+        // the instance of the application itself
+        assert_eq!(
+            Some(format!("{meta_dir}/myapp.cid")),
+            get_cid_file("/usr/bin/myapp", None, false)
+        );
+        // an instance started with a '@NAME' selector. For
+        // convenience the selector is accepted without its
+        // leading '@' marker
+        assert_eq!(
+            Some(format!("{meta_dir}/myapp@one.cid")),
+            get_cid_file("/usr/bin/myapp", Some(&"one".to_string()), false)
+        );
+        assert_eq!(
+            Some(format!("{meta_dir}/myapp@one.cid")),
+            get_cid_file("/usr/bin/myapp", Some(&"@one".to_string()), false)
+        );
+    }
+
+    #[test]
+    fn test_get_cid_file_of_invalid_app() {
+        // the application has to be given as an absolute path
+        assert_eq!(None, get_cid_file("myapp", None, false));
+        // an instance name which is not safe to be used in a
+        // file name is refused
+        assert_eq!(
+            None,
+            get_cid_file("/usr/bin/myapp", Some(&"../one".to_string()), false)
+        );
+    }
+
+    #[test]
+    fn test_is_known_container() {
+        let ps_output = "8c9a3b1d4e5f\n1a2b3c4d5e6f\n";
+        // podman reports the container IDs abbreviated, the ID
+        // file of an instance holds the complete one
+        assert!(is_known_container("1a2b3c4d5e6f78901234", ps_output));
+        assert!(! is_known_container("deadbeefcafe12345678", ps_output));
+        // an empty list must not match any container
+        assert!(! is_known_container("1a2b3c4d5e6f78901234", "\n"));
+    }
+
+    #[test]
+    fn test_get_pids_of_process() {
+        let top_output = "\
+PID         COMMAND
+1           catatonit
+7           sleep
+21          bash
+";
+        assert_eq!(
+            vec!["7".to_string()], get_pids_of_process(top_output, "sleep")
+        );
+        // a container without the process provides no ID, the
+        // same applies to output which carries no process at all
+        assert!(get_pids_of_process(top_output, "sleepy").is_empty());
+        assert!(get_pids_of_process("PID         COMMAND\n", "sleep")
+            .is_empty());
     }
 }

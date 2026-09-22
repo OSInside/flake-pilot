@@ -255,6 +255,7 @@ fi
 %doc /usr/share/man/man8/flake-ctl-podman-pull.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-register.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-remove.8.gz
+%doc /usr/share/man/man8/flake-ctl-podman-reset.8.gz
 %doc /usr/share/man/man8/flake-ctl-podman-show.8.gz
 %doc /usr/share/man/man8/podman-pilot.8.gz
 

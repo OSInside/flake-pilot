@@ -147,6 +147,10 @@ __flake_ctl_podman_remove() {
     __comp_reply_unused "--app --container --help --force"
 }
 
+__flake_ctl_podman_reset() {
+    __comp_reply_unused "--app --instance --help"
+}
+
 __flake_ctl_podman_show() {
     __flake_ctl_show
 }
@@ -202,6 +206,7 @@ __flake_ctl_main() {
             podman_pull| \
             podman_register| \
             podman_remove| \
+            podman_reset| \
             podman_show| \
             firecracker_remove| \
             firecracker_help| \
@@ -228,7 +233,7 @@ __flake_ctl_main() {
                 ;;
             podman_*)
                 command="podman" && __comp_reply "
-                    help export load pull register remove show
+                    help export load pull register remove reset show
                 " && return 0
                 ;;
             help_*)

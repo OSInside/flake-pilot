@@ -493,6 +493,21 @@ pub enum Podman {
         #[clap(long)]
         force: bool,
     },
+    /// Stop and delete the container instance of a resume flake
+    Reset {
+        /// An absolute path to the application on the host.
+        /// The application must be registered as a container
+        /// application with the resume option set
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the application is
+        /// called with. Every instance runs in its own
+        /// container, therefore the command has to be called
+        /// for each of them
+        #[clap(long)]
+        instance: Option<String>,
+    },
     /// Register container application
     #[clap(
         group(

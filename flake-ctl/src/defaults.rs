@@ -88,6 +88,13 @@ pub const PODMAN_STORAGE_DRIVER:&str =
 // time do not use the same instance name
 pub const PODMAN_EXPORT_NAME_PREFIX:&str =
     "flake-ctl-export-";
+// Name of the process which keeps the container instance of a
+// resume flake in running state. podman-pilot creates such an
+// instance with a sleep entry point which allows to call the
+// application in it multiple times. The container only stops
+// if that process is gone
+pub const PODMAN_RESUME_PROCESS_NAME:&str =
+    "sleep";
 pub const PODMAN_ENGINE:&str =
     "podman";
 pub const FIRECRACKER_ENGINE:&str =
@@ -144,6 +151,11 @@ pub const SHA256_TOOL:&str =
     "sha256sum";
 pub const TAR_TOOL:&str =
     "tar";
+// Program used to kill a process inside of a container. It is
+// called through 'podman exec' and is therefore expected to be
+// part of the container, like the sleep program it kills
+pub const KILL_TOOL:&str =
+    "kill";
 pub const IPTABLES_TOOL:&str =
     "iptables";
 pub const IP_TOOL:&str =

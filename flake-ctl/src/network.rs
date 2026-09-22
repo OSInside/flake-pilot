@@ -333,7 +333,7 @@ fn get_flake_network(
     Some(FlakeNetwork { config_file, instance, tap })
 }
 
-fn get_app_basename(app: &str) -> Option<String> {
+pub fn get_app_basename(app: &str) -> Option<String> {
     /*!
     Provide the name the flake configuration of the given
     application is stored under

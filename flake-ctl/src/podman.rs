@@ -23,7 +23,6 @@
 // SOFTWARE.
 //
 use std::fs;
-use std::env;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use glob::glob;
@@ -31,12 +30,9 @@ use crate::defaults;
 use crate::app;
 use crate::app_config;
 use crate::network;
-use flakes::config::get_podman_ids_dir;
-use flakes::config::get_podman_storage_conf;
-use flakes::config::read_storage_conf;
 use flakes::io::IO;
 use flakes::lookup::Lookup;
-use uzers::{get_current_uid, get_current_username};
+use flakes::podman as engine;
 
 pub fn pull(uri: &String, usermode: bool) -> i32 {
     /*!
@@ -44,7 +40,7 @@ pub fn pull(uri: &String, usermode: bool) -> i32 {
     !*/
     info!("Fetching from registry...");
     info!("podman pull {uri}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("pull")
         .arg(uri);
     let status = match call.status() {
@@ -64,11 +60,7 @@ pub fn pull(uri: &String, usermode: bool) -> i32 {
         error!("Failed, error message(s) reported");
     } else {
         info!("podman prune");
-        let mut prune = setup_podman_call(usermode);
-        let _ = prune.arg("image")
-            .arg("prune")
-            .arg("--force")
-            .status();
+        engine::prune(usermode);
     }
     status_code
 }
@@ -89,7 +81,7 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
             }
         }
     info!("podman load -i {container_archive}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("load")
         .arg("-i")
         .arg(container_archive);
@@ -112,11 +104,7 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
     } else {
         // prune old images
         info!("podman prune");
-        let mut prune = setup_podman_call(usermode);
-        let _ = prune.arg("image")
-            .arg("prune")
-            .arg("--force")
-            .status();
+        engine::prune(usermode);
     }
     status_code
 }
@@ -173,7 +161,9 @@ fn export_container(
     let unpacked = unpack_instance(&instance, directory, usermode);
     // The instance only exists to provide the file system of the
     // container to the export and is deleted in any case
-    delete_instance(&instance, false, usermode);
+    if let Err(error) = engine::remove_container(&instance, false, usermode) {
+        error!("Failed to delete container instance {instance}: {error}");
+    }
     unpacked
 }
 
@@ -185,7 +175,7 @@ fn create_instance(container: &str, instance: &str, usermode: bool) -> bool {
     system of the container
     !*/
     info!("podman create --name {instance} {container}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("create")
         .arg("--name")
         .arg(instance)
@@ -216,7 +206,7 @@ fn unpack_instance(instance: &str, directory: &str, usermode: bool) -> bool {
     !*/
     let tool = defaults::TAR_TOOL;
     info!("podman export {instance} | {tool} -x -C {directory}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("export")
         .arg(instance)
         .stdout(Stdio::piped());
@@ -270,37 +260,6 @@ fn unpack_instance(instance: &str, directory: &str, usermode: bool) -> bool {
     true
 }
 
-fn delete_instance(instance: &str, force: bool, usermode: bool) -> bool {
-    /*!
-    Delete the given container instance
-
-    An instance which is still running is only deleted if the
-    deletion is forced
-    !*/
-    let force_option = if force { " --force" } else { "" };
-    info!("podman rm{force_option} {instance}");
-    let mut call = setup_podman_call(usermode);
-    call.arg("rm");
-    if force {
-        call.arg("--force");
-    }
-    call.arg(instance)
-        .stdout(Stdio::null());
-    match call.status() {
-        Ok(status) => {
-            if ! status.success() {
-                error!("Failed to delete container instance {instance}");
-                return false
-            }
-            true
-        },
-        Err(error) => {
-            error!("Failed to execute podman rm: {error:?}");
-            false
-        }
-    }
-}
-
 pub fn reset(
     app: &str, instance: Option<&String>, usermode: bool
 ) -> bool {
@@ -344,22 +303,29 @@ pub fn reset(
         Some(cid) => cid,
         None => return false
     };
-    match container_exists(&cid, podman_usermode) {
-        Some(true) => {
+    match engine::container_exists(&cid, podman_usermode) {
+        Ok(true) => {
             if ! stop_instance(&cid, podman_usermode) {
                 return false
             }
-            if ! delete_instance(&cid, true, podman_usermode) {
+            info!("podman rm --force {cid}");
+            if let Err(error) = engine::remove_container(
+                &cid, true, podman_usermode
+            ) {
+                error!("Failed to delete container instance {cid}: {error}");
                 return false
             }
         },
-        Some(false) => {
+        Ok(false) => {
             info!("Container {cid} does not exist (anymore)");
         },
         // The state of the container could not be read, deleting
         // the meta data of an instance which might still be
         // around would orphan it
-        None => return false
+        Err(error) => {
+            error!("{error}");
+            return false
+        }
     }
     // The meta data file is only valid along with the instance
     // it was written for
@@ -432,13 +398,7 @@ fn get_cid_file(
         }
         meta_name.push_str(&instance);
     }
-    Some(
-        format!(
-            "{}/{}/{}.{}",
-            get_podman_ids_dir(usermode), get_current_uid(),
-            meta_name, defaults::PODMAN_ID_EXTENSION
-        )
-    )
+    Some(engine::cid_file(&engine::cid_dir(usermode), &meta_name))
 }
 
 fn read_cid_file(cid_file: &str) -> Option<String> {
@@ -468,46 +428,6 @@ fn read_cid_file(cid_file: &str) -> Option<String> {
     Some(cid)
 }
 
-fn container_exists(cid: &str, usermode: bool) -> Option<bool> {
-    /*!
-    Check if the container with the given ID is known to podman
-
-    A container which is not known is reported as false. If the
-    lookup itself failed no statement about the container can be
-    made and none is provided
-    !*/
-    let mut call = setup_podman_call(usermode);
-    call.arg("ps")
-        .arg("--all")
-        .arg("--format").arg("{{.ID}}");
-    let output = match call.output() {
-        Ok(output) => output,
-        Err(error) => {
-            error!("Failed to execute podman ps: {error:?}");
-            return None
-        }
-    };
-    if ! output.status.success() {
-        error!(
-            "Failed to read the list of containers: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return None
-    }
-    Some(is_known_container(cid, &String::from_utf8_lossy(&output.stdout)))
-}
-
-fn is_known_container(cid: &str, ps_output: &str) -> bool {
-    /*!
-    Look up the given container ID in the output of a
-    'podman ps --all --format {{.ID}}' call
-    !*/
-    ps_output.lines()
-        .filter(|known_cid| ! known_cid.is_empty())
-        // podman reports the container IDs abbreviated
-        .any(|known_cid| cid.starts_with(known_cid))
-}
-
 fn stop_instance(cid: &str, usermode: bool) -> bool {
     /*!
     Stop the container instance of a resume flake
@@ -522,7 +442,7 @@ fn stop_instance(cid: &str, usermode: bool) -> bool {
         kill_process(cid, &pid, usermode);
     }
     info!("podman stop {cid}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("stop")
         .arg(cid)
         .stdout(Stdio::null());
@@ -553,7 +473,7 @@ fn get_resume_pids(cid: &str, usermode: bool) -> Vec<String> {
     !*/
     let sleep_process = defaults::PODMAN_RESUME_PROCESS_NAME;
     info!("podman top {cid} pid comm");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("top")
         .arg(cid)
         .arg("pid")
@@ -614,7 +534,7 @@ fn kill_process(cid: &str, pid: &str, usermode: bool) -> bool {
     !*/
     let kill = defaults::KILL_TOOL;
     info!("podman exec {cid} {kill} -9 {pid}");
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("exec")
         .arg(cid)
         .arg(kill)
@@ -643,7 +563,7 @@ pub fn rm(container: &String, usermode: bool) {
     info!("Removing image and all running containers...");
     info!("podman rm -f {container}");
 
-    let mut call = setup_podman_call(usermode);
+    let mut call = engine::setup_podman_call(usermode);
     call.arg("image")
         .arg("rm")
         .arg("-f")
@@ -663,53 +583,6 @@ pub fn rm(container: &String, usermode: bool) {
     if ! status.success() {
         error!("Failed, error message(s) reported");
     }
-}
-
-pub fn mount_container(container_name: &str) -> String {
-    /*!
-    Mount container and return mount point,
-    or an empty string in the error case
-    !*/
-    let mut call = setup_podman_call(false);
-    call.arg("image")
-        .arg("mount")
-        .arg(container_name);
-    let output = match call.output() {
-        Ok(output) => {
-            output
-        }
-        Err(_) => {
-            call.output().unwrap()
-        }
-    };
-    if output.status.success() {
-        return String::from_utf8_lossy(&output.stdout)
-            .strip_suffix('\n').unwrap().to_string()
-    }
-    error!(
-        "Failed to mount container image: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    "".to_string()
-}
-
-pub fn umount_container(container_name: &str) -> i32 {
-    /*!
-    Umount container image
-    !*/
-    let mut call = setup_podman_call(false);
-    call.arg("image")
-        .arg("umount")
-        .arg(container_name);
-    let output = match call.output() {
-        Ok(output) => {
-            output
-        }
-        Err(_) => {
-            call.output().unwrap()
-        }
-    };
-    output.status.code().unwrap()
 }
 
 pub fn purge_container(container: &str, usermode: bool) {
@@ -743,10 +616,17 @@ pub fn print_container_info(container: &str) {
     let container_basename = Path::new(
         container
     ).file_name().unwrap().to_str().unwrap();
-    let image_mount_point = mount_container(container);
-    if image_mount_point.is_empty() {
-        return
-    }
+    // The image is looked up in the system wide registry,
+    // mounting it requires root permissions
+    let image_mount_point = match engine::mount_container(
+        container, true, false
+    ) {
+        Ok(image_mount_point) => image_mount_point,
+        Err(error) => {
+            error!("Failed to mount container image: {error}");
+            return
+        }
+    };
     let info_file = format!(
         "{image_mount_point}/{container_basename}.yaml"
     );
@@ -766,33 +646,9 @@ pub fn print_container_info(container: &str) {
         error!("No info file {container_basename}.yaml found in container: {container}"
         );
     }
-    umount_container(container);
-}
-
-pub fn setup_podman_call(usermode: bool) -> Command {
-    let storage = read_storage_conf(usermode).unwrap();
-    let calling_user_name = get_current_username().unwrap();
-    let container_runroot = format!(
-        "{}/{}",
-        storage.get("runroot").unwrap(),
-        calling_user_name.to_str().unwrap()
-    );
-    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
-    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
-    let mut call = Command::new("sudo");
-    // Only the variables set above are handed over to the podman
-    // call. Passing the complete environment of the caller to a
-    // process running as root allows to influence that process in
-    // ways the sudo rule for it never intended
-    call.arg(format!(
-        "--preserve-env={}",
-        ["CONTAINERS_STORAGE_CONF", "XDG_RUNTIME_DIR"].join(",")
-    ));
-    if usermode {
-        call.arg("--user").arg(calling_user_name);
+    if let Err(error) = engine::umount_container(container, true, false) {
+        error!("Failed to umount container image: {error}");
     }
-    call.arg(defaults::PODMAN_PATH);
-    call
 }
 
 #[cfg(test)]
@@ -813,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_get_cid_file() {
-        let meta_dir = format!("/tmp/flakes/{}", get_current_uid());
+        let meta_dir = format!("/tmp/flakes/{}", uzers::get_current_uid());
         // the instance of the application itself
         assert_eq!(
             Some(format!("{meta_dir}/myapp.cid")),
@@ -842,17 +698,6 @@ mod tests {
             None,
             get_cid_file("/usr/bin/myapp", Some(&"../one".to_string()), false)
         );
-    }
-
-    #[test]
-    fn test_is_known_container() {
-        let ps_output = "8c9a3b1d4e5f\n1a2b3c4d5e6f\n";
-        // podman reports the container IDs abbreviated, the ID
-        // file of an instance holds the complete one
-        assert!(is_known_container("1a2b3c4d5e6f78901234", ps_output));
-        assert!(! is_known_container("deadbeefcafe12345678", ps_output));
-        // an empty list must not match any container
-        assert!(! is_known_container("1a2b3c4d5e6f78901234", "\n"));
     }
 
     #[test]

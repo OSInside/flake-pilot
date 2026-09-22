@@ -28,8 +28,6 @@ pub const FIRECRACKER_PILOT: &str =
     "/usr/bin/firecracker-pilot";
 pub const BUBBLEWRAP_PILOT: &str =
     "/usr/bin/bubblewrap-pilot";
-pub const PODMAN_PATH:&str =
-    "/usr/bin/podman";
 pub const FLAKE_TEMPLATE_CONTAINER:&str =
     "/etc/flakes/container-flake.yaml";
 pub const FLAKE_TEMPLATE_FIRECRACKER:&str =
@@ -122,9 +120,10 @@ pub const FLAKE_SHOW_VM_COLUMNS:[&str; 9] = [
 pub const FLAKE_SHOW_ID_LEN: usize =
     12;
 // File name extensions of the meta data files the pilots
-// create for their instances
-pub const PODMAN_ID_EXTENSION:&str =
-    "cid";
+// create for their instances. The extension of the podman
+// engine is shared with podman-pilot and is therefore
+// maintained in the common area
+pub use flakes::defaults::PODMAN_ID_EXTENSION;
 pub const FIRECRACKER_ID_EXTENSION:&str =
     "vmid";
 pub const BUBBLEWRAP_ID_EXTENSION:&str =

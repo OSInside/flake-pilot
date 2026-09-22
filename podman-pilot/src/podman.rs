@@ -33,9 +33,9 @@ use flakes::user::{User, mkdir, cp, exists};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
-use flakes::command::{CommandError, CommandExtTrait};
-use flakes::config::get_podman_ids_dir;
+use flakes::command::CommandExtTrait;
 use flakes::config::read_storage_conf;
+use flakes::podman as engine;
 
 use std::io;
 use std::path::Path;
@@ -53,7 +53,6 @@ use tempfile::NamedTempFile;
 use regex::Regex;
 
 use uzers::{get_current_username};
-use flakes::config::get_podman_storage_conf;
 
 pub fn create(
     program_name: &String
@@ -203,15 +202,15 @@ pub fn create(
     mkdir(&container_runroot, "700", user)?;
 
     // Make sure CID dir exists
-    let container_ids_dir = init_cid_dir(user)?;
+    let container_ids_dir = engine::init_cid_dir(user)?;
 
-    let container_cid_file = format!(
-        "{}/{}{}.cid", container_ids_dir, program_name, suffix
+    let container_cid_file = engine::cid_file(
+        &container_ids_dir, &format!("{program_name}{suffix}")
     );
     IO::no_symlink(&container_cid_file)?;
 
     // init podman creation call
-    let mut app = setup_podman_call(usermode);
+    let mut app = engine::setup_podman_call(usermode);
     app.arg("create")
         .arg("--pull=newer")
         .arg("--cidfile").arg(&container_cid_file);
@@ -598,9 +597,9 @@ pub fn call_instance(
     /*!
     Call container ID based podman commands
     !*/
-    let RuntimeSection { runas, resume, .. } = config().runtime();
+    let RuntimeSection { resume, .. } = config().runtime();
 
-    let usermode = runas != "root";
+    let usermode = usermode();
     let pilot_options = Lookup::get_pilot_run_options(
         config().pilot_options()
     );
@@ -609,13 +608,19 @@ pub fn call_instance(
         interactive = true;
     }
 
-    let mut call = setup_podman_call(usermode);
     if action == "rm" || action == "rm_force" {
-        call.stdout(Stdio::null());
-        call.arg("rm").arg("--force");
-    } else {
-        call.arg(action);
+        // A container which could not be deleted is not fatal,
+        // the caller is in the process of cleaning up
+        if let Err(error) = engine::remove_container(cid, true, usermode) {
+            if Lookup::is_debug() {
+                debug!("{error}");
+            }
+        }
+        return Ok(())
     }
+
+    let mut call = engine::setup_podman_call(usermode);
+    call.arg(action);
     if action == "exec" {
         call.arg("--interactive");
         call.arg("--tty");
@@ -653,24 +658,16 @@ pub fn mount_container(
 ) -> Result<String, FlakeError> {
     /*!
     Mount container and return mount point
+
+    An image which is not in the local registry is fetched
+    prior mounting it
     !*/
     if as_image && ! container_image_exists(container_name)? {
         pull(container_name)?;
     }
-    let mut call = setup_podman_call(false);
-    if as_image {
-        call.arg("image").arg("mount").arg(container_name);
-    } else {
-        call.arg("mount").arg(container_name);
-    }
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", call.get_program(), call.get_args());
-    }
-    let output = call.perform()?;
-    Ok(
-        String::from_utf8_lossy(&output.stdout)
-            .trim_end_matches('\n').to_owned()
-    )
+    // Provisioning is done in the system wide storage, it
+    // requires root permissions in any case
+    engine::mount_container(container_name, as_image, false)
 }
 
 pub fn umount_container(
@@ -679,19 +676,7 @@ pub fn umount_container(
     /*!
     Umount container image
     !*/
-    let mut call = setup_podman_call(false);
-    call.stderr(Stdio::null());
-    call.stdout(Stdio::null());
-    if as_image {
-        call.arg("image").arg("umount").arg(mount_point);
-    } else {
-        call.arg("umount").arg(mount_point);
-    }
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", call.get_program(), call.get_args());
-    }
-    call.perform()?;
-    Ok(())
+    engine::umount_container(mount_point, as_image, false)
 }
 
 pub fn sync_host(
@@ -752,52 +737,29 @@ pub fn sync_host(
     Ok(())
 }
 
-pub fn init_cid_dir(user: User) -> Result<String, FlakeError> {
+pub fn usermode() -> bool {
     /*!
-    Create meta data directory structure and return the private
-    directory of the calling user to store the CID files in
+    Check if the flake runs in a rootless podman setup
+
+    A flake which is configured to run as another user than
+    root uses the podman storage of the calling user
     !*/
-    let usermode = user.get_name() != "root";
-    IO::private_dir(&get_podman_ids_dir(usermode), user)
+    let RuntimeSection { runas, .. } = config().runtime();
+    runas != "root"
 }
 
 pub fn container_exists(cid: &str) -> Result<bool, FlakeError> {
     /*!
     Check if container exists according to the specified cid
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    let usermode = runas != "root";
-    let mut exists = setup_podman_call(usermode);
-    exists.arg("container").arg("exists").arg(cid);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", exists.get_program(), exists.get_args());
-    }
-    let output = match exists.output() {
-        Ok(output) => {
-            output
-        }
-        Err(error) => {
-            return Err(
-                FlakeError::IOError {
-                    kind: "call failed".to_string(),
-                    message: format!("{error:?}")
-                }
-            );
-        }
-    };
-    if output.status.success() {
-        return Ok(true)
-    }
-    Ok(false)
+    engine::container_exists(cid, usermode())
 }
 
 pub fn container_image_exists(name: &str) -> Result<bool, FlakeError> {
     /*!
     Check if container image is present in local registry
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    let usermode = runas != "root";
-    let mut exists = setup_podman_call(usermode);
+    let mut exists = engine::setup_podman_call(usermode());
     exists.arg("image").arg("exists").arg(name);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", exists.get_program(), exists.get_args());
@@ -821,40 +783,18 @@ pub fn container_image_exists(name: &str) -> Result<bool, FlakeError> {
     Ok(false)
 }
 
-pub fn container_running(cid: &str) -> Result<bool, CommandError> {
+pub fn container_running(cid: &str) -> Result<bool, FlakeError> {
     /*!
     Check if container with specified cid is running
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    let usermode = runas != "root";
-    let mut running_status = false;
-    let mut running = setup_podman_call(usermode);
-    running.arg("ps")
-        .arg("--format").arg("{{.ID}}");
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", running.get_program(), running.get_args());
-    }
-    let output = running.perform()?;
-    let mut running_cids = String::new();
-    running_cids.push_str(
-        &String::from_utf8_lossy(&output.stdout)
-    );
-    for running_cid in running_cids.lines() {
-        if cid.starts_with(running_cid) {
-            running_status = true;
-            break
-        }
-    }
-    Ok(running_status)
+    engine::container_running(cid, usermode())
 }
 
 pub fn pull(uri: &str) -> Result<(), FlakeError> {
     /*!
     Call podman pull with the provided uri
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    let usermode = runas != "root";
-    let mut pull = setup_podman_call(usermode);
+    let mut pull = engine::setup_podman_call(usermode());
     pull.arg("pull").arg(uri);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", pull.get_program(), pull.get_args());
@@ -867,25 +807,6 @@ pub fn pull(uri: &str) -> Result<(), FlakeError> {
             return Err(FlakeError::CommandError(error))
         }
     };
-    Ok(())
-}
-
-pub fn prune() -> Result<(), FlakeError> {
-    /*!
-    Call podman image prune to get rid of old containers.
-    Errors from the call are only logged but will not cause
-    the app run to fail. In the worse case old containers
-    doesn't get wiped but this should not prevent the app
-    from being called with the latest container available.
-    !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    let usermode = runas != "root";
-    let mut prune = setup_podman_call(usermode);
-    prune.arg("image").arg("prune").arg("--force");
-    match prune.status() {
-        Ok(status) => { if Lookup::is_debug() { debug!("{status:?}") }},
-        Err(error) => { if Lookup::is_debug() { debug!("{error:?}") }}
-    }
     Ok(())
 }
 
@@ -979,7 +900,9 @@ pub fn gc_cid_file(container_cid_file: &String) -> Result<bool, FlakeError> {
     exists or the given file is not a CID file(ignored),
     in any other case return false.
     !*/
-    if ! container_cid_file.ends_with(".cid") {
+    if ! container_cid_file
+        .ends_with(&format!(".{}", flakes::defaults::PODMAN_ID_EXTENSION))
+    {
         return Ok(true);
     }
     IO::no_symlink(container_cid_file)?;
@@ -1001,7 +924,7 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
     let paths;
-    let container_ids_dir = init_cid_dir(user)?;
+    let container_ids_dir = engine::init_cid_dir(user)?;
     match fs::read_dir(&container_ids_dir) {
         Ok(result) => { paths = result },
         Err(error) => {
@@ -1022,34 +945,6 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
             let _ = gc_cid_file(&container_cid_file);
         }
     }
-    prune()?;
+    engine::prune(usermode());
     Ok(())
-}
-
-pub fn setup_podman_call(usermode: bool) -> Command {
-    let storage = read_storage_conf(usermode).unwrap();
-    let calling_user_name = get_current_username().unwrap();
-    let container_runroot = format!(
-        "{}/{}",
-        storage.get("runroot").unwrap(),
-        calling_user_name.to_str().unwrap()
-    );
-    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
-    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
-    let mut call = Command::new("sudo");
-    // Only the variables set above are handed over to the podman
-    // call. Passing the complete environment of the caller to a
-    // process running as root allows to influence that process in
-    // ways the sudo rule for it never intended
-    call.arg(format!(
-        "--preserve-env={}",
-        ["CONTAINERS_STORAGE_CONF", "XDG_RUNTIME_DIR"].join(",")
-    ));
-    if usermode {
-        call.arg("--user").arg(calling_user_name);
-    } else {
-        call.arg("--user").arg("root");
-    }
-    call.arg(defaults::PODMAN_PATH);
-    call
 }

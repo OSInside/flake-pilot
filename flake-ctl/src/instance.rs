@@ -25,7 +25,7 @@ use crate::app_config::AppFireCrackerEngine;
 use crate::cli::ListFormat;
 use crate::network::{get_effective_boot_args, get_network_info, NetworkInfo};
 use crate::volume::{get_volume_info, VolumeInfo};
-use crate::{app_config, defaults, output, podman};
+use crate::{app_config, defaults, output};
 use glob::glob;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -36,6 +36,7 @@ use flakes::config::{
     get_podman_ids_dir, read_storage_conf
 };
 use flakes::defaults::FLAKES_DIR_USER;
+use flakes::podman::{container_ids, is_known_container};
 use flakes::registration;
 use uzers::{get_current_uid, get_user_by_uid};
 use uzers::os::unix::UserExt;
@@ -476,13 +477,11 @@ impl PodmanState {
         }
         match self.running_containers(usermode) {
             Some(running_cids) => {
-                for running_cid in running_cids {
-                    // podman reports the container IDs abbreviated
-                    if cid.starts_with(running_cid.as_str()) {
-                        return defaults::INSTANCE_RUNNING.to_string()
-                    }
+                if is_known_container(cid, running_cids) {
+                    defaults::INSTANCE_RUNNING.to_string()
+                } else {
+                    defaults::INSTANCE_STOPPED.to_string()
                 }
-                defaults::INSTANCE_STOPPED.to_string()
             },
             None => defaults::INSTANCE_UNKNOWN.to_string()
         }
@@ -501,28 +500,10 @@ impl PodmanState {
                 error!("Failed to read podman storage setup: {error:?}");
                 return None
             }
-            let mut call = podman::setup_podman_call(usermode);
-            call.arg("ps")
-                .arg("--format").arg("{{.ID}}");
-            match call.output() {
-                Ok(output) => {
-                    if ! output.status.success() {
-                        error!(
-                            "Failed to read running containers: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return None
-                    }
-                    Some(
-                        String::from_utf8_lossy(&output.stdout)
-                            .lines()
-                            .filter(|cid| ! cid.is_empty())
-                            .map(|cid| cid.to_string())
-                            .collect()
-                    )
-                },
+            match container_ids(usermode, false) {
+                Ok(container_ids) => Some(container_ids),
                 Err(error) => {
-                    error!("Failed to call podman: {error:?}");
+                    error!("Failed to read running containers: {error}");
                     None
                 }
             }

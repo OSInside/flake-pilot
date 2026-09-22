@@ -33,6 +33,10 @@ pub const BUBBLEWRAP_IDS_DIR: &str = "/tmp/flakes";
 pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";
 pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
+pub const PODMAN_PATH: &str = "/usr/bin/podman";
+// File name extension of the meta data files podman-pilot
+// creates for its container instances
+pub const PODMAN_ID_EXTENSION: &str = "cid";
 // Options used for all rsync calls.
 pub const RSYNC_OPTIONS: [&str; 2] = ["-a", "-v"];
 // Prefix of the TAP device a VM instance is connected to

@@ -32,49 +32,123 @@ concepts behind flakes, shows how to register applications for the
 network setup for virtual machines and documents the layout of the
 flake configuration.
 
-The guide is organized as follows:
-
-* :ref:`introduction` explains what Flake Pilot is, which components
-  it consists of and which problems it solves.
-
-* :ref:`installation` describes how to install the packages or how to
-  build the project from source.
-
-* :ref:`getting-started` prepares the host and registers a first
-  application.
-
-* :ref:`container-apps` covers applications provided by OCI
-  containers, including delta containers and layered setups.
-
-* :ref:`vm-apps` covers applications provided by Firecracker virtual
-  machines.
-
-* :ref:`firecracker-networking` explains how a virtual machine is
-  connected to the outside world.
-
-* :ref:`firecracker-volumes` explains how a local host path is
-  shared with a virtual machine over NFS.
-
-* :ref:`sandbox-apps` covers applications provided by a directory
-  tree on the host which is mounted as the root system of a sandbox.
-
-* :ref:`application-setup` documents the registry layout, the flake
-  configuration and the tools to inspect a running setup.
-
-* :ref:`building-images` points to ways of building your own
-  application images.
-
-* :ref:`troubleshooting` collects known issues and the switches which
-  help to analyze them.
-
 The command line of each tool is documented in the manual pages
 shipped with the packages, e.g ``man 8 flake-ctl`` or
 ``man 8 podman-pilot``. This guide references them where the details
 matter.
 
+How to Get Started
+==================
+
+Install the packages of the engines you want to use as described in
+:ref:`installation`. Every engine comes with its own pilot and only
+the ones you registered applications for are needed.
+
+Next, prepare your user environment. Applications registered as a
+normal user are placed in a directory of your choice, typically
+``$HOME/bin``, which has to be part of your search path:
+
+.. code-block:: bash
+
+   mkdir -p ~/bin
+   export PATH=$PATH:$HOME/bin
+
+   flake-ctl init
+
+``flake-ctl init`` creates the registry below ``$HOME/.config/flakes``
+and the engine configuration that belongs to it. Called as ``root``
+the registry is created in ``/usr/share/flakes`` and the registered
+applications are available to everybody on the host.
+
+With that in place a first application is one command away:
+
+.. code-block:: bash
+
+   flake-ctl podman register \
+        --container docker.io/amazon/aws-cli --app $HOME/bin/aws --target /
+
+   aws ec2 help
+
+``flake-ctl list`` shows what is registered on your host. The complete
+walk through, including the pitfalls of the user setup, is described
+in :ref:`getting-started`.
+
+Isolating AI Workloads With Firecracker
+=======================================
+
+AI tools are moving fast, they are rarely packaged for your
+distribution, they want to read your source tree and they talk to the
+network on their own. Running them in a Firecracker virtual machine
+keeps them on a kernel of their own and lets you decide which part of
+the host they can reach.
+
+.. code-block:: bash
+
+   flake-ctl firecracker pull --name claude \
+       --kis-image https://ddrasqgvrmpt8.cloudfront.net/claude.x86_64-1.15.6-0.tar.xz
+
+   flake-ctl firecracker register --vm claude \
+       --app $HOME/bin/claude --target /bin/bash \
+       --overlay-size 20GiB --force-vsock --resume
+
+   claude
+
+The application feels local, but the code it runs never touches the
+host system. The write layer of the instance lives in an overlay of
+its own and the data you want the tool to see is shared explicitly.
+:ref:`vm-apps` shows the complete example, :ref:`firecracker-networking`
+connects the instance to the outside world and
+:ref:`firecracker-volumes` shares a host directory with it over NFS.
+
+An Application Collection With Podman
+=====================================
+
+Cloud SDKs, vendor tools and language specific utilities are often not
+packaged by your distribution, or only in a version that is too old.
+Vendors do publish container images for them, and a podman flake turns
+such an image into a program on your host:
+
+.. code-block:: bash
+
+   flake-ctl podman register \
+       --container gcr.io/google.com/cloudsdktool/google-cloud-cli:stable \
+       --app $HOME/bin/gcloud --target /usr/bin/gcloud
+
+   gcloud version
+
+From here on ``gcloud`` is just a command. Collect the tools you need
+this way and your host stays clean of the dependencies they drag in,
+while each of them can be updated, pinned to a version or dropped
+again on its own. :ref:`container-apps` covers the registration
+options, engine options and delta containers which keep the data to
+pull small.
+
+A Throw Away Host With Bubblewrap
+=================================
+
+Some tasks want to modify the host: an installation you are not sure
+about, a build that scatters files outside of its build directory, a
+script from the internet you would rather watch first. The
+``bubblewrap`` engine mounts a directory tree, the host root system
+included, as the read only layer of an overlay:
+
+.. code-block:: bash
+
+   flake-ctl bubblewrap register --rootfs / \
+       --app $HOME/bin/protected-shell --target /bin/bash
+
+   protected-shell
+
+Inside of ``protected-shell`` the host looks and behaves as usual,
+packages can be installed and files can be added or overwritten, but
+all of it is written to the overlay and is gone when the application
+ends. Paths you do want to keep are bound into the sandbox explicitly.
+:ref:`sandbox-apps` describes the tree, the overlay and the options to
+share data with the host.
+
 .. toctree::
+   :hidden:
    :maxdepth: 2
-   :caption: Contents
    :numbered:
 
    introduction

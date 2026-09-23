@@ -6,6 +6,7 @@ NAT
 NFS
 OCI
 SDK
+SDKs
 TAP
 YAML
 backslash

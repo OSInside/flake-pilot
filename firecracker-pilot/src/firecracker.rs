@@ -869,6 +869,23 @@ pub fn create_firecracker_config(
         &Lookup::get_instance_name()
     );
     let with_network = has_network_setup(&flake_boot_args);
+    // Sanity check: The volumes of a VM are provided through NFS.
+    // Without a server on the host the guest cannot mount them and
+    // would come up without the data the application expects
+    let nfs_volumes = get_nfs_volumes(&flake_boot_args);
+    if ! nfs_volumes.is_empty() && ! nfsd_is_running() {
+        return Err(FlakeError::IOError {
+            kind: "NFSServerNotRunning".to_string(),
+            message: format!(
+                "The flake is configured to use the NFS volume(s) {} but \
+                the NFS server of the host is not running. The server is \
+                part of the host setup and is not started at boot unless \
+                it is enabled, please call '{}' first",
+                nfs_volumes.join(" "),
+                get_nfs_server_start_command()
+            )
+        })
+    }
     for boot_option in flake_boot_args {
         if (resume || force_vsock)
             && ! Lookup::is_debug()
@@ -1021,6 +1038,92 @@ pub fn has_network_setup(boot_args: &[&str]) -> bool {
     boot_args.iter()
         .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
         .any(|setup| setup != "off" && setup != "none")
+}
+
+pub fn get_nfs_volumes<'a>(boot_args: &[&'a str]) -> Vec<&'a str> {
+    /*!
+    Provide the NFS volumes configured in the given commandline
+
+    A volume is attached to a VM with 'flake-ctl firecracker
+    volume add' which exports the host path through NFS and adds
+    it to the 'nfs=' option of the guest kernel commandline. All
+    volumes are kept in one comma separated list, sci mounts them
+    in the guest
+    !*/
+    boot_args.iter()
+        .filter_map(|boot_arg| boot_arg.split_once('='))
+        .filter(|(name, _)| *name == defaults::NFS_VOLUME_BOOT_ARG)
+        .flat_map(
+            |(_, volumes)| volumes.split(defaults::NFS_VOLUME_DELIMITER)
+        )
+        .map(str::trim)
+        .filter(|volume| ! volume.is_empty())
+        .collect()
+}
+
+pub fn nfsd_is_running() -> bool {
+    /*!
+    Check if the NFS server of the host is running
+
+    The volumes are exported by the NFS server of the kernel. It
+    is not started by the pilot but is part of the host setup and,
+    unless the service was enabled, is gone after a reboot.
+
+    The kernel provides the statistics of the server as soon as
+    the nfsd module is loaded. No record means there is no server,
+    a record which does not provide the number of threads allows
+    no statement about it and is not reported as an error
+    !*/
+    let nfsd_stat = match fs::read_to_string(defaults::NFS_SERVER_STAT) {
+        Ok(nfsd_stat) => nfsd_stat,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            if Lookup::is_debug() {
+                debug!(
+                    "No {} record, nfsd is not loaded",
+                    defaults::NFS_SERVER_STAT
+                );
+            }
+            return false
+        },
+        Err(error) => {
+            if Lookup::is_debug() {
+                debug!(
+                    "Cannot read {}: {error}, skipping the check",
+                    defaults::NFS_SERVER_STAT
+                );
+            }
+            return true
+        }
+    };
+    match get_nfsd_threads(&nfsd_stat) {
+        Some(threads) => {
+            if Lookup::is_debug() {
+                debug!("nfsd runs {threads} thread(s)");
+            }
+            threads > 0
+        },
+        None => {
+            if Lookup::is_debug() {
+                debug!(
+                    "No thread count in {}, skipping the check",
+                    defaults::NFS_SERVER_STAT
+                );
+            }
+            true
+        }
+    }
+}
+
+pub fn get_nfsd_threads(nfsd_stat: &str) -> Option<u32> {
+    /*!
+    Provide the number of nfsd threads from the given statistics
+
+    The kernel reports them as the first value of the 'th' record
+    !*/
+    nfsd_stat.lines()
+        .filter_map(|record| record.strip_prefix("th "))
+        .filter_map(|threads| threads.split_whitespace().next())
+        .find_map(|threads| threads.parse().ok())
 }
 
 pub fn tap_device_exists(tap: &str) -> bool {
@@ -1209,6 +1312,18 @@ pub fn get_network_add_command() -> String {
         command.push_str(&format!(" --instance {instance_name}"));
     }
     command
+}
+
+pub fn get_nfs_server_start_command() -> String {
+    /*!
+    Construct the call which starts the NFS server of the host
+
+    The server is started by 'flake-ctl firecracker volume add'
+    when the first volume is exported. That call does not enable
+    the service though, which is why the reported call does so and
+    keeps the server across a reboot of the host
+    !*/
+    format!("sudo systemctl enable --now {}", defaults::NFS_SERVER_SERVICE)
 }
 
 pub fn get_target_app_path(program_name: &str) -> String {

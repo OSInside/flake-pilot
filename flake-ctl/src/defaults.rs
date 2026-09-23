@@ -28,8 +28,6 @@ pub const FIRECRACKER_PILOT: &str =
     "/usr/bin/firecracker-pilot";
 pub const BUBBLEWRAP_PILOT: &str =
     "/usr/bin/bubblewrap-pilot";
-pub const PODMAN_PATH:&str =
-    "/usr/bin/podman";
 pub const FLAKE_TEMPLATE_CONTAINER:&str =
     "/etc/flakes/container-flake.yaml";
 pub const FLAKE_TEMPLATE_FIRECRACKER:&str =
@@ -88,6 +86,13 @@ pub const PODMAN_STORAGE_DRIVER:&str =
 // time do not use the same instance name
 pub const PODMAN_EXPORT_NAME_PREFIX:&str =
     "flake-ctl-export-";
+// Name of the process which keeps the container instance of a
+// resume flake in running state. podman-pilot creates such an
+// instance with a sleep entry point which allows to call the
+// application in it multiple times. The container only stops
+// if that process is gone
+pub const PODMAN_RESUME_PROCESS_NAME:&str =
+    "sleep";
 pub const PODMAN_ENGINE:&str =
     "podman";
 pub const FIRECRACKER_ENGINE:&str =
@@ -115,9 +120,10 @@ pub const FLAKE_SHOW_VM_COLUMNS:[&str; 9] = [
 pub const FLAKE_SHOW_ID_LEN: usize =
     12;
 // File name extensions of the meta data files the pilots
-// create for their instances
-pub const PODMAN_ID_EXTENSION:&str =
-    "cid";
+// create for their instances. The extension of the podman
+// engine is shared with podman-pilot and is therefore
+// maintained in the common area
+pub use flakes::defaults::PODMAN_ID_EXTENSION;
 pub const FIRECRACKER_ID_EXTENSION:&str =
     "vmid";
 pub const BUBBLEWRAP_ID_EXTENSION:&str =
@@ -144,6 +150,11 @@ pub const SHA256_TOOL:&str =
     "sha256sum";
 pub const TAR_TOOL:&str =
     "tar";
+// Program used to kill a process inside of a container. It is
+// called through 'podman exec' and is therefore expected to be
+// part of the container, like the sleep program it kills
+pub const KILL_TOOL:&str =
+    "kill";
 pub const IPTABLES_TOOL:&str =
     "iptables";
 pub const IP_TOOL:&str =

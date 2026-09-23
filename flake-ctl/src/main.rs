@@ -337,6 +337,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         return Ok(ExitCode::FAILURE)
                     }
                 },
+                // reset
+                cli::Podman::Reset { app, instance } => {
+                    if ! podman::reset(app, instance.as_ref(), user) {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                },
                 // register
                 cli::Podman::Register {
                     container, app, target, base, check_host_dependencies,

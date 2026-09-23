@@ -54,6 +54,25 @@ pub const SYS_CLASS_NET: &str =
 // through sudo
 pub const IPTABLES_TOOL: &str =
     "iptables";
+// Kernel commandline option which provides the NFS volumes of a
+// VM. The option is written by 'flake-ctl firecracker volume add'
+// and is read by sci inside of the guest. It provides all volumes
+// of an instance as a list of NAME_OR_IP:HOST_PATH:GUEST_PATH
+// elements
+pub const NFS_VOLUME_BOOT_ARG: &str =
+    "nfs";
+pub const NFS_VOLUME_DELIMITER: char =
+    ',';
+// Statistics of the NFS server of the kernel. The record shows up
+// when the nfsd module is loaded and provides the number of
+// server threads which is zero as long as no server was started
+pub const NFS_SERVER_STAT: &str =
+    "/proc/net/rpc/nfsd";
+// Name of the systemd service which runs the NFS server of the
+// host. The volumes of a VM are exported by this server, it is
+// started by 'flake-ctl firecracker volume add'
+pub const NFS_SERVER_SERVICE: &str =
+    "nfs-server";
 pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
 // Port of the instance the window size of the caller's terminal

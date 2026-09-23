@@ -24,7 +24,11 @@
 //
 use crate::config::config_from_str;
 use crate::firecracker::get_network_init_command;
+use crate::firecracker::get_nfs_server_start_command;
+use crate::firecracker::get_nfs_volumes;
+use crate::firecracker::get_nfsd_threads;
 use crate::firecracker::has_network_setup;
+use crate::firecracker::nfsd_is_running;
 use crate::firecracker::tap_device_exists;
 use flakes::network::get_valid_interface_name;
 
@@ -176,6 +180,57 @@ fn test_network_setup_of_instance() {
     // the instance takes the place of the global ip=dhcp
     assert!(has_network_setup(&engine_section.get_boot_args("@one")));
     assert!(has_network_setup(&engine_section.get_boot_args("@two")));
+}
+
+#[test]
+fn test_nfs_volumes_from_boot_args() {
+    // a flake without volumes has no nfs= option
+    assert!(get_nfs_volumes(&["ip=dhcp", "quiet"]).is_empty());
+    // all volumes of an instance are kept in one option
+    assert_eq!(
+        vec![
+            "172.16.0.1:/host/data:/data",
+            "172.16.0.1:/host/more:/more"
+        ],
+        get_nfs_volumes(&[
+            "ip=dhcp",
+            "nfs=172.16.0.1:/host/data:/data,172.16.0.1:/host/more:/more"
+        ])
+    );
+    // an option without a volume is no volume setup
+    assert!(get_nfs_volumes(&["nfs="]).is_empty());
+    // the option of another flake engine is not the volume list
+    assert!(get_nfs_volumes(&["nfsroot=/srv/nfs"]).is_empty());
+}
+
+#[test]
+fn test_nfsd_threads() {
+    let nfsd_stat = "rc 0 0 0\nfh 0 0 0 0 0\nio 0 0\nth 8 0\nra 32\n";
+    assert_eq!(Some(8), get_nfsd_threads(nfsd_stat));
+    // the server is not running if it has no threads
+    assert_eq!(Some(0), get_nfsd_threads("th 0 0\n"));
+    // a record which does not provide the information
+    assert_eq!(None, get_nfsd_threads("rc 0 0 0\n"));
+    assert_eq!(None, get_nfsd_threads("th \n"));
+    assert_eq!(None, get_nfsd_threads("th all\n"));
+}
+
+#[test]
+fn test_nfsd_is_running() {
+    // the host this test runs on is not expected to serve the
+    // volumes of a flake, in that case there is nothing to check
+    if std::path::Path::new("/proc/net/rpc/nfsd").exists() {
+        return
+    }
+    assert!(! nfsd_is_running());
+}
+
+#[test]
+fn test_nfs_server_start_command() {
+    assert_eq!(
+        "sudo systemctl enable --now nfs-server",
+        get_nfs_server_start_command()
+    );
 }
 
 #[test]

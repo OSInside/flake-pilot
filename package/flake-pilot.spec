@@ -248,6 +248,7 @@ if [ "$1" -gt 1 ]; then
 
             # Look up UID for the extracted user name
             uid=$(id -u -- "$username" 2>/dev/null) || continue
+            [ "$(/usr/bin/stat -c %u "$filepath")" = "$uid" ] || continue
 
             user_dir="$flakes_dir/$uid"
             if [ -e "$user_dir" ] || [ -L "$user_dir" ]; then

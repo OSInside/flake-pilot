@@ -22,7 +22,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::ffi::OsStr;
 use std::{thread, time};
 use glob::glob;
 use flakes::io::IO;
@@ -243,7 +242,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // Check early return condition
     if Path::new(&vm_id_file_path).exists() && gc_meta_files(
-        &vm_id_file_path, program_name, resume
+        &vm_id_file_path, program_name
     )? && resume {
         // VM exists
         // report ID value and its ID file name
@@ -276,8 +275,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     }
 
     match run_creation(
-        &vm_id_file_path, program_name, engine_section,
-        resume, has_includes
+        &vm_id_file_path, program_name, engine_section, has_includes
     ) {
         Ok(result) => {
             if let Some(spinner) = spinner {
@@ -298,7 +296,6 @@ fn run_creation(
     vm_id_file_path: &str,
     program_name: &String,
     engine_section: EngineSection,
-    resume: bool,
     has_includes: bool
 ) -> Result<(String, String), FlakeError> {
     // Create initial vm_id_file with process ID set to 0
@@ -313,7 +310,7 @@ fn run_creation(
         let overlay_size = overlay_size.parse::<ByteUnit>().expect(
             "could not parse overlay size"
         ).as_u64();
-        if !Path::new(&vm_overlay_file).exists() || !resume {
+        if !Path::new(&vm_overlay_file).exists() {
             let mut vm_overlay_file_fd = File::create(&vm_overlay_file)?;
             vm_overlay_file_fd.seek(SeekFrom::Start(overlay_size - 1))?;
             vm_overlay_file_fd.write_all(&[0])?;
@@ -1458,7 +1455,7 @@ pub fn get_tap_name(program_name: &String) -> String {
 }
 
 pub fn gc_meta_files(
-    vm_id_file: &String, program_name: &String, resume: bool
+    vm_id_file: &String, program_name: &String
 ) -> Result<bool, FlakeError> {
     /*!
     Check if VM exists according to the specified
@@ -1509,27 +1506,6 @@ pub fn gc_meta_files(
                         }
                     }
                 }
-
-                let vm_overlay_file = format!(
-                    "{}/{}",
-                    get_overlay_dir()?,
-                    Path::new(&vm_id_file)
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .map(|x| x.replace(".vmid", ".ext4"))
-                        .unwrap()
-                );
-                if Path::new(&vm_overlay_file).exists() && ! resume {
-                    if Lookup::is_debug() {
-                        debug!("Deleting {vm_overlay_file}");
-                    }
-                    match fs::remove_file(&vm_overlay_file) {
-                        Ok(_) => { },
-                        Err(error) => {
-                            error!("Failed to remove VMID: {error:?}")
-                        }
-                    }
-                }
             } else {
                 vmid_status = true
             }
@@ -1557,7 +1533,7 @@ pub fn gc(program_name: &String) -> Result<(), FlakeError> {
     }
     for vm_id_file in vmid_file_names {
         if vm_id_file.ends_with(".vmid") && Path::new(&vm_id_file).exists() {
-            gc_meta_files(&vm_id_file, program_name, true).ok();
+            gc_meta_files(&vm_id_file, program_name).ok();
         }
     }
     Ok(())

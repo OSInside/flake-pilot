@@ -35,7 +35,7 @@ use std::process::Command;
 use std::os::unix::process::CommandExt;
 use system_shutdown::force_reboot;
 use std::fs;
-use sys_mount::Mount;
+use sys_mount::{Mount, MountFlags};
 use env_logger::Env;
 use std::{thread, time};
 use vsock::{VsockListener, VsockStream};
@@ -172,13 +172,22 @@ fn main() {
                     }
                 }
             }
+            // The overlay device is mounted synchronous such that
+            // data and directory changes are written to the device
+            // immediately. The journal is committed every second
+            // instead of the default five seconds. sci ends the
+            // instance with a reboot which does not sync, thus
+            // cached data would get lost
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
-            match Mount::builder()
-                .fstype("ext4").data("data=ordered")
-                .mount(overlay.as_str(), "/overlayroot")
-            {
+            match mount_filesystem(
+                overlay.as_str(), defaults::OVERLAY_MOUNT, "ext4",
+                MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
+                Some("data=ordered,commit=1")
+            ) {
                 Ok(_) => {
-                    debug(&format!("Mounted {overlay:?} on /overlayroot"));
+                    debug(&format!(
+                        "Mounted {overlay:?} on {}", defaults::OVERLAY_MOUNT
+                    ));
                     ok = true
                 },
                 Err(error) => {
@@ -189,6 +198,7 @@ fn main() {
             if ok {
                 let overlay_dirs = [
                     defaults::OVERLAY_ROOT,
+                    defaults::OVERLAY_LOWER,
                     defaults::OVERLAY_UPPER,
                     defaults::OVERLAY_WORK
                 ];
@@ -207,15 +217,38 @@ fn main() {
                 }
             }
             if ok {
-                match Mount::builder()
-                    .fstype("overlay")
-                    .data(
-                        &format!("lowerdir=/,upperdir={},workdir={}",
-                            defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
-                        )
-                    )
-                    .mount("overlay", defaults::OVERLAY_ROOT)
-                {
+                // The current root becomes the lower layer of the
+                // overlay. Remount it synchronous first and bind
+                // mount it to the lower directory of the overlay
+                remount_synchronous("/");
+                match mount_filesystem(
+                    "/", defaults::OVERLAY_LOWER, "none",
+                    MountFlags::BIND, None
+                ) {
+                    Ok(_) => {
+                        debug(&format!(
+                            "Bind mounted / to {}", defaults::OVERLAY_LOWER
+                        ));
+                        ok = true;
+                    },
+                    Err(error) => {
+                        debug(&format!(
+                            "Failed to bind mount / to {}: {}",
+                            defaults::OVERLAY_LOWER, error
+                        ));
+                        ok = false;
+                    }
+                }
+            }
+            if ok {
+                match mount_filesystem(
+                    "overlay", defaults::OVERLAY_ROOT, "overlay",
+                    MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
+                    Some(&format!("lowerdir={},upperdir={},workdir={}",
+                        defaults::OVERLAY_LOWER,
+                        defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
+                    ))
+                ) {
                     Ok(_) => {
                         debug(&format!(
                             "Mounted overlay on {}", defaults::OVERLAY_ROOT
@@ -1347,22 +1380,77 @@ fn start_sshd() {
 fn move_mounts(new_root: &str) {
     /*!
     Move filesystems from current root to new_root
+
+    All filesystems sci mounted in the current root, see
+    mount_basic_fs(), are moved into new_root. A move takes the
+    filesystems mounted below the moved one along, e.g /dev/pts
+    moves with /dev. A mount point which has nothing mounted is
+    skipped. This is the case for /run if nothing mounted it, its
+    content is then taken from the overlay such that writes to
+    /run end up in the overlay like everything else. /proc is
+    moved last because the mount table is read from it
+
+    The read-write overlay device mount contains new_root and
+    cannot be moved into it. It is bind mounted into new_root
+    instead, such that it is visible at the same place in the
+    new root and not shadowed by the switch root. The bind is
+    not recursive, thus the overlay mount itself does not show
+    up again below it. The bind mount of the lower layer of the
+    overlay is moved into new_root afterwards, below the bind
+    mount of the overlay device
     !*/
-    // /run
-    let mut call = Command::new(defaults::MOUNT_TOOL);
-    call.arg("--bind").arg("/run").arg(format!("{new_root}/run"));
-    debug(&format!("EXEC: mount -> {:?}", call.get_args()));
-    match call.status() {
-        Ok(_) => debug("Bind mounted /run"),
-        Err(error) => {
-            debug(&format!("Failed to bind mount /run: {error}"));
-            match Mount::builder()
-                .fstype("tmpfs").mount("tmpfs", format!("{new_root}/run"))
-            {
-                Ok(_) => debug("Mounted tmpfs on /run"),
+    let new_overlay_mount = format!("{new_root}{}", defaults::OVERLAY_MOUNT);
+    match fs::create_dir_all(&new_overlay_mount) {
+        Ok(_) => {
+            match mount_filesystem(
+                defaults::OVERLAY_MOUNT, &new_overlay_mount,
+                "none", MountFlags::BIND, None
+            ) {
+                Ok(_) => debug(&format!(
+                    "Bind mounted {} to {new_overlay_mount}",
+                    defaults::OVERLAY_MOUNT
+                )),
                 Err(error) => {
-                    debug(&format!("Failed to mount /run: {error}"));
+                    debug(&format!(
+                        "Failed to bind mount {} to {new_overlay_mount}: {error}",
+                        defaults::OVERLAY_MOUNT
+                    ));
                 }
+            }
+        },
+        Err(error) => {
+            debug(&format!(
+                "Error creating directory {new_overlay_mount}: {error}"
+            ));
+        }
+    }
+    for mount_point in [
+        "/sys", "/dev", "/run", defaults::OVERLAY_LOWER, "/proc"
+    ] {
+        if ! is_mounted(mount_point) {
+            debug(&format!("{mount_point} is not mounted [skipped]"));
+            continue
+        }
+        let new_mount_point = format!("{new_root}{mount_point}");
+        match fs::create_dir_all(&new_mount_point) {
+            Ok(_) => { },
+            Err(error) => {
+                debug(&format!(
+                    "Error creating directory {new_mount_point}: {error}"
+                ));
+                continue
+            }
+        }
+        match mount_filesystem(
+            mount_point, &new_mount_point, "none", MountFlags::MOVE, None
+        ) {
+            Ok(_) => debug(&format!(
+                "Moved {mount_point} to {new_mount_point}"
+            )),
+            Err(error) => {
+                debug(&format!(
+                    "Failed to move {mount_point} to {new_mount_point}: {error}"
+                ));
             }
         }
     }
@@ -1456,8 +1544,8 @@ fn mount_basic_fs() {
     Mount standard filesystems
 
     A filesystem which is already mounted is skipped. This is the
-    case after the switch root into the overlay because the switch
-    root moves these filesystems along into the new root
+    case after the switch root into the overlay because sci moves
+    these filesystems along into the new root, see move_mounts()
     !*/
     let basic_fs = [
         ("proc", "/proc"),
@@ -1470,13 +1558,154 @@ fn mount_basic_fs() {
             debug(&format!("{mount_point} is already mounted [skipped]"));
             continue
         }
-        match Mount::builder().fstype(*fstype).mount(*fstype, mount_point) {
+        match mount_filesystem(
+            fstype, mount_point, fstype, MountFlags::empty(), None
+        ) {
             Ok(_) => debug(&format!("Mounted {fstype} on {mount_point}")),
             Err(error) => {
                 debug(&format!("Failed to mount {mount_point}: {error}"));
             }
         }
     }
+}
+
+fn remount_synchronous(mount_point: &str) {
+    /*!
+    Remount the filesystem on the given mount point synchronous
+
+    A remount replaces the flags of the mount, thus the flags the
+    filesystem is currently mounted with are kept. This e.g keeps
+    a read-only root filesystem read-only
+    !*/
+    let flags = get_mount_flags(mount_point)
+        | MountFlags::REMOUNT | MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC;
+    match mount_filesystem(mount_point, mount_point, "none", flags, None) {
+        Ok(_) => debug(&format!("Remounted {mount_point} synchronous")),
+        Err(error) => {
+            debug(&format!(
+                "Failed to remount {mount_point} synchronous: {error}"
+            ));
+        }
+    }
+}
+
+fn get_mount_flags(mount_point: &str) -> MountFlags {
+    /*!
+    Get the flags the filesystem on the given mount point is
+    currently mounted with
+
+    Only flags which can be handed over to a remount are read.
+    A filesystem which cannot be queried reports no flags
+    !*/
+    let mut flags = MountFlags::empty();
+    let path = match std::ffi::CString::new(mount_point) {
+        Ok(path) => path,
+        Err(_) => return flags
+    };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(path.as_ptr(), &mut stat) } != 0 {
+        debug(&format!(
+            "Failed to read flags of {}: {}",
+            mount_point, std::io::Error::last_os_error()
+        ));
+        return flags
+    }
+    for (st_flag, flag) in [
+        (libc::ST_RDONLY, MountFlags::RDONLY),
+        (libc::ST_NOSUID, MountFlags::NOSUID),
+        (libc::ST_NODEV, MountFlags::NODEV),
+        (libc::ST_NOEXEC, MountFlags::NOEXEC),
+        (libc::ST_NOATIME, MountFlags::NOATIME),
+        (libc::ST_NODIRATIME, MountFlags::NODIRATIME),
+        (libc::ST_RELATIME, MountFlags::RELATIME)
+    ] {
+        if stat.f_flag & st_flag != 0 {
+            flags |= flag;
+        }
+    }
+    flags
+}
+
+fn mount_filesystem(
+    source: &str, target: &str, fstype: &str,
+    flags: MountFlags, data: Option<&str>
+) -> std::io::Result<Mount> {
+    /*!
+    Mount the given source on the given target
+
+    The mount call is logged with the exact values handed over to
+    the mount system call, as well as with the arguments of the
+    mount tool which performs the same mount, followed by the
+    result of the call
+    !*/
+    debug(&format!(
+        "SCI MOUNT: mount(source={source:?}, target={target:?}, \
+        fstype={fstype:?}, flags={:#x}, data={data:?})", flags.bits()
+    ));
+    debug(&format!(
+        "SCI MOUNT: {} -> {:?}", defaults::MOUNT_TOOL,
+        get_mount_args(source, target, fstype, flags, data)
+    ));
+    let mut mount = Mount::builder().fstype(fstype).flags(flags);
+    if let Some(data) = data {
+        mount = mount.data(data);
+    }
+    let result = mount.mount(source, target);
+    match &result {
+        Ok(_) => debug(&format!("SCI MOUNT: {source} on {target}: success")),
+        Err(error) => debug(&format!(
+            "SCI MOUNT: {source} on {target}: failed: {error}"
+        ))
+    }
+    result
+}
+
+fn get_mount_args(
+    source: &str, target: &str, fstype: &str,
+    flags: MountFlags, data: Option<&str>
+) -> Vec<String> {
+    /*!
+    Get the arguments of the mount tool for the given mount
+
+    Flags the mount tool has no option name for here are not part
+    of the arguments. They are logged with the system call values
+    !*/
+    let mut args: Vec<String> = Vec::new();
+    if flags.contains(MountFlags::MOVE) {
+        args.push("--move".to_string());
+    } else if flags.contains(MountFlags::BIND) {
+        args.push("--bind".to_string());
+    } else if fstype != "none" && ! flags.contains(MountFlags::REMOUNT) {
+        args.push("-t".to_string());
+        args.push(fstype.to_string());
+    }
+    let mut options: Vec<&str> = Vec::new();
+    for (flag, option) in [
+        (MountFlags::REMOUNT, "remount"),
+        (MountFlags::RDONLY, "ro"),
+        (MountFlags::NOSUID, "nosuid"),
+        (MountFlags::NODEV, "nodev"),
+        (MountFlags::NOEXEC, "noexec"),
+        (MountFlags::NOATIME, "noatime"),
+        (MountFlags::NODIRATIME, "nodiratime"),
+        (MountFlags::RELATIME, "relatime"),
+        (MountFlags::SYNCHRONOUS, "sync"),
+        (MountFlags::DIRSYNC, "dirsync"),
+    ] {
+        if flags.contains(flag) {
+            options.push(option);
+        }
+    }
+    if let Some(data) = data {
+        options.push(data);
+    }
+    if ! options.is_empty() {
+        args.push("-o".to_string());
+        args.push(options.join(","));
+    }
+    args.push(source.to_string());
+    args.push(target.to_string());
+    args
 }
 
 fn set_root_permissions(root: &str) {
@@ -1535,6 +1764,8 @@ fn setup_logger() {
 #[cfg(test)]
 mod tests {
     use super::get_nfs_volume;
+    use super::get_mount_args;
+    use sys_mount::MountFlags;
     use super::get_resize_request;
 
     #[test]
@@ -1562,6 +1793,47 @@ mod tests {
         assert_eq!(get_resize_request("52 65536 80"), None);
         // no request at all
         assert_eq!(get_resize_request("52 24 80 rm -rf /"), None);
+    }
+
+    #[test]
+    fn test_get_mount_args() {
+        assert_eq!(
+            get_mount_args(
+                "/dev/vdb", "/overlayroot", "ext4",
+                MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
+                Some("data=ordered,commit=1")
+            ),
+            vec![
+                "-t", "ext4", "-o", "sync,dirsync,data=ordered,commit=1",
+                "/dev/vdb", "/overlayroot"
+            ]
+        );
+        assert_eq!(
+            get_mount_args(
+                "/proc", "/overlayroot/rootfs/proc", "none",
+                MountFlags::MOVE, None
+            ),
+            vec!["--move", "/proc", "/overlayroot/rootfs/proc"]
+        );
+        assert_eq!(
+            get_mount_args(
+                "/overlayroot", "/overlayroot/rootfs/overlayroot", "none",
+                MountFlags::BIND, None
+            ),
+            vec!["--bind", "/overlayroot", "/overlayroot/rootfs/overlayroot"]
+        );
+        assert_eq!(
+            get_mount_args(
+                "/", "/", "none",
+                MountFlags::REMOUNT | MountFlags::RDONLY | MountFlags::RELATIME
+                | MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC, None
+            ),
+            vec!["-o", "remount,ro,relatime,sync,dirsync", "/", "/"]
+        );
+        assert_eq!(
+            get_mount_args("proc", "/proc", "proc", MountFlags::empty(), None),
+            vec!["-t", "proc", "proc", "/proc"]
+        );
     }
 
     #[test]

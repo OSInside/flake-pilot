@@ -1,6 +1,6 @@
 [package]
 name = "bubblewrap-pilot"
-version = "3.1.67"
+version = "3.1.68"
 edition = "2018"
 license = "MIT"
 
@@ -10,5 +10,5 @@ env_logger = { version = "0.9" }
 lazy_static = { version = "1.4" }
 serde = { version = "1.0", features = ["derive"]}
 regex = { version = "1.9" }
-flakes = { version = "3.1.67", path = "../common" }
+flakes = { version = "3.1.68", path = "../common" }
 uzers = { version = "0.12" }

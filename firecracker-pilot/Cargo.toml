@@ -1,6 +1,6 @@
 [package]
 name = "firecracker-pilot"
-version = "3.1.67"
+version = "3.1.68"
 edition = "2018"
 license = "MIT"
 
@@ -14,6 +14,6 @@ spinoff = { version = "0.7" }
 ubyte = { version = "0.10", features = ["serde"] }
 lazy_static = { version = "1.4" }
 strum = { version = "0.25", features = ["derive"] }
-flakes = { version = "3.1.67 ", path = "../common", features = ["json"] }
+flakes = { version = "3.1.68 ", path = "../common", features = ["json"] }
 libc = { version = "0.2" }
 glob = { version = "0.3" }

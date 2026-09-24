@@ -175,56 +175,119 @@ mkdir -p %{buildroot}/etc
 install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 
 %pre
-# Permissions changed from previous versions, handle the transition
-if [ $1 -gt 1 ]; then
-    flakes_dir="/tmp/flakes/"
-    if [ -d "$flakes_dir/" ]; then
-        flakes_perm=$(/usr/bin/stat -c "%a" "$flakes_dir")
-        if [ "$flakes_perm" -ne "1777" ]; then
-            /usr/bin/chmod +t $flakes_dir
-            # If the permissions were not already set we also need to worry
-            # about the content.
-            # For podman we need a copy of the .cid file in the new hierarchy
-            # so flake-pilot knows which Container ID to use to tell podman to
-            # shut the container down. podman cleans up the original cid file
-            # the copy remains and eventually gets garbage collected by
-            # flake pilot
-            # For microVMs the .mid file needs to get moved and renamed to
-            # allow flake-pilot to clean up
-            for filepath in "$flakes_dir"/*; do
-                [ -f "$filepath" ] || continue
+# Permissions changed from previous versions, handle the transition.
+# Everything below runs as root on a directory every user of the
+# system can write to. The migration is therefore careful to only
+# ever touch data which no other user was able to place or exchange
+# and it is best effort, a failed migration must not let the
+# installation fail
+if [ "$1" -gt 1 ]; then
+    flakes_dir="/tmp/flakes"
+    # Follow the same rules the pilots apply to this directory. A
+    # symbolic link or a directory owned by somebody else was put
+    # there to trick this script into reading and writing at a
+    # place of that persons choice
+    if [ -L "$flakes_dir" ] || [ ! -d "$flakes_dir" ]; then
+        exit 0
+    fi
+    if [ "$(/usr/bin/stat -c %u "$flakes_dir")" != "0" ]; then
+        exit 0
+    fi
+    # The sticky bit is the marker of the new layout. If it is not
+    # set the directory still holds the flat file list of previous
+    # versions
+    if [ ! -k "$flakes_dir" ]; then
+        # Take away the permission to delete and replace the files
+        # of other users before looking at the content. Without it
+        # the entries checked below can be exchanged while this
+        # script works on them
+        /usr/bin/chmod +t "$flakes_dir" || exit 0
+        # If the permissions were not already set we also need to worry
+        # about the content.
+        # For podman we need a copy of the .cid file in the new hierarchy
+        # so flake-pilot knows which Container ID to use to tell podman to
+        # shut the container down. podman cleans up the original cid file
+        # the copy remains and eventually gets garbage collected by
+        # flake pilot
+        # For microVMs the .vmid file needs to get moved and renamed to
+        # allow flake-pilot to clean up
+        migrated_uids=""
+        for filepath in "$flakes_dir"/*; do
+            # Only plain files are meta data files. A symbolic link
+            # refers to a target of the link owners choice and a
+            # file with more than one name can be a hard link to a
+            # file like /etc/shadow, copying either of them would
+            # hand out their content to the user the copy is
+            # created for
+            if [ -L "$filepath" ] || [ ! -f "$filepath" ]; then
+                continue
+            fi
+            if [ "$(/usr/bin/stat -c %h "$filepath")" != "1" ]; then
+                continue
+            fi
 
-                filename=$(basename "$filepath")
+            filename=${filepath##*/}
 
-                # Match format: prefix_username.extension
-                # Extract username (part after first '_' and before last '.')
-                username=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $2}')
-                # Extract the command name
-                cmdname=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $1}')
-                if [ -n "$username" ]; then
-                    # Look up UID for the extracted username
-                    if uid=$(id -u "$username" 2>/dev/null); then
-                        user_dir="$flakes_dir/$uid"
-                        # Create user directory if it doesn't exist
-                        if [ ! -d "$user_dir" ]; then
-                            mkdir -p "$user_dir"
-                        fi
-                        if [[ "$filename" == *".vmid"* ]]; then
-                            mv "$filepath" "$user_dir/$cmdname.vmid"
-                        else
-                            # We need the .cid files in 2 places
-                            cp "$filepath" "$user_dir/$cmdname.cid"
-                        fi
-                    fi
-                    # Fix the directory permissions
-                    chown "$uid" "$user_dir"
-                    chgrp "$uid" "$user_dir"
-                    chmod 700 "$user_dir"
+            # Match format: prefix_username.extension. Files which
+            # are none of the meta data files the pilots create are
+            # not touched
+            case "$filename" in
+                *_*.cid|*_*.vmid) ;;
+                *) continue ;;
+            esac
+            # Extract the command name (part before the first '_')
+            cmdname=${filename%%_*}
+            # Extract the user name (part after the first '_' and
+            # before the next '_' or '.')
+            username=${filename#*_}
+            username=${username%%.*}
+            username=${username%%_*}
+            if [ -z "$cmdname" ] || [ -z "$username" ]; then
+                continue
+            fi
+
+            # Look up UID for the extracted user name
+            uid=$(id -u -- "$username" 2>/dev/null) || continue
+            [ "$(/usr/bin/stat -c %u "$filepath")" = "$uid" ] || continue
+
+            user_dir="$flakes_dir/$uid"
+            if [ -e "$user_dir" ] || [ -L "$user_dir" ]; then
+                # Only a directory still owned by root can be
+                # filled safely. Anything else at that path belongs
+                # to somebody who can redirect what is written to it
+                if [ -L "$user_dir" ] || [ ! -d "$user_dir" ]; then
+                    continue
                 fi
-            done
-        fi
+                if [ "$(/usr/bin/stat -c %u "$user_dir")" != "0" ]; then
+                    continue
+                fi
+            else
+                # Create the private directory of the user with its
+                # final permissions. It stays owned by root until
+                # all files are in place, see below
+                mkdir -m 700 "$user_dir" || continue
+            fi
+            case "$filename" in
+                *.vmid)
+                    mv "$filepath" "$user_dir/$cmdname.vmid" || continue
+                ;;
+                *)
+                    # We need the .cid files in 2 places
+                    cp -P "$filepath" "$user_dir/$cmdname.cid" || continue
+                ;;
+            esac
+            migrated_uids="$migrated_uids $uid"
+        done
+        # Hand the directories over to the users they belong to.
+        # This is done after all files were written. A directory
+        # owned by the user while root still copies into it allows
+        # to place links in it which the copies would follow
+        for uid in $migrated_uids; do
+            chown "$uid:$uid" "$flakes_dir/$uid" || continue
+        done
     fi
 fi
+exit 0
 
 
 %files
@@ -239,9 +302,12 @@ fi
 %doc /usr/share/man/man8/flake-ctl-list.8.gz
 
 %post
-if [ -d /tmp/flakes ];then
+if [ ! -L /tmp/flakes ] && [ -d /tmp/flakes ];then
     # make sure to move an eventually existing
-    # tmp flakes dir to sticky bit permissions
+    # tmp flakes dir to sticky bit permissions.
+    # A link somebody placed at that path is not
+    # followed, the permissions would be applied
+    # to the target of the link
     chmod 1777 /tmp/flakes
 fi
 

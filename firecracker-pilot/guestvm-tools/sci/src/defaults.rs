@@ -37,6 +37,7 @@ pub const OVERLAY_MOUNT: &str = "/overlayroot";
 pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";
 // Permissions of the root directory of the instance
 pub const ROOT_DIR_MODE: u32 = 0o755;
+pub const OVERLAY_LOWER: &str = "/overlayroot/rootfs_lower";
 pub const OVERLAY_UPPER: &str = "/overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str = "/overlayroot/rootfs_work";
 pub const PROBE_MODULE: &str = "/sbin/modprobe";

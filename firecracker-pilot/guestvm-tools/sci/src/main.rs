@@ -198,6 +198,7 @@ fn main() {
             if ok {
                 let overlay_dirs = [
                     defaults::OVERLAY_ROOT,
+                    defaults::OVERLAY_LOWER,
                     defaults::OVERLAY_UPPER,
                     defaults::OVERLAY_WORK
                 ];
@@ -216,10 +217,35 @@ fn main() {
                 }
             }
             if ok {
+                // The current root becomes the lower layer of the
+                // overlay. Remount it synchronous first and bind
+                // mount it to the lower directory of the overlay
+                remount_synchronous("/");
+                match mount_filesystem(
+                    "/", defaults::OVERLAY_LOWER, "none",
+                    MountFlags::BIND, None
+                ) {
+                    Ok(_) => {
+                        debug(&format!(
+                            "Bind mounted / to {}", defaults::OVERLAY_LOWER
+                        ));
+                        ok = true;
+                    },
+                    Err(error) => {
+                        debug(&format!(
+                            "Failed to bind mount / to {}: {}",
+                            defaults::OVERLAY_LOWER, error
+                        ));
+                        ok = false;
+                    }
+                }
+            }
+            if ok {
                 match mount_filesystem(
                     "overlay", defaults::OVERLAY_ROOT, "overlay",
                     MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
-                    Some(&format!("lowerdir=/,upperdir={},workdir={}",
+                    Some(&format!("lowerdir={},upperdir={},workdir={}",
+                        defaults::OVERLAY_LOWER,
                         defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
                     ))
                 ) {
@@ -1369,7 +1395,9 @@ fn move_mounts(new_root: &str) {
     instead, such that it is visible at the same place in the
     new root and not shadowed by the switch root. The bind is
     not recursive, thus the overlay mount itself does not show
-    up again below it
+    up again below it. The bind mount of the lower layer of the
+    overlay is moved into new_root afterwards, below the bind
+    mount of the overlay device
     !*/
     let new_overlay_mount = format!("{new_root}{}", defaults::OVERLAY_MOUNT);
     match fs::create_dir_all(&new_overlay_mount) {
@@ -1396,7 +1424,9 @@ fn move_mounts(new_root: &str) {
             ));
         }
     }
-    for mount_point in ["/sys", "/dev", "/run", "/proc"] {
+    for mount_point in [
+        "/sys", "/dev", "/run", defaults::OVERLAY_LOWER, "/proc"
+    ] {
         if ! is_mounted(mount_point) {
             debug(&format!("{mount_point} is not mounted [skipped]"));
             continue
@@ -1539,6 +1569,63 @@ fn mount_basic_fs() {
     }
 }
 
+fn remount_synchronous(mount_point: &str) {
+    /*!
+    Remount the filesystem on the given mount point synchronous
+
+    A remount replaces the flags of the mount, thus the flags the
+    filesystem is currently mounted with are kept. This e.g keeps
+    a read-only root filesystem read-only
+    !*/
+    let flags = get_mount_flags(mount_point)
+        | MountFlags::REMOUNT | MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC;
+    match mount_filesystem(mount_point, mount_point, "none", flags, None) {
+        Ok(_) => debug(&format!("Remounted {mount_point} synchronous")),
+        Err(error) => {
+            debug(&format!(
+                "Failed to remount {mount_point} synchronous: {error}"
+            ));
+        }
+    }
+}
+
+fn get_mount_flags(mount_point: &str) -> MountFlags {
+    /*!
+    Get the flags the filesystem on the given mount point is
+    currently mounted with
+
+    Only flags which can be handed over to a remount are read.
+    A filesystem which cannot be queried reports no flags
+    !*/
+    let mut flags = MountFlags::empty();
+    let path = match std::ffi::CString::new(mount_point) {
+        Ok(path) => path,
+        Err(_) => return flags
+    };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(path.as_ptr(), &mut stat) } != 0 {
+        debug(&format!(
+            "Failed to read flags of {}: {}",
+            mount_point, std::io::Error::last_os_error()
+        ));
+        return flags
+    }
+    for (st_flag, flag) in [
+        (libc::ST_RDONLY, MountFlags::RDONLY),
+        (libc::ST_NOSUID, MountFlags::NOSUID),
+        (libc::ST_NODEV, MountFlags::NODEV),
+        (libc::ST_NOEXEC, MountFlags::NOEXEC),
+        (libc::ST_NOATIME, MountFlags::NOATIME),
+        (libc::ST_NODIRATIME, MountFlags::NODIRATIME),
+        (libc::ST_RELATIME, MountFlags::RELATIME)
+    ] {
+        if stat.f_flag & st_flag != 0 {
+            flags |= flag;
+        }
+    }
+    flags
+}
+
 fn mount_filesystem(
     source: &str, target: &str, fstype: &str,
     flags: MountFlags, data: Option<&str>
@@ -1588,13 +1675,20 @@ fn get_mount_args(
         args.push("--move".to_string());
     } else if flags.contains(MountFlags::BIND) {
         args.push("--bind".to_string());
-    } else if fstype != "none" {
+    } else if fstype != "none" && ! flags.contains(MountFlags::REMOUNT) {
         args.push("-t".to_string());
         args.push(fstype.to_string());
     }
     let mut options: Vec<&str> = Vec::new();
     for (flag, option) in [
+        (MountFlags::REMOUNT, "remount"),
         (MountFlags::RDONLY, "ro"),
+        (MountFlags::NOSUID, "nosuid"),
+        (MountFlags::NODEV, "nodev"),
+        (MountFlags::NOEXEC, "noexec"),
+        (MountFlags::NOATIME, "noatime"),
+        (MountFlags::NODIRATIME, "nodiratime"),
+        (MountFlags::RELATIME, "relatime"),
         (MountFlags::SYNCHRONOUS, "sync"),
         (MountFlags::DIRSYNC, "dirsync"),
     ] {
@@ -1727,6 +1821,14 @@ mod tests {
                 MountFlags::BIND, None
             ),
             vec!["--bind", "/overlayroot", "/overlayroot/rootfs/overlayroot"]
+        );
+        assert_eq!(
+            get_mount_args(
+                "/", "/", "none",
+                MountFlags::REMOUNT | MountFlags::RDONLY | MountFlags::RELATIME
+                | MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC, None
+            ),
+            vec!["-o", "remount,ro,relatime,sync,dirsync", "/", "/"]
         );
         assert_eq!(
             get_mount_args("proc", "/proc", "proc", MountFlags::empty(), None),

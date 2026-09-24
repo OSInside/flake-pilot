@@ -30,7 +30,7 @@ carries all components:
 .. code-block:: bash
 
    flake-ctl firecracker pull --name leap \
-       --kis-image https://ddrasqgvrmpt8.cloudfront.net/leap.x86_64-1.15.6-0.tar.xz
+       --kis-image https://ddrasqgvrmpt8.cloudfront.net/leap.x86_64-1.16.0-0.tar.xz
 
 An image pulled this way takes part in a checksum based update check.
 The archive has to be accompanied by a ``.sha256`` file at the same
@@ -46,7 +46,7 @@ A Shell as a Firecracker VM App
 .. code-block:: bash
 
    flake-ctl firecracker pull --name leap \
-       --kis-image https://ddrasqgvrmpt8.cloudfront.net/leap.x86_64-1.15.6-0.tar.xz
+       --kis-image https://ddrasqgvrmpt8.cloudfront.net/leap.x86_64-1.16.0-0.tar.xz
 
    flake-ctl firecracker register --vm leap \
        --app $HOME/bin/fireshell --target /bin/bash --overlay-size 20GiB

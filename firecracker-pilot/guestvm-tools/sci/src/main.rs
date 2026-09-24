@@ -35,7 +35,7 @@ use std::process::Command;
 use std::os::unix::process::CommandExt;
 use system_shutdown::force_reboot;
 use std::fs;
-use sys_mount::Mount;
+use sys_mount::{Mount, MountFlags};
 use env_logger::Env;
 use std::{thread, time};
 use vsock::{VsockListener, VsockStream};
@@ -172,9 +172,14 @@ fn main() {
                     }
                 }
             }
+            // The overlay device is mounted synchronous such that
+            // data and directory changes are written to the device
+            // immediately. sci ends the instance with a reboot which
+            // does not sync, thus cached data would get lost
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
             match Mount::builder()
                 .fstype("ext4").data("data=ordered")
+                .flags(MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC)
                 .mount(overlay.as_str(), "/overlayroot")
             {
                 Ok(_) => {
@@ -209,6 +214,7 @@ fn main() {
             if ok {
                 match Mount::builder()
                     .fstype("overlay")
+                    .flags(MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC)
                     .data(
                         &format!("lowerdir=/,upperdir={},workdir={}",
                             defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
@@ -1347,22 +1353,42 @@ fn start_sshd() {
 fn move_mounts(new_root: &str) {
     /*!
     Move filesystems from current root to new_root
+
+    All filesystems sci mounted in the current root, see
+    mount_basic_fs(), are moved into new_root. A move takes the
+    filesystems mounted below the moved one along, e.g /dev/pts
+    moves with /dev. A mount point which has nothing mounted is
+    skipped. This is the case for /run if nothing mounted it, its
+    content is then taken from the overlay such that writes to
+    /run end up in the overlay like everything else. /proc is
+    moved last because the mount table is read from it
     !*/
-    // /run
-    let mut call = Command::new(defaults::MOUNT_TOOL);
-    call.arg("--bind").arg("/run").arg(format!("{new_root}/run"));
-    debug(&format!("EXEC: mount -> {:?}", call.get_args()));
-    match call.status() {
-        Ok(_) => debug("Bind mounted /run"),
-        Err(error) => {
-            debug(&format!("Failed to bind mount /run: {error}"));
-            match Mount::builder()
-                .fstype("tmpfs").mount("tmpfs", format!("{new_root}/run"))
-            {
-                Ok(_) => debug("Mounted tmpfs on /run"),
-                Err(error) => {
-                    debug(&format!("Failed to mount /run: {error}"));
-                }
+    for mount_point in ["/sys", "/dev", "/run", "/proc"] {
+        if ! is_mounted(mount_point) {
+            debug(&format!("{mount_point} is not mounted [skipped]"));
+            continue
+        }
+        let new_mount_point = format!("{new_root}{mount_point}");
+        match fs::create_dir_all(&new_mount_point) {
+            Ok(_) => { },
+            Err(error) => {
+                debug(&format!(
+                    "Error creating directory {new_mount_point}: {error}"
+                ));
+                continue
+            }
+        }
+        match Mount::builder()
+            .fstype("none").flags(MountFlags::MOVE)
+            .mount(mount_point, &new_mount_point)
+        {
+            Ok(_) => debug(&format!(
+                "Moved {mount_point} to {new_mount_point}"
+            )),
+            Err(error) => {
+                debug(&format!(
+                    "Failed to move {mount_point} to {new_mount_point}: {error}"
+                ));
             }
         }
     }
@@ -1456,8 +1482,8 @@ fn mount_basic_fs() {
     Mount standard filesystems
 
     A filesystem which is already mounted is skipped. This is the
-    case after the switch root into the overlay because the switch
-    root moves these filesystems along into the new root
+    case after the switch root into the overlay because sci moves
+    these filesystems along into the new root, see move_mounts()
     !*/
     let basic_fs = [
         ("proc", "/proc"),

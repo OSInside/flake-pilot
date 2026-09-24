@@ -48,7 +48,10 @@ pub const MOUNT_TOOL: &str = "mount";
 // given in the nfs=... cmdline variable
 pub const NFS_FSTYPE: &str = "nfs";
 pub const NFS_VOLUME_DELIMITER: char = ',';
-pub const SYSTEMD_NETWORK_RESOLV_CONF: &str = "/run/systemd/resolve/resolv.conf";
+pub const SYSTEMD_NETWORK_RESOLV_CONF: [&str; 2] = [
+    "/run/systemd/resolve/resolv.conf",
+    "/run/systemd.pre-switch-root/resolve/resolv.conf"
+];
 pub const VM_QUIT: &str = "sci_quit";
 pub const VHOST_TRANSPORT: &str = "vmw_vsock_virtio_transport";
 pub const TERM_TYPE: &str = "xterm";

@@ -1349,18 +1349,17 @@ fn do_reboot(ok: bool) {
 }
 
 fn setup_resolver_link() {
-    if Path::new(defaults::SYSTEMD_NETWORK_RESOLV_CONF).exists() {
-        match symlink(
-            defaults::SYSTEMD_NETWORK_RESOLV_CONF, "/etc/resolv.conf"
-        ) {
-            Ok(_) => { },
-            Err(error) => {
-                debug(&format!("Error creating symlink \"{} -> {}\": {:?}",
-                    "/etc/resolv.conf",
-                    defaults::SYSTEMD_NETWORK_RESOLV_CONF,
-                    error
-                ));
+    for resolv_conf in defaults::SYSTEMD_NETWORK_RESOLV_CONF {
+        if Path::new(resolv_conf).exists() {
+            match symlink(resolv_conf, "/etc/resolv.conf") {
+                Ok(_) => { },
+                Err(error) => {
+                    debug(&format!("Error creating symlink \"{} -> {}\": {:?}",
+                        "/etc/resolv.conf", resolv_conf, error
+                    ));
+                }
             }
+            return
         }
     }
 }

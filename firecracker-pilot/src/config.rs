@@ -162,7 +162,7 @@ pub struct RuntimeSection<'a> {
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct EngineSection<'a> {
     /// Size of the VM overlay
-    /// If specified a new ext2 overlay filesystem image of the
+    /// If specified a new ext4 overlay filesystem image of the
     /// specified size will be created and attached to the VM
     pub overlay_size: Option<&'a str>,
 

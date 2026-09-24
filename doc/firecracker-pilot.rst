@@ -113,7 +113,7 @@ can be set for the firecracker engine:
           cache_type: Writeback
 
           # Size of the VM overlay
-          # If specified a new ext2 overlay filesystem image of the
+          # If specified a new ext4 overlay filesystem image of the
           # specified size will be created and attached to the VM
           overlay_size: 20GiB
 

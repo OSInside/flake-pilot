@@ -156,21 +156,26 @@ fn main() {
         } else {
             // overlay device is specified, mount the device and
             // prepare the folder structure
-            let mut modprobe = Command::new(defaults::PROBE_MODULE);
-            modprobe.arg("overlay");
-            debug(&format!(
-                "SCI CALL: {} -> {:?}",
-                defaults::PROBE_MODULE, modprobe.get_args()
-            ));
-            match modprobe.status() {
-                Ok(_) => { },
-                Err(error) => {
-                    debug(&format!("Loading overlay module failed: {error}"));
+            for module in ["overlay", "ext4"] {
+                let mut modprobe = Command::new(defaults::PROBE_MODULE);
+                modprobe.arg(module);
+                debug(&format!(
+                    "SCI CALL: {} -> {:?}",
+                    defaults::PROBE_MODULE, modprobe.get_args()
+                ));
+                match modprobe.status() {
+                    Ok(_) => { },
+                    Err(error) => {
+                        debug(&format!(
+                            "Loading {module} module failed: {error}"
+                        ));
+                    }
                 }
             }
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
             match Mount::builder()
-                .fstype("ext2").mount(overlay.as_str(), "/overlayroot")
+                .fstype("ext4").data("data=ordered")
+                .mount(overlay.as_str(), "/overlayroot")
             {
                 Ok(_) => {
                     debug(&format!("Mounted {overlay:?} on /overlayroot"));

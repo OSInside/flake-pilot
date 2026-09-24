@@ -165,7 +165,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
           cache_type: Writeback
 
           # Size of the VM overlay
-          # If specified a new ext2 overlay filesystem image of the
+          # If specified a new ext4 overlay filesystem image of the
           # specified size will be created and attached to the VM
           overlay_size: 20g
 
@@ -307,7 +307,7 @@ fn run_creation(
 
     // Setup root overlay if configured
     let vm_overlay_file = get_meta_file_name(
-        program_name, &get_overlay_dir()?, "ext2"
+        program_name, &get_overlay_dir()?, "ext4"
     );
     if let Some(overlay_size) = engine_section.overlay_size {
         let overlay_size = overlay_size.parse::<ByteUnit>().expect(
@@ -319,8 +319,10 @@ fn run_creation(
             vm_overlay_file_fd.write_all(&[0])?;
 
             // Create filesystem
-            let mut mkfs = Command::new("/usr/sbin/mkfs.ext2");
+            let mut mkfs = Command::new("/usr/sbin/mkfs.ext4");
             mkfs.arg("-F")
+                .arg("-O")
+                .arg("has_journal")
                 .arg(&vm_overlay_file);
             if Lookup::is_debug() {
                 debug!("{:?} {:?}", mkfs.get_program(), mkfs.get_args());
@@ -923,7 +925,7 @@ pub fn create_firecracker_config(
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {
         let vm_overlay_file = get_meta_file_name(
-            program_name, &get_overlay_dir()?, "ext2"
+            program_name, &get_overlay_dir()?, "ext4"
         );
 
         let cache_type =
@@ -1514,7 +1516,7 @@ pub fn gc_meta_files(
                     Path::new(&vm_id_file)
                         .file_name()
                         .and_then(OsStr::to_str)
-                        .map(|x| x.replace(".vmid", ".ext2"))
+                        .map(|x| x.replace(".vmid", ".ext4"))
                         .unwrap()
                 );
                 if Path::new(&vm_overlay_file).exists() && ! resume {
@@ -1610,7 +1612,11 @@ pub fn mount_vm(
         "{}/{}", sub_dir, defaults::IMAGE_OVERLAY
     );
     let mut mount_overlay = user.run("mount");
-    mount_overlay.arg(overlay_path)
+    mount_overlay.arg("-t")
+        .arg("ext4")
+        .arg("-o")
+        .arg("data=ordered")
+        .arg(overlay_path)
         .arg(&overlay_mount_point);
     if Lookup::is_debug() {
         debug!(

@@ -79,6 +79,7 @@
         <package name="procps"/>
         <package name="nfs-client"/>
         <package name="git"/>
+        <package name="NetworkManager"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

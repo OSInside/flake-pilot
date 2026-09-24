@@ -174,13 +174,15 @@ fn main() {
             }
             // The overlay device is mounted synchronous such that
             // data and directory changes are written to the device
-            // immediately. sci ends the instance with a reboot which
-            // does not sync, thus cached data would get lost
+            // immediately. The journal is committed every second
+            // instead of the default five seconds. sci ends the
+            // instance with a reboot which does not sync, thus
+            // cached data would get lost
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
             match mount_filesystem(
                 overlay.as_str(), defaults::OVERLAY_MOUNT, "ext4",
                 MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
-                Some("data=ordered")
+                Some("data=ordered,commit=1")
             ) {
                 Ok(_) => {
                     debug(&format!(
@@ -1705,10 +1707,10 @@ mod tests {
             get_mount_args(
                 "/dev/vdb", "/overlayroot", "ext4",
                 MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
-                Some("data=ordered")
+                Some("data=ordered,commit=1")
             ),
             vec![
-                "-t", "ext4", "-o", "sync,dirsync,data=ordered",
+                "-t", "ext4", "-o", "sync,dirsync,data=ordered,commit=1",
                 "/dev/vdb", "/overlayroot"
             ]
         );

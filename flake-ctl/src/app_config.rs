@@ -73,7 +73,7 @@ pub struct AppSandboxRuntime {
     pub pilot_options: Option<Vec<String>>,
     pub bubblewrap: Option<Vec<String>>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AppInclude {
     pub tar: Option<Vec<String>>,
     pub path: Option<Vec<String>>,
@@ -429,20 +429,58 @@ impl AppConfig {
         The optional drop-in files from the '.d' directory next
         to the configuration are merged in
         !*/
-        let base_file = config_file.display().to_string();
-        let full_yaml = registration::merge_config(
-            &base_file, &base_file.replace(".yaml", ".d")
-        );
         let yaml_config: AppConfig =
-            serde_yaml::from_str(&full_yaml).expect(
+            serde_yaml::from_str(&merged_config(config_file)).expect(
                 "Failed to import config file"
             );
         Ok(yaml_config)
     }
+
+    pub fn init_from_file_optional_include(
+        config_file: &Path
+    ) -> Result<AppConfig, GenericError> {
+        /*!
+        Returns an instance of AppConfig like init_from_file does,
+        but accepts a configuration without an include section
+
+        A missing include section is read as an empty one. This is
+        meant for callers which only inspect a configuration and
+        have no use for the data to sync into the instance. A
+        configuration which cannot be read is reported as error
+        !*/
+        let mut yaml_config: serde_yaml::Value =
+            serde_yaml::from_str(&merged_config(config_file))?;
+        if let Some(sections) = yaml_config.as_mapping_mut() {
+            let include = serde_yaml::Value::String("include".to_string());
+            if ! sections.contains_key(&include) {
+                sections.insert(
+                    include, serde_yaml::to_value(AppInclude::default())?
+                );
+            }
+        }
+        Ok(serde_yaml::from_value(yaml_config)?)
+    }
+}
+
+fn merged_config(config_file: &Path) -> String {
+    /*!
+    Provide the yaml data of the given configuration
+
+    The optional drop-in files from the '.d' directory next
+    to the configuration are merged in
+    !*/
+    let base_file = config_file.display().to_string();
+    registration::merge_config(
+        &base_file, &base_file.replace(".yaml", ".d")
+    )
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
     use super::{AppConfig, template_exists};
 
     fn template_path(name: &str) -> String {
@@ -474,5 +512,37 @@ mod tests {
         let runtime = sandbox.runtime.unwrap();
         assert_eq!(Some("any".to_string()), runtime.runas);
         assert_eq!(5, runtime.bubblewrap.unwrap().len());
+    }
+
+    #[test]
+    fn test_init_from_file_optional_include() {
+        let config_dir = tempdir().unwrap();
+        let config_file = config_dir.path().join("myapp.yaml");
+        let vm = "vm:\n  name: leap\n  target_app_path: /usr/bin/myapp\n  \
+            host_app_path: /usr/bin/myapp\n";
+        // a missing include section is read as an empty one
+        fs::write(&config_file, vm).unwrap();
+        let app_conf = AppConfig::init_from_file_optional_include(
+            Path::new(&config_file)
+        ).unwrap();
+        assert_eq!("leap", app_conf.vm.unwrap().name);
+        assert!(app_conf.include.tar.is_none());
+        assert!(app_conf.include.path.is_none());
+        // a present include section is read as it is
+        fs::write(
+            &config_file, format!("include:\n  tar:\n    - /data.tar\n{vm}")
+        ).unwrap();
+        let app_conf = AppConfig::init_from_file_optional_include(
+            Path::new(&config_file)
+        ).unwrap();
+        assert_eq!(Some(vec!["/data.tar".to_string()]), app_conf.include.tar);
+        // a configuration which does not match the model is
+        // reported as error instead of a panic
+        fs::write(&config_file, "vm:\n  name: leap\n").unwrap();
+        assert!(
+            AppConfig::init_from_file_optional_include(
+                Path::new(&config_file)
+            ).is_err()
+        );
     }
 }

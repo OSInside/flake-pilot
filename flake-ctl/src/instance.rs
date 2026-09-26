@@ -21,11 +21,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use crate::app_config::AppFireCrackerEngine;
+use crate::app_config::{AppConfig, AppFireCrackerEngine};
 use crate::cli::ListFormat;
 use crate::network::{get_effective_boot_args, get_network_info, NetworkInfo};
 use crate::volume::{get_volume_info, VolumeInfo};
-use crate::{app_config, defaults, output};
+use crate::{defaults, output};
 use glob::glob;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -339,7 +339,9 @@ fn flake_details(
     it. The storage volume is looked up in the given storage_dir
     !*/
     let mut details = FlakeDetails::default();
-    let app_conf = match app_config::AppConfig::init_from_file(
+    // The include section is of no interest for the show command,
+    // a flake config without one is read nevertheless
+    let app_conf = match AppConfig::init_from_file_optional_include(
         Path::new(config_file)
     ) {
         Ok(app_conf) => app_conf,

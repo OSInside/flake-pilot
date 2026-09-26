@@ -166,7 +166,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
           # Size of the VM overlay
           # If specified a new ext4 overlay filesystem image of the
           # specified size will be created and attached to the VM
-          overlay_size: 20g
+          overlay_size: 20GB
 
           # Path to rootfs image done by app registration
           rootfs_image_path: /var/lib/firecracker/images/NAME/rootfs

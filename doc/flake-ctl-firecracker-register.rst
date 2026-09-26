@@ -139,7 +139,7 @@ EXAMPLE
 .. code:: bash
 
    $ flake-ctl firecracker register --vm NAME \
-       --overlay-size 20g \
+       --overlay-size 20GB \
        --app /usr/bin/apt-get
 
    $ flake-ctl firecracker register --vm NAME \

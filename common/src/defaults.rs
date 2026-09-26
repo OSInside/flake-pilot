@@ -56,3 +56,16 @@ pub const NETWORK_CONFIG: &str = "/etc/flakes/network.yaml";
 // home directory of the user calling the program
 pub const NETWORK_CONFIG_USER: &str =
     ".config/flakes/firecracker/network.yaml";
+// Location of the storage volumes firecracker-pilot creates
+// for VM instances with an overlay_size. The volumes are
+// written by the pilot and read by flake-ctl and therefore
+// have to be looked up at the same place by both of them.
+// The volumes are stored relative to the home directory of
+// the user the instance belongs to. Without a home directory
+// they are stored below the private meta data directory of
+// that user
+pub const FIRECRACKER_OVERLAY_DIR: &str =
+    ".config/flakes/firecracker/storage";
+pub const FIRECRACKER_STORAGE_DIR: &str = "storage";
+// File name extension of a VM storage volume
+pub const FIRECRACKER_STORAGE_EXTENSION: &str = "ext4";

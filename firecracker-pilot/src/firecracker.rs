@@ -304,7 +304,8 @@ fn run_creation(
 
     // Setup root overlay if configured
     let vm_overlay_file = get_meta_file_name(
-        program_name, &get_overlay_dir()?, "ext4"
+        program_name, &get_overlay_dir()?,
+        defaults::FIRECRACKER_STORAGE_EXTENSION
     );
     if let Some(overlay_size) = engine_section.overlay_size {
         let overlay_size = overlay_size.parse::<ByteUnit>().expect(
@@ -922,7 +923,8 @@ pub fn create_firecracker_config(
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {
         let vm_overlay_file = get_meta_file_name(
-            program_name, &get_overlay_dir()?, "ext4"
+            program_name, &get_overlay_dir()?,
+            defaults::FIRECRACKER_STORAGE_EXTENSION
         );
 
         let cache_type =

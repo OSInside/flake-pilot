@@ -34,10 +34,12 @@ pub const OVERLAY_UPPER: &str =
     "overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str =
     "overlayroot/rootfs_work";
-pub const FIRECRACKER_OVERLAY_DIR:&str =
-    ".config/flakes/firecracker/storage";
-pub const FIRECRACKER_STORAGE_DIR:&str =
-    "storage";
+// The location of the storage volumes is shared with flake-ctl
+// and is therefore maintained in the common area
+pub use flakes::defaults::{
+    FIRECRACKER_OVERLAY_DIR, FIRECRACKER_STORAGE_DIR,
+    FIRECRACKER_STORAGE_EXTENSION
+};
 pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
 pub const FIRECRACKER_VSOCK_PREFIX: &str =

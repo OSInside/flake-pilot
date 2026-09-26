@@ -31,6 +31,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use ubyte::ByteUnit;
 use flakes::config::{
     get_bubblewrap_ids_dir, get_firecracker_ids_dir,
     get_podman_ids_dir, read_storage_conf
@@ -67,6 +68,22 @@ pub struct VmInfo {
     /// NFS volumes attached to the VM, an empty list if the
     /// instance mounts no volume
     pub volumes: Vec<VolumeInfo>,
+    /// Storage volume of the VM. An instance which is not
+    /// configured with an overlay_size provides none
+    pub storage: Option<StorageInfo>,
+}
+
+// StorageInfo is the storage volume firecracker-pilot creates
+// for a VM instance which is configured with an overlay_size
+#[derive(Debug, Serialize)]
+pub struct StorageInfo {
+    /// Path of the storage volume on the host
+    pub path: String,
+    /// Size of the storage volume in bytes. An existing volume
+    /// provides the size of its file, a volume which does not
+    /// exist (yet) the overlay_size it gets created with. A size
+    /// which cannot be read is provided as None
+    pub size: Option<u64>,
 }
 
 pub fn show(engine: &str, usermode: bool, format: ListFormat) {
@@ -160,8 +177,15 @@ fn instance_details(
     let name = instance_name(meta_file, engine)?;
     let id = read_meta_file(meta_file)?;
     let config = flake_config_file(&name, uid, usermode);
+    let storage_dir = if engine == defaults::FIRECRACKER_ENGINE {
+        storage_dir(meta_file, uid)
+    } else {
+        None
+    };
     let FlakeDetails { image, runas, vm } = match config {
-        Some(ref config_file) => flake_details(config_file, engine, &name),
+        Some(ref config_file) => flake_details(
+            config_file, engine, &name, storage_dir.as_deref()
+        ),
         None => FlakeDetails::default()
     };
     let status = if engine == defaults::PODMAN_ENGINE {
@@ -304,14 +328,15 @@ struct FlakeDetails {
 }
 
 fn flake_details(
-    config_file: &str, engine: &str, name: &str
+    config_file: &str, engine: &str, name: &str, storage_dir: Option<&str>
 ) -> FlakeDetails {
     /*!
     Read the details of the flake the given instance belongs to
 
     This is the name of the image the instance was created from
     and the user the engine runs as. A VM instance also provides
-    the network and the volumes attached to it
+    the network, the volumes and the storage volume attached to
+    it. The storage volume is looked up in the given storage_dir
     !*/
     let mut details = FlakeDetails::default();
     let app_conf = match app_config::AppConfig::init_from_file(
@@ -348,21 +373,25 @@ fn flake_details(
             details.runas = runtime.runas;
             engine_section = runtime.firecracker;
         }
-        details.vm = Some(vm_details(engine_section.as_ref(), name));
+        details.vm = Some(
+            vm_details(engine_section.as_ref(), name, storage_dir)
+        );
     }
     details
 }
 
 fn vm_details(
-    engine_section: Option<&AppFireCrackerEngine>, name: &str
+    engine_section: Option<&AppFireCrackerEngine>, name: &str,
+    storage_dir: Option<&str>
 ) -> VmInfo {
     /*!
-    Read the network and the volumes attached to the given
-    VM instance
+    Read the network, the volumes and the storage volume attached
+    to the given VM instance
 
-    Both are configured as options of the kernel commandline of
-    the VM. The options which are in effect for the instance are
-    read the same way the pilot does when it creates the VM
+    The network and the volumes are configured as options of the
+    kernel commandline of the VM. The options which are in effect
+    for the instance are read the same way the pilot does when it
+    creates the VM
     !*/
     let engine_section = match engine_section {
         Some(engine_section) => engine_section,
@@ -373,7 +402,61 @@ fn vm_details(
     );
     VmInfo {
         network: get_network_info(&boot_args, name),
-        volumes: get_volume_info(&boot_args)
+        volumes: get_volume_info(&boot_args),
+        storage: storage_dir.and_then(
+            |storage_dir| storage_info(engine_section, name, storage_dir)
+        )
+    }
+}
+
+fn storage_info(
+    engine_section: &AppFireCrackerEngine, name: &str, storage_dir: &str
+) -> Option<StorageInfo> {
+    /*!
+    Provide the storage volume of the given VM instance
+
+    firecracker-pilot creates the volume on the first start of an
+    instance which is configured with an overlay_size. The volume
+    is named after the instance and is reused on every further
+    start, it is not resized if the overlay_size changes later.
+    Therefore the size is read from the volume if it exists
+    !*/
+    let overlay_size = engine_section.overlay_size.as_ref()?;
+    let path = format!(
+        "{storage_dir}/{name}.{}", defaults::FIRECRACKER_STORAGE_EXTENSION
+    );
+    let size = match fs::metadata(&path) {
+        Ok(attributes) => Some(attributes.len()),
+        Err(_) => match overlay_size.parse::<ByteUnit>() {
+            Ok(size) => Some(size.as_u64()),
+            Err(error) => {
+                error!("Invalid overlay_size {overlay_size}: {error}");
+                None
+            }
+        }
+    };
+    Some(StorageInfo { path, size })
+}
+
+fn storage_dir(meta_file: &str, uid: u32) -> Option<String> {
+    /*!
+    Provide the directory firecracker-pilot stores the storage
+    volumes of the instances of the given user in
+
+    This is a directory below the home directory of the user the
+    instance belongs to. Without a home directory the pilot uses
+    the private meta data directory of that user, which is the
+    directory the given meta data file is stored in
+    !*/
+    match user_home(uid) {
+        Some(home) => Some(
+            format!("{home}/{}", defaults::FIRECRACKER_OVERLAY_DIR)
+        ),
+        None => Path::new(meta_file).parent().map(
+            |meta_dir| format!(
+                "{}/{}", meta_dir.display(), defaults::FIRECRACKER_STORAGE_DIR
+            )
+        )
     }
 }
 
@@ -582,7 +665,7 @@ fn show_as_table(engine: &str, instances: &[InstanceInfo], usermode: bool) {
         ];
         if engine == defaults::FIRECRACKER_ENGINE {
             row.extend(
-                vm_values(instance.vm.as_ref()).iter()
+                vm_values(instance.vm.as_ref(), true).iter()
                     .map(|value| output::column_value(value.as_ref()))
             );
         }
@@ -596,18 +679,30 @@ fn show_as_table(engine: &str, instances: &[InstanceInfo], usermode: bool) {
     output::print_table(columns, &rows);
 }
 
-fn vm_values(vm: Option<&VmInfo>) -> Vec<Option<String>> {
+fn vm_values(vm: Option<&VmInfo>, human_readable: bool) -> Vec<Option<String>> {
     /*!
-    Provide the address, the TAP device and the volumes of a VM
-    instance in the order of the columns of the show command.
-    A value which is not configured is provided as None
+    Provide the address, the TAP device, the volumes and the
+    storage volume of a VM instance in the order of the columns
+    of the show command. A value which is not configured is
+    provided as None. The size of the storage volume is provided
+    in bytes, or in a unit that suits the size if human_readable
+    is set
     !*/
     let network = vm.and_then(|vm| vm.network.as_ref());
+    let storage = vm.and_then(|vm| vm.storage.as_ref());
     vec![
         network.and_then(|network| network.address)
             .map(|address| address.to_string()),
         network.map(|network| network.tap.to_string()),
-        vm.and_then(|vm| volume_list(&vm.volumes))
+        vm.and_then(|vm| volume_list(&vm.volumes)),
+        storage.map(|storage| storage.path.to_string()),
+        storage.and_then(|storage| storage.size).map(
+            |size| if human_readable {
+                ByteUnit::from(size).to_string()
+            } else {
+                size.to_string()
+            }
+        )
     ]
 }
 
@@ -660,7 +755,7 @@ fn show_as_csv(engine: &str, instances: &[InstanceInfo]) {
         ];
         if engine == defaults::FIRECRACKER_ENGINE {
             row.extend(
-                vm_values(instance.vm.as_ref()).into_iter()
+                vm_values(instance.vm.as_ref(), false).into_iter()
                     .map(|value| value.unwrap_or_default())
             );
         }
@@ -671,11 +766,16 @@ fn show_as_csv(engine: &str, instances: &[InstanceInfo]) {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use tempfile::tempdir;
+
+    use crate::app_config::AppFireCrackerEngine;
     use crate::network::NetworkInfo;
     use crate::volume::VolumeInfo;
 
     use super::{
-        flake_name, instance_selector, vm_values, InstanceInfo, VmInfo
+        flake_name, instance_selector, storage_dir, storage_info, vm_values,
+        InstanceInfo, StorageInfo, VmInfo
     };
 
     fn volume(server: &str, host_path: &str, guest_path: &str) -> VolumeInfo {
@@ -683,6 +783,20 @@ mod tests {
             server: server.to_string(),
             host_path: host_path.to_string(),
             guest_path: guest_path.to_string()
+        }
+    }
+
+    fn engine_section(overlay_size: Option<&str>) -> AppFireCrackerEngine {
+        AppFireCrackerEngine {
+            boot_args: None,
+            overlay_size: overlay_size.map(|size| size.to_string()),
+            rootfs_image_path: None,
+            kernel_image_path: None,
+            initrd_path: None,
+            mem_size_mib: None,
+            vcpu_count: None,
+            cache_type: None,
+            instance: None
         }
     }
 
@@ -725,22 +839,83 @@ mod tests {
             volumes: vec![
                 volume("172.16.0.1", "/host", "/guest"),
                 volume("172.16.0.1", "/other", "/mnt")
-            ]
-        };
-        assert_eq!(
-            vec![
-                Some("172.16.0.2".to_string()),
-                Some("tap-myapp".to_string()),
-                Some(
-                    "172.16.0.1:/host:/guest,172.16.0.1:/other:/mnt".to_string()
-                )
             ],
-            vm_values(Some(&vm))
+            storage: Some(
+                StorageInfo {
+                    path: "/root/.config/flakes/firecracker/storage/myapp.ext4"
+                        .to_string(),
+                    size: Some(21474836480)
+                }
+            )
+        };
+        let values = |size: &str| vec![
+            Some("172.16.0.2".to_string()),
+            Some("tap-myapp".to_string()),
+            Some(
+                "172.16.0.1:/host:/guest,172.16.0.1:/other:/mnt".to_string()
+            ),
+            Some(
+                "/root/.config/flakes/firecracker/storage/myapp.ext4"
+                    .to_string()
+            ),
+            Some(size.to_string())
+        ];
+        // the table shows the size in a unit that suits it, the
+        // machine readable format provides it in bytes
+        assert_eq!(values("20GiB"), vm_values(Some(&vm), true));
+        assert_eq!(values("21474836480"), vm_values(Some(&vm), false));
+        // a VM without a network, volumes and storage provides no
+        // value, the same as an instance without a config
+        assert_eq!(vec![None; 5], vm_values(Some(&VmInfo::default()), true));
+        assert_eq!(vec![None; 5], vm_values(None, true));
+    }
+
+    #[test]
+    fn test_storage_info() {
+        let storage_dir = tempdir().unwrap();
+        let storage_dir = storage_dir.path().to_str().unwrap();
+        let path = format!("{storage_dir}/myapp@one.ext4");
+        // an instance without an overlay_size has no storage volume
+        assert!(
+            storage_info(&engine_section(None), "myapp@one", storage_dir)
+                .is_none()
         );
-        // a VM without a network and without volumes provides
-        // no value, the same as an instance without a config
-        assert_eq!(vec![None, None, None], vm_values(Some(&VmInfo::default())));
-        assert_eq!(vec![None, None, None], vm_values(None));
+        // a volume which does not exist yet provides the size it
+        // gets created with
+        let storage = storage_info(
+            &engine_section(Some("20GiB")), "myapp@one", storage_dir
+        ).unwrap();
+        assert_eq!(path, storage.path);
+        assert_eq!(Some(21474836480), storage.size);
+        // an overlay_size which cannot be parsed provides no size
+        let storage = storage_info(
+            &engine_section(Some("twenty")), "myapp@one", storage_dir
+        ).unwrap();
+        assert_eq!(path, storage.path);
+        assert_eq!(None, storage.size);
+        // an existing volume provides the size of its file, no
+        // matter what the overlay_size is set to
+        fs::write(&path, [0; 42]).unwrap();
+        let storage = storage_info(
+            &engine_section(Some("20GiB")), "myapp@one", storage_dir
+        ).unwrap();
+        assert_eq!(Some(42), storage.size);
+    }
+
+    #[test]
+    fn test_storage_dir() {
+        // the volumes of a user with a home directory are stored
+        // below that home directory
+        assert_eq!(
+            Some("/root/.config/flakes/firecracker/storage".to_string()),
+            storage_dir("/tmp/flakes/0/myapp.vmid", 0)
+        );
+        // without a home directory the private meta data directory
+        // of the user is used
+        assert_eq!(
+            Some("/tmp/flakes/4294967294/storage".to_string()),
+            storage_dir("/tmp/flakes/4294967294/myapp.vmid", 4294967294)
+        );
     }
 
     #[test]
@@ -752,9 +927,31 @@ mod tests {
         ).unwrap();
         assert!(json.contains(r#""network":null"#));
         assert!(json.contains(r#""volumes":[]"#));
+        assert!(json.contains(r#""storage":null"#));
+        let json = serde_json::to_string(
+            &instance_info(
+                Some(
+                    VmInfo {
+                        storage: Some(
+                            StorageInfo {
+                                path: "/storage/myapp.ext4".to_string(),
+                                size: Some(42)
+                            }
+                        ),
+                        ..Default::default()
+                    }
+                )
+            )
+        ).unwrap();
+        assert!(
+            json.contains(
+                r#""storage":{"path":"/storage/myapp.ext4","size":42}"#
+            )
+        );
         // a container instance provides none of it
         let json = serde_json::to_string(&instance_info(None)).unwrap();
         assert!(! json.contains("network"));
         assert!(! json.contains("volumes"));
+        assert!(! json.contains("storage"));
     }
 }

@@ -95,8 +95,11 @@ storage
   instance whose flake is registered with an **overlay_size**,
   see **flake-ctl-firecracker-register**(8). The volume is named
   after the instance and is stored below
-  `$HOME/.config/flakes/firecracker/storage` of the user the
-  instance belongs to. For a user without a home directory it is
+  `.config/flakes/firecracker/storage` in the home directory of
+  the user the instance belongs to. The home directory is read
+  from the system user database, the HOME environment variable
+  is not taken into account. For a user without a home directory
+  or without an entry in the user database it is
   stored in the `storage` directory below the private meta data
   directory of that user, e.g `/tmp/flakes/1000/storage`. An
   instance without an overlay_size has no storage volume

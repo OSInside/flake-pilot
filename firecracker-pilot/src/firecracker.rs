@@ -51,6 +51,8 @@ use serde::{Serialize, Deserialize};
 use serde_json::{self};
 use flakes::config::get_firecracker_ids_dir;
 use std::os::fd::AsRawFd;
+use uzers::{get_current_uid, get_user_by_uid};
+use uzers::os::unix::UserExt;
 
 use crate::defaults;
 
@@ -1355,13 +1357,23 @@ pub fn get_overlay_dir() -> Result<String, FlakeError> {
     calling user. If there is no home directory the private
     meta data directory of the user is used. A directory shared
     with other users must not be used because the overlay image
-    becomes the root filesystem of the VM
+    becomes the root filesystem of the VM.
+
+    The home directory is read from the system user database and
+    not from the HOME environment variable. flake-ctl looks up
+    the overlay images of an instance the same way and would not
+    find them at a location the environment of the pilot call
+    pointed to
     !*/
-    match env::var("HOME") {
-        Ok(home) => Ok(
-            format!("{}/{}", home, defaults::FIRECRACKER_OVERLAY_DIR)
+    match get_user_by_uid(get_current_uid()) {
+        Some(user) => Ok(
+            format!(
+                "{}/{}",
+                user.home_dir().to_string_lossy(),
+                defaults::FIRECRACKER_OVERLAY_DIR
+            )
         ),
-        Err(_) => Ok(
+        None => Ok(
             format!("{}/{}", get_ids_dir()?, defaults::FIRECRACKER_STORAGE_DIR)
         )
     }

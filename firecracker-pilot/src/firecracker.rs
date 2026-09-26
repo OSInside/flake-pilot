@@ -23,7 +23,6 @@
 // SOFTWARE.
 //
 use std::{thread, time};
-use glob::glob;
 use flakes::io::IO;
 use std::process::Command;
 use flakes::command::{CommandError, handle_output, CommandExtTrait};
@@ -242,24 +241,23 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     let path_includes = config().paths();
     let has_includes = !tar_includes.is_empty() || !path_includes.is_empty();
 
-    // Check early return condition
-    if Path::new(&vm_id_file_path).exists() && gc_meta_files(
-        &vm_id_file_path, program_name
-    )? && resume {
-        // VM exists
-        // report ID value and its ID file name
-        let vmid =  fs::read_to_string(&vm_id_file_path)?;
-        return Ok((vmid, vm_id_file_path));
-    }
-
-    // Garbage collect occasionally
-    gc(program_name).ok();
-
-    // Sanity check
+    // Check for an existing instance. The pilot does not delete
+    // the meta data of an instance, this is done when the flake
+    // gets removed via 'flake-ctl firecracker remove'. The meta
+    // data of an instance which is no longer running is reused
+    // and replaced when the VM gets created
     if Path::new(&vm_id_file_path).exists() {
-        // we are about to create a VM for which a
-        // vmid file already exists.
-        return Err(FlakeError::AlreadyRunning)
+        let vmid = fs::read_to_string(&vm_id_file_path)?;
+        if vm_running(&vmid)? {
+            if resume {
+                // VM exists
+                // report ID value and its ID file name
+                return Ok((vmid, vm_id_file_path));
+            }
+            // we are about to create a VM for which
+            // a VM is already running
+            return Err(FlakeError::AlreadyRunning)
+        }
     }
 
     // Setup VM...
@@ -1466,91 +1464,6 @@ pub fn get_tap_name(program_name: &String) -> String {
     Construct the name of the TAP device for the given program name
     !*/
     get_tap_device_name(&get_meta_name(program_name))
-}
-
-pub fn gc_meta_files(
-    vm_id_file: &String, program_name: &String
-) -> Result<bool, FlakeError> {
-    /*!
-    Check if VM exists according to the specified
-    vm_id_file. Garbage cleanup the vm_id_file and the vsock socket
-    if no longer present. Return a true value if the VM
-    exists, in any other case return false.
-    !*/
-    let mut vmid_status = false;
-    let metadata = fs::metadata(vm_id_file)?;
-    let file_type = metadata.file_type();
-    if ! file_type.is_file() {
-        return Ok(vmid_status)
-    }
-    match fs::read_to_string(vm_id_file) {
-        Ok(vmid) => {
-            if ! vm_running(&vmid)? {
-                if Lookup::is_debug() {
-                    debug!("Deleting {vm_id_file}");
-                }
-                match fs::remove_file(vm_id_file) {
-                    Ok(_) => { },
-                    Err(error) => {
-                        error!("Failed to remove VMID: {error:?}")
-                    }
-                }
-                let vsock_uds_path = get_vsock_uds_path(program_name)?;
-                if Path::new(&vsock_uds_path).exists() {
-                    if Lookup::is_debug() {
-                        debug!("Deleting {vsock_uds_path}");
-                    }
-                    delete_file(&vsock_uds_path);
-                }
-                let vsock_uds_path_call_sockets = vsock_uds_path + "_*";
-                for call_socket in glob(&vsock_uds_path_call_sockets).expect(
-                    "Failed to read call socket glob pattern"
-                ) {
-                    match call_socket {
-                        Ok(path) => {
-                            if Lookup::is_debug() {
-                                debug!("Deleting {path:?}");
-                            }
-                            delete_file(&path.display().to_string());
-                        },
-                        Err(ref error) => {
-                            error!(
-                                "Failed to remove {call_socket:?}: {error:?}"
-                            );
-                        }
-                    }
-                }
-            } else {
-                vmid_status = true
-            }
-        },
-        Err(error) => {
-            error!("Error reading VMID {vm_id_file}: {error:?}");
-        }
-    }
-    Ok(vmid_status)
-}
-
-pub fn gc(program_name: &String) -> Result<(), FlakeError> {
-    /*!
-    Garbage collect VMID files for which no VM exists anymore
-    !*/
-    let vmid_file_names: Vec<_> = fs::read_dir(get_ids_dir()?)?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|x| x.path()
-            .to_str()
-            .map(ToOwned::to_owned))
-        .collect();
-
-    if vmid_file_names.len() <= defaults::GC_THRESHOLD {
-        return Ok(())
-    }
-    for vm_id_file in vmid_file_names {
-        if vm_id_file.ends_with(".vmid") && Path::new(&vm_id_file).exists() {
-            gc_meta_files(&vm_id_file, program_name).ok();
-        }
-    }
-    Ok(())
 }
 
 pub fn delete_file(filename: &String) -> bool {

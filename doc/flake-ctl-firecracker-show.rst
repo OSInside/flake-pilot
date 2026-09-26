@@ -130,9 +130,11 @@ list in the json format, an instance without a storage volume
 provides ``null``.
 
 Please note, a meta data file also exists for an instance which
-is no longer running. The pilots delete them when they run the
-flake application again. Therefore the command can also show
-instances in the ``stopped`` status.
+is no longer running. firecracker-pilot does not delete it, the
+file is reused when the instance is started again. It is deleted
+when the flake gets removed with
+**flake-ctl-firecracker-remove**(8). Therefore the command can
+also show instances in the ``stopped`` status.
 
 OPTIONS
 -------

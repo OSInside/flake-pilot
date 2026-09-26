@@ -42,6 +42,7 @@ pub mod setup;
 pub mod volume;
 
 use flakes::config::get_flakes_dir;
+use flakes::registration::basename;
 use flakes::user::{User, mkdir};
 use uzers::get_current_uid;
 use std::fs;
@@ -219,14 +220,23 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     ) {
                         return Ok(ExitCode::FAILURE)
                     }
-                    if ! app.is_none() && ! app::remove(
-                        app.as_ref().map(String::as_str).unwrap(),
-                        defaults::FIRECRACKER_PILOT,
-                        user,
-                        false,
-                        *force
-                    ) {
-                        return Ok(ExitCode::FAILURE)
+                    if let Some(app) = app {
+                        if ! app::remove(
+                            app,
+                            defaults::FIRECRACKER_PILOT,
+                            user,
+                            false,
+                            *force
+                        ) {
+                            return Ok(ExitCode::FAILURE)
+                        }
+                        // The meta data of the instances of the
+                        // flake is only deleted along with it
+                        if ! instance::remove_vm_meta_data(
+                            &basename(app), user
+                        ) {
+                            return Ok(ExitCode::FAILURE)
+                        }
                     }
                     if ! vm.is_none() {
                         app::purge(

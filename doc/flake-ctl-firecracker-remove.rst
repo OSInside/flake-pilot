@@ -32,13 +32,30 @@ The command operates in two modes:
    In this mode the command deletes the specified application if it
    is a link pointing to `/usr/bin/firecracker-pilot`. It then also
    deletes the application configuration from `/usr/share/flakes`
-   respectively from `~/.config/flakes` in user mode
+   respectively from `~/.config/flakes` in user mode. Finally the
+   meta data of the instances of the application is deleted, see
+   below
 
 2. Remove a VM including all its registered applications via **--vm**
 
    In this mode the command deletes all application registrations
-   using the specified VM. At the end also the specified
-   VM will be removed from the local firecracker registry
+   using the specified VM along with the meta data of their
+   instances. At the end also the specified VM will be removed
+   from the local firecracker registry
+
+**firecracker-pilot**(8) keeps the meta data of an instance after
+the instance is gone and reuses it when the instance is started
+again. This is the VM ID file and the vsock sockets of the
+instance which are stored below `/tmp/flakes` in a private
+directory of the user the instance belongs to, e.g
+`/tmp/flakes/1000/myapp.vmid` and `/tmp/flakes/1000/sci_cmd_myapp.sock`.
+The meta data is deleted only when the flake it belongs to gets
+removed. This covers the instance of the application itself and
+the instances started with the pilot option **@NAME**, e.g
+`myapp@one.vmid`, for all users whose meta data directory can be
+read. The meta data of other flakes is not touched. The storage
+volume of an instance, see **flake-ctl-firecracker-show**(8), is
+not deleted
 
 A registration which is still in use is not removed. This is the
 case if

@@ -125,12 +125,12 @@ pub const FLAKE_SHOW_ID_LEN: usize =
 // engine is shared with podman-pilot and is therefore
 // maintained in the common area
 pub use flakes::defaults::PODMAN_ID_EXTENSION;
-// Location of the storage volumes firecracker-pilot creates for
-// VM instances, shared with firecracker-pilot and therefore
-// maintained in the common area
+// Location of the storage volumes and name of the vsock sockets
+// firecracker-pilot creates for VM instances, shared with
+// firecracker-pilot and therefore maintained in the common area
 pub use flakes::defaults::{
     FIRECRACKER_OVERLAY_DIR, FIRECRACKER_STORAGE_DIR,
-    FIRECRACKER_STORAGE_EXTENSION
+    FIRECRACKER_STORAGE_EXTENSION, FIRECRACKER_VSOCK_PREFIX
 };
 pub const FIRECRACKER_ID_EXTENSION:&str =
     "vmid";

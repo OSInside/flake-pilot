@@ -36,6 +36,7 @@ use std::fs::File;
 use crate::defaults;
 use crate::network;
 use crate::app;
+use crate::instance;
 
 use crate::fetch::{fetch_file, send_request};
 
@@ -1103,16 +1104,19 @@ pub fn remove_image_dir(image_dir: &str) -> bool {
 pub fn purge_vm(vm: &str, usermode: bool) {
     /*!
     Iterate over all yaml config files and find those connected
-    to the VM. Delete all app registrations for this
-    VM and also delete the VM from the local registry
+    to the VM. Delete all app registrations for this VM along
+    with the meta data of their instances and also delete the
+    VM from the local registry
     !*/
     for registration in app::image_flakes(
         vm, defaults::FIRECRACKER_ENGINE, usermode
     ) {
-        app::remove(
+        if app::remove(
             &registration.host_app_path,
             defaults::FIRECRACKER_PILOT, usermode, false, false
-        );
+        ) {
+            instance::remove_vm_meta_data(&registration.name, usermode);
+        }
     }
     let image_dir = get_image_dir(vm, usermode);
     match fs::remove_dir_all(&image_dir) {

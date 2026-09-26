@@ -156,6 +156,77 @@ pub fn running_instances(
         .collect()
 }
 
+pub fn remove_vm_meta_data(flake: &str, usermode: bool) -> bool {
+    /*!
+    Delete the meta data of all instances of the given VM flake
+
+    firecracker-pilot does not delete the meta data of a VM
+    instance which is gone, it reuses it on the next start of
+    the same instance. The meta data consists of the VM ID file
+    and the vsock sockets of the instance and is deleted once
+    the flake gets removed. The instances of the flake are the
+    application itself and the ones which were started with an
+    @NAME instance selector. They are looked up in the meta data
+    directories of all users which can be read. The storage
+    volumes of the instances are kept
+    !*/
+    let mut status = true;
+    for (_, meta_dir) in meta_dirs(
+        &ids_dir(defaults::FIRECRACKER_ENGINE, usermode)
+    ) {
+        let entries = match fs::read_dir(&meta_dir) {
+            Ok(entries) => entries,
+            Err(error) => {
+                error!("Failed to read: {meta_dir}: {error:?}");
+                status = false;
+                continue
+            }
+        };
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if vm_meta_instance(&file_name).map(flake_name) != Some(flake) {
+                continue
+            }
+            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(true) {
+                // Not a meta data file
+                continue
+            }
+            let meta_file = entry.path();
+            info!("Removing instance meta data: {}", meta_file.display());
+            if let Err(error) = fs::remove_file(&meta_file) {
+                error!("Failed to remove: {}: {error:?}", meta_file.display());
+                status = false
+            }
+        }
+    }
+    status
+}
+
+fn vm_meta_instance(file_name: &str) -> Option<&str> {
+    /*!
+    Provide the name of the instance the given file of a meta
+    data directory belongs to
+
+    This is either the VM ID file NAME.vmid, the vsock socket
+    PREFIXNAME.sock of the instance or the socket of a command
+    called in the instance PREFIXNAME.sock_PORT. Any other file
+    does not belong to an instance and provides None
+    !*/
+    let vmid_extension = format!(".{}", defaults::FIRECRACKER_ID_EXTENSION);
+    if let Some(instance) = file_name.strip_suffix(&vmid_extension) {
+        return Some(instance)
+    }
+    let socket = file_name.strip_prefix(defaults::FIRECRACKER_VSOCK_PREFIX)?;
+    if let Some(instance) = socket.strip_suffix(".sock") {
+        return Some(instance)
+    }
+    let (socket, port) = socket.rsplit_once('_')?;
+    if port.is_empty() || ! port.chars().all(|char| char.is_ascii_digit()) {
+        return None
+    }
+    socket.strip_suffix(".sock")
+}
+
 fn flake_name(instance_name: &str) -> &str {
     /*!
     Provide the name of the flake the given instance belongs to
@@ -776,8 +847,8 @@ mod tests {
     use crate::volume::VolumeInfo;
 
     use super::{
-        flake_name, instance_selector, storage_dir, storage_info, vm_values,
-        InstanceInfo, StorageInfo, VmInfo
+        flake_name, instance_selector, storage_dir, storage_info,
+        vm_meta_instance, vm_values, InstanceInfo, StorageInfo, VmInfo
     };
 
     fn volume(server: &str, host_path: &str, guest_path: &str) -> VolumeInfo {
@@ -827,6 +898,26 @@ mod tests {
         assert_eq!("myapp", flake_name("myapp"));
         assert_eq!("myapp", flake_name("myapp@one"));
         assert_eq!("myapp", flake_name("myapp@one@two"));
+    }
+
+    #[test]
+    fn test_vm_meta_instance() {
+        assert_eq!(Some("myapp"), vm_meta_instance("myapp.vmid"));
+        assert_eq!(Some("myapp@one"), vm_meta_instance("myapp@one.vmid"));
+        assert_eq!(Some("myapp"), vm_meta_instance("sci_cmd_myapp.sock"));
+        assert_eq!(
+            Some("myapp@one"), vm_meta_instance("sci_cmd_myapp@one.sock")
+        );
+        assert_eq!(
+            Some("my_app"), vm_meta_instance("sci_cmd_my_app.sock_49200")
+        );
+        // files which do not belong to an instance
+        assert_eq!(None, vm_meta_instance("storage"));
+        assert_eq!(None, vm_meta_instance("myapp.cid"));
+        assert_eq!(None, vm_meta_instance("myapp.sock"));
+        assert_eq!(None, vm_meta_instance("sci_cmd_myapp.sock_"));
+        assert_eq!(None, vm_meta_instance("sci_cmd_myapp.sock_port"));
+        assert_eq!(None, vm_meta_instance("sci_cmd_myapp"));
     }
 
     #[test]

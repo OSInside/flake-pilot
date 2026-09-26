@@ -69,3 +69,9 @@ pub const FIRECRACKER_OVERLAY_DIR: &str =
 pub const FIRECRACKER_STORAGE_DIR: &str = "storage";
 // File name extension of a VM storage volume
 pub const FIRECRACKER_STORAGE_EXTENSION: &str = "ext4";
+// Prefix of the vsock sockets firecracker-pilot creates in the
+// private meta data directory of the user to talk to a VM
+// instance. The socket of an instance is named PREFIXNAME.sock,
+// the sockets of the commands called in it PREFIXNAME.sock_PORT.
+// flake-ctl deletes them along with the flake they belong to
+pub const FIRECRACKER_VSOCK_PREFIX: &str = "sci_cmd_";

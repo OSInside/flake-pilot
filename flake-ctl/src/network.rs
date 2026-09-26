@@ -41,7 +41,7 @@ use crate::app_config::{
 use crate::defaults;
 use crate::firecracker::run_as;
 
-pub fn init(outgoing_interface: &str, usermode: bool) -> bool {
+pub fn init(outgoing_interface: Option<&str>, usermode: bool) -> bool {
     /*!
     Prepare the host for NAT based VM networking
 
@@ -49,7 +49,9 @@ pub fn init(outgoing_interface: &str, usermode: bool) -> bool {
     which by itself has no connection to the outside world. Routing
     the traffic of that device requires IP forwarding on the host
     and a NAT rule which lets the traffic appear as if it would
-    originate from the given outgoing interface.
+    originate from the given outgoing interface. Without a given
+    outgoing interface the interface of the IPv4 default route of
+    the host is used.
 
     The setup changes the network configuration of the host and is
     therefore performed via sudo. It is not persistent and has to
@@ -65,6 +67,12 @@ pub fn init(outgoing_interface: &str, usermode: bool) -> bool {
     by another tool, the rules have to be created with that tool
     instead
     !*/
+    let outgoing_interface = match select_outgoing_interface(
+        outgoing_interface
+    ) {
+        Some(outgoing_interface) => outgoing_interface,
+        None => return false
+    };
     let network = match select_network(usermode) {
         Some(network) => network,
         None => return false
@@ -72,10 +80,10 @@ pub fn init(outgoing_interface: &str, usermode: bool) -> bool {
     if ! enable_ip_forward() {
         return false
     }
-    if ! setup_nat(outgoing_interface) {
+    if ! setup_nat(&outgoing_interface) {
         return false
     }
-    if ! write_network_config(outgoing_interface, &network, usermode) {
+    if ! write_network_config(&outgoing_interface, &network, usermode) {
         return false
     }
     info!("Host is prepared for VM networking:");
@@ -897,6 +905,31 @@ fn find_outgoing_interface(usermode: bool) -> Option<String> {
     Some(interface)
 }
 
+fn select_outgoing_interface(outgoing_interface: Option<&str>) -> Option<String> {
+    /*!
+    Provide the interface the VM traffic gets routed to
+
+    A given interface is taken as it is, otherwise the interface
+    of the IPv4 default route is used. That is the interface the
+    host itself sends its traffic to the outside world through
+    !*/
+    if let Some(outgoing_interface) = outgoing_interface {
+        return Some(outgoing_interface.to_string())
+    }
+    match get_default_route_interface() {
+        Some(interface) => {
+            info!("Using interface of the default route: {interface}");
+            Some(interface)
+        },
+        None => {
+            error!("Failed to detect the outgoing interface");
+            error!("The host has no IPv4 default route");
+            error!("Please specify it with --outgoing-interface");
+            None
+        }
+    }
+}
+
 fn get_default_route_interface() -> Option<String> {
     /*!
     Provide the interface of the IPv4 default route
@@ -907,14 +940,23 @@ fn get_default_route_interface() -> Option<String> {
     if ! output.status.success() {
         return None
     }
-    let routes = String::from_utf8_lossy(&output.stdout);
-    let mut fields = routes.split_whitespace();
-    while let Some(field) = fields.next() {
-        if field == "dev" {
-            return fields.next().map(ToOwned::to_owned)
-        }
-    }
-    None
+    get_route_list_default_device(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn get_route_list_default_device(routes: &str) -> Option<String> {
+    /*!
+    Provide the device of the first default route of the given
+    output of "ip route show default"
+
+    The routes are listed in the order of their metric, the first
+    one is therefore the route which is in use. A default route
+    without a device, e.g an unreachable route, is skipped
+    !*/
+    routes.lines().find_map(|route| {
+        let mut fields = route.split_whitespace();
+        fields.find(|field| *field == "dev")?;
+        fields.next().map(ToOwned::to_owned)
+    })
 }
 
 // RecordedNetwork is the network of the host setup record
@@ -1718,8 +1760,10 @@ mod tests {
     use super::{
         get_address_list_networks, get_effective_boot_args, get_flake_taps,
         get_free_address, get_network_candidates, get_network_info,
-        get_preferred_network, get_remove_command, get_route_list_networks,
-        select_free_network, Ipv4Network, NetworkConfig
+        get_preferred_network, get_remove_command,
+        get_route_list_default_device, get_route_list_networks,
+        select_free_network, select_outgoing_interface, Ipv4Network,
+        NetworkConfig
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -1936,6 +1980,32 @@ default via 192.168.1.1 dev eth0 proto dhcp metric 100
 ";
         assert_eq!(
             vec![network("192.168.1.0/24")], get_route_list_networks(routes)
+        );
+    }
+
+    #[test]
+    fn test_get_route_list_default_device() {
+        let routes = "\
+unreachable default metric 50
+default via 192.168.1.1 dev eth0 proto dhcp metric 100
+default via 10.0.0.1 dev wlan0 proto dhcp metric 600
+";
+        // the first default route with a device is in use
+        assert_eq!(
+            Some("eth0".to_string()), get_route_list_default_device(routes)
+        );
+        // without a default route there is no device
+        assert_eq!(None, get_route_list_default_device(""));
+        assert_eq!(
+            None, get_route_list_default_device("unreachable default\n")
+        );
+    }
+
+    #[test]
+    fn test_select_outgoing_interface() {
+        // a given interface is taken without detecting one
+        assert_eq!(
+            Some("eth1".to_string()), select_outgoing_interface(Some("eth1"))
         );
     }
 

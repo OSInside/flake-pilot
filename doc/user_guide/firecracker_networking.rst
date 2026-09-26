@@ -124,14 +124,17 @@ Prepare the Host
 
 .. code-block:: bash
 
-   flake-ctl firecracker network init --outgoing-interface eth0
+   flake-ctl firecracker network init
 
 Selects the private network of the VMs, enables IP forwarding and
-creates the NAT rules on the given interface, the one the traffic of
-the VMs leaves the host through. This is done once per host, and
-again after a reboot, not once per application. Network and interface
-are recorded such that the following commands use the same network
-and know where to route the traffic to.
+creates the NAT rules on the outgoing interface, the one the traffic
+of the VMs leaves the host through. By default this is the interface
+of the IPv4 default route of the host, another interface can be
+specified with ``--outgoing-interface``, e.g ``--outgoing-interface
+eth0``. This is done once per host, and again after a reboot, not
+once per application. Network and interface are recorded such that
+the following commands use the same network and know where to route
+the traffic to.
 
 .. warning::
 

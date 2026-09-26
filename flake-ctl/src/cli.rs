@@ -253,9 +253,11 @@ pub enum Network {
     /// Prepare the host for NAT based VM networking
     Init {
         /// Name of the host interface the traffic of the VMs
-        /// is routed to the outside world through, e.g eth0
+        /// is routed to the outside world through, e.g eth0.
+        /// If not specified, the interface of the IPv4 default
+        /// route is used
         #[clap(long)]
-        outgoing_interface: String,
+        outgoing_interface: Option<String>,
     },
     /// Connect a VM application to the host network
     Add {

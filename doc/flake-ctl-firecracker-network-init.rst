@@ -12,7 +12,7 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker network init --outgoing-interface <OUTGOING_INTERFACE>
+       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>]
 
    OPTIONS:
        --outgoing-interface <OUTGOING_INTERFACE>
@@ -40,8 +40,9 @@ this setup by:
 
       sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
-3. Setting up Network Address Translation (NAT) on the given
-   outgoing interface
+3. Setting up Network Address Translation (NAT) on the outgoing
+   interface. This is the given interface or, if none is given, the
+   interface of the IPv4 default route of the host
 
    .. code:: bash
 
@@ -53,7 +54,7 @@ outgoing interface. As the setup changes the network configuration of
 the host, the commands are called through **sudo**. The calling user
 therefore needs the permission to run them as root.
 
-The given interface and the selected network are recorded in the
+The outgoing interface and the selected network are recorded in the
 network configuration file. Connecting an application to the host
 network with **flake-ctl-firecracker-network-add**(8) reads them from
 there, takes the address of the application from the same network and
@@ -111,7 +112,16 @@ OPTIONS
 --outgoing-interface <OUTGOING_INTERFACE>
 
   Name of the host interface the traffic of the VMs is routed to
-  the outside world through, e.g ``eth0``
+  the outside world through, e.g ``eth0``. If not specified, the
+  interface of the IPv4 default route is used, as shown by:
+
+  .. code:: bash
+
+     ip -4 route show default
+
+  If the host has more than one default route, the one with the
+  lowest metric is taken. Without a default route the interface
+  has to be specified
 
 FILES
 -----
@@ -124,6 +134,8 @@ EXAMPLE
 -------
 
 .. code:: bash
+
+   $ flake-ctl firecracker network init
 
    $ flake-ctl firecracker network init --outgoing-interface eth0
 

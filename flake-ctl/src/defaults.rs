@@ -108,11 +108,12 @@ pub const FLAKE_LIST_NO_VALUE:&str =
 pub const FLAKE_SHOW_COLUMNS:[&str; 6] =
     ["NAME", "USER", "ID", "STATUS", "IMAGE", "CONFIG"];
 // Columns of the show command of the firecracker engine. A VM
-// instance provides the network and the NFS volumes attached to
-// it in addition to the information all instances provide
-pub const FLAKE_SHOW_VM_COLUMNS:[&str; 9] = [
+// instance provides the network, the NFS volumes and the storage
+// volume attached to it in addition to the information all
+// instances provide
+pub const FLAKE_SHOW_VM_COLUMNS:[&str; 11] = [
     "NAME", "USER", "ID", "STATUS", "IMAGE", "CONFIG",
-    "ADDRESS", "TAP", "VOLUMES"
+    "ADDRESS", "TAP", "VOLUMES", "STORAGE", "SIZE"
 ];
 // Number of characters of the instance ID shown in the table
 // format. Like podman does, the table shows the container ID
@@ -124,6 +125,13 @@ pub const FLAKE_SHOW_ID_LEN: usize =
 // engine is shared with podman-pilot and is therefore
 // maintained in the common area
 pub use flakes::defaults::PODMAN_ID_EXTENSION;
+// Location of the storage volumes and name of the vsock sockets
+// firecracker-pilot creates for VM instances, shared with
+// firecracker-pilot and therefore maintained in the common area
+pub use flakes::defaults::{
+    FIRECRACKER_OVERLAY_DIR, FIRECRACKER_STORAGE_DIR,
+    FIRECRACKER_STORAGE_EXTENSION, FIRECRACKER_VSOCK_PREFIX
+};
 pub const FIRECRACKER_ID_EXTENSION:&str =
     "vmid";
 pub const BUBBLEWRAP_ID_EXTENSION:&str =

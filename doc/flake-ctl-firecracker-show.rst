@@ -89,6 +89,33 @@ volumes
   them as a list of records with the ``server``, the
   ``host_path`` and the ``guest_path`` of each volume
 
+storage
+  Path of the storage volume of the instance. firecracker-pilot
+  creates this ext4 filesystem image on the first start of an
+  instance whose flake is registered with an **overlay_size**,
+  see **flake-ctl-firecracker-register**(8). The volume is named
+  after the instance and is stored below
+  `.config/flakes/firecracker/storage` in the home directory of
+  the user the instance belongs to. The home directory is read
+  from the system user database, the HOME environment variable
+  is not taken into account. For a user without a home directory
+  or without an entry in the user database it is
+  stored in the `storage` directory below the private meta data
+  directory of that user, e.g `/tmp/flakes/1000/storage`. An
+  instance without an overlay_size has no storage volume
+
+size
+  Size of the storage volume. The volume is kept after the
+  instance is gone and reused on its next start, it is not
+  resized if the overlay_size of the flake changes. Therefore the
+  size of an existing volume is read from the volume itself. A
+  volume which does not exist (yet) is shown with the
+  overlay_size it gets created with. The table format shows the
+  size in a unit that suits it, e.g ``20GiB``, the csv and the
+  json format provide it in bytes. The json format provides the
+  storage volume as a record with the ``path`` and the ``size``
+  of the volume
+
 The network and the volumes are read from the kernel commandline
 of the VM the same way **firecracker-pilot**(8) does when it
 starts the instance. For an instance called with the **@NAME**
@@ -99,12 +126,15 @@ application.
 Information which cannot be read is shown as ``-`` in the table
 format, as ``null`` in the json format and as an empty field in
 the csv format. An instance without volumes provides an empty
-list in the json format.
+list in the json format, an instance without a storage volume
+provides ``null``.
 
 Please note, a meta data file also exists for an instance which
-is no longer running. The pilots delete them when they run the
-flake application again. Therefore the command can also show
-instances in the ``stopped`` status.
+is no longer running. firecracker-pilot does not delete it, the
+file is reused when the instance is started again. It is deleted
+when the flake gets removed with
+**flake-ctl-firecracker-remove**(8). Therefore the command can
+also show instances in the ``stopped`` status.
 
 OPTIONS
 -------
@@ -124,6 +154,7 @@ FILES
 * /tmp/flakes
 * /usr/share/flakes
 * $HOME/.config/flakes
+* $HOME/.config/flakes/firecracker/storage
 * /etc/flakes.yml
 
 EXAMPLE

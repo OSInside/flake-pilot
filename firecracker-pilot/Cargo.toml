@@ -16,4 +16,4 @@ lazy_static = { version = "1.4" }
 strum = { version = "0.25", features = ["derive"] }
 flakes = { version = "3.1.69 ", path = "../common", features = ["json"] }
 libc = { version = "0.2" }
-glob = { version = "0.3" }
+uzers = { version = "0.12" }

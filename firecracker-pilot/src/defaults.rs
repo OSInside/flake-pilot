@@ -34,14 +34,15 @@ pub const OVERLAY_UPPER: &str =
     "overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str =
     "overlayroot/rootfs_work";
-pub const FIRECRACKER_OVERLAY_DIR:&str =
-    ".config/flakes/firecracker/storage";
-pub const FIRECRACKER_STORAGE_DIR:&str =
-    "storage";
+// The location of the storage volumes and the name of the vsock
+// sockets are shared with flake-ctl and are therefore maintained
+// in the common area
+pub use flakes::defaults::{
+    FIRECRACKER_OVERLAY_DIR, FIRECRACKER_STORAGE_DIR,
+    FIRECRACKER_STORAGE_EXTENSION, FIRECRACKER_VSOCK_PREFIX
+};
 pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
-pub const FIRECRACKER_VSOCK_PREFIX: &str =
-    "sci_cmd_";
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 // Location the kernel reports the network interfaces of the
 // host below. A TAP device created as part of the host setup
@@ -73,7 +74,6 @@ pub const NFS_SERVER_STAT: &str =
 // started by 'flake-ctl firecracker volume add'
 pub const NFS_SERVER_SERVICE: &str =
     "nfs-server";
-pub const GC_THRESHOLD: usize = 1;
 pub const TERM_NAME_MAX_LEN: usize = 32;
 // Port of the instance the window size of the caller's terminal
 // is sent to whenever it got resized

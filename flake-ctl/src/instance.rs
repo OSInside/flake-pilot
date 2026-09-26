@@ -79,6 +79,9 @@ pub struct VmInfo {
 pub struct StorageInfo {
     /// Path of the storage volume on the host
     pub path: String,
+    /// Whether the storage volume exists on the host. The volume
+    /// gets created on the first start of the instance
+    pub exists: bool,
     /// Size of the storage volume in bytes. An existing volume
     /// provides the size of its file, a volume which does not
     /// exist (yet) the overlay_size it gets created with. A size
@@ -498,7 +501,9 @@ fn storage_info(
     let path = format!(
         "{storage_dir}/{name}.{}", defaults::FIRECRACKER_STORAGE_EXTENSION
     );
-    let size = match fs::metadata(&path) {
+    let metadata = fs::metadata(&path);
+    let exists = metadata.is_ok();
+    let size = match metadata {
         Ok(attributes) => Some(attributes.len()),
         Err(_) => match overlay_size.parse::<ByteUnit>() {
             Ok(size) => Some(size.as_u64()),
@@ -508,7 +513,7 @@ fn storage_info(
             }
         }
     };
-    Some(StorageInfo { path, size })
+    Some(StorageInfo { path, exists, size })
 }
 
 fn storage_dir(meta_file: &str, uid: u32) -> Option<String> {
@@ -757,7 +762,8 @@ fn vm_values(vm: Option<&VmInfo>, human_readable: bool) -> Vec<Option<String>> {
     Provide the address, the TAP device, the volumes and the
     storage volume of a VM instance in the order of the columns
     of the show command. A value which is not configured is
-    provided as None. The size of the storage volume is provided
+    provided as None, as well as the path of a storage volume
+    which does not exist (yet). The size of the storage volume is provided
     in bytes, or in a unit that suits the size if human_readable
     is set
     !*/
@@ -768,7 +774,8 @@ fn vm_values(vm: Option<&VmInfo>, human_readable: bool) -> Vec<Option<String>> {
             .map(|address| address.to_string()),
         network.map(|network| network.tap.to_string()),
         vm.and_then(|vm| volume_list(&vm.volumes)),
-        storage.map(|storage| storage.path.to_string()),
+        storage.filter(|storage| storage.exists)
+            .map(|storage| storage.path.to_string()),
         storage.and_then(|storage| storage.size).map(
             |size| if human_readable {
                 ByteUnit::from(size).to_string()
@@ -937,6 +944,7 @@ mod tests {
                 StorageInfo {
                     path: "/root/.config/flakes/firecracker/storage/myapp.ext4"
                         .to_string(),
+                    exists: true,
                     size: Some(21474836480)
                 }
             )
@@ -961,6 +969,23 @@ mod tests {
         // value, the same as an instance without a config
         assert_eq!(vec![None; 5], vm_values(Some(&VmInfo::default()), true));
         assert_eq!(vec![None; 5], vm_values(None, true));
+        // the path of a storage volume which does not exist yet is
+        // not shown, only the size it gets created with
+        let vm = VmInfo {
+            storage: Some(
+                StorageInfo {
+                    path: "/root/.config/flakes/firecracker/storage/myapp.ext4"
+                        .to_string(),
+                    exists: false,
+                    size: Some(21474836480)
+                }
+            ),
+            ..Default::default()
+        };
+        assert_eq!(
+            vec![None, None, None, None, Some("20GiB".to_string())],
+            vm_values(Some(&vm), true)
+        );
     }
 
     #[test]
@@ -979,6 +1004,7 @@ mod tests {
             &engine_section(Some("20GiB")), "myapp@one", storage_dir
         ).unwrap();
         assert_eq!(path, storage.path);
+        assert!(! storage.exists);
         assert_eq!(Some(21474836480), storage.size);
         // an overlay_size which cannot be parsed provides no size
         let storage = storage_info(
@@ -992,6 +1018,7 @@ mod tests {
         let storage = storage_info(
             &engine_section(Some("20GiB")), "myapp@one", storage_dir
         ).unwrap();
+        assert!(storage.exists);
         assert_eq!(Some(42), storage.size);
     }
 
@@ -1028,6 +1055,7 @@ mod tests {
                         storage: Some(
                             StorageInfo {
                                 path: "/storage/myapp.ext4".to_string(),
+                                exists: true,
                                 size: Some(42)
                             }
                         ),
@@ -1038,7 +1066,7 @@ mod tests {
         ).unwrap();
         assert!(
             json.contains(
-                r#""storage":{"path":"/storage/myapp.ext4","size":42}"#
+                r#""storage":{"path":"/storage/myapp.ext4","exists":true,"size":42}"#
             )
         );
         // a container instance provides none of it

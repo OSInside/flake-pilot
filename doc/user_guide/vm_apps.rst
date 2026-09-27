@@ -85,7 +85,7 @@ Claude AI as a Firecracker VM App
        --app $HOME/bin/claude --target /bin/bash \
        --overlay-size 20GiB --force-vsock --resume
 
-   flake-ctl firecracker network init --outgoing-interface eth0
+   flake-ctl firecracker network init
    flake-ctl firecracker network add --app $HOME/bin/claude
 
    claude

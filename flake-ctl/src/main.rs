@@ -163,7 +163,9 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     match &command {
                         // init
                         cli::Network::Init { outgoing_interface } => {
-                            if ! network::init(outgoing_interface, user) {
+                            if ! network::init(
+                                outgoing_interface.as_deref(), user
+                            ) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         },

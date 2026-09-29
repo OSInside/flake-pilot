@@ -13,4 +13,4 @@ ALL   ALL=(ALL) ALL   # WARNING! Only use this together with 'Defaults targetpw'
 
 root ALL=(ALL) ALL
 
-admin ALL=(ALL) NOPASSWD: ALL
+ai ALL=(ALL) NOPASSWD: ALL

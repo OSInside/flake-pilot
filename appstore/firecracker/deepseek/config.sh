@@ -23,7 +23,7 @@ fi
 
 zypper ar https://download.opensuse.org/distribution/leap/16.0/repo/oss Leap
 
-npm install -g @mariozechner/pi-coding-agent@latest
+npm install -g @earendil-works/pi-coding-agent@latest
 
 mkdir -p /home/ai/.pi/agent
 cat > /home/ai/.pi/agent/models.json <<'EOF'

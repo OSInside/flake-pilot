@@ -172,17 +172,20 @@ fn main() {
                     }
                 }
             }
-            // The overlay device is mounted synchronous such that
-            // data and directory changes are written to the device
-            // immediately. The journal is committed every second
-            // instead of the default five seconds. sci ends the
-            // instance with a reboot which does not sync, thus
-            // cached data would get lost
+            // The overlay device is mounted asynchronous for write
+            // performance. The journal is committed every second
+            // instead of the default five seconds. With nodelalloc
+            // the data blocks are allocated on write, thus the
+            // ordered mode writes the data together with each
+            // commit instead of up to 30 seconds later on writeback.
+            // If the instance gets killed at most the last second of
+            // writes is lost and the journal keeps the filesystem
+            // consistent. On a regular exit sci syncs before reboot
             debug(&format!("Mounting overlayfs RW({})", overlay.as_str()));
             match mount_filesystem(
                 overlay.as_str(), defaults::OVERLAY_MOUNT, "ext4",
-                MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
-                Some("data=ordered,commit=1")
+                MountFlags::empty(),
+                Some("data=ordered,commit=1,nodelalloc")
             ) {
                 Ok(_) => {
                     debug(&format!(
@@ -243,7 +246,7 @@ fn main() {
             if ok {
                 match mount_filesystem(
                     "overlay", defaults::OVERLAY_ROOT, "overlay",
-                    MountFlags::SYNCHRONOUS | MountFlags::DIRSYNC,
+                    MountFlags::empty(),
                     Some(&format!("lowerdir={},upperdir={},workdir={}",
                         defaults::OVERLAY_LOWER,
                         defaults::OVERLAY_UPPER, defaults::OVERLAY_WORK
@@ -1340,6 +1343,9 @@ fn do_reboot(ok: bool) {
         let some_time = time::Duration::from_millis(10);
         thread::sleep(some_time);
     }
+    // The reboot does not sync, write cached data to the devices
+    // first such that it does not get lost
+    unsafe { libc::sync() };
     match force_reboot() {
         Ok(_) => { },
         Err(error) => {

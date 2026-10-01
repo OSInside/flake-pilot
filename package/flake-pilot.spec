@@ -177,30 +177,48 @@ install -m 755 %{buildroot}/usr/sbin/sci \
 mkdir -p %{buildroot}/etc
 install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 
-%pre
-# Permissions changed from previous versions, handle the transition
-if [ $1 -gt 1 ]; then
-    flakes_dir="/tmp/flakes/"
-    if [ -d "$flakes_dir/" ]; then
-        flakes_perm=$(%{_bindir}/stat -c "%a" "$flakes_dir")
-        if [ "$flakes_perm" -ne "1777" ]; then
-            %{_bindir}/chmod +t $flakes_dir
-            # If the permissions were not already set we also need to worry
-            # about the content.
-            # For podman we need a copy of the .cid file in the new hierarchy
-            # so flake-pilot knows which Container ID to use to tell podman to
-            # shut the container down. podman cleans up the original cid file
-            # the copy remains and eventually gets garbage collected by
-            # flake pilot
+# After 3.1.37 the organization and permission handling of state files
+# has changed. Handle the transition
+%triggerun -- flake-pilot <= 3.1.37
+    flakes_dir="/tmp/flakes"
+    if [ -d "$flakes_dir" ] && [ ! -L "$flakes_dir" ]; then
+        # While we operate on the directory we need to ensure root
+        # is in control
+        # Do not follow symlinks for the permission operations. An
+        # attacker might have replaced the directory we checked for with a
+        # link by the time we get here.
+        chown -h root "$flakes_dir"
+        chgrp -h root /tmp/flakes
+        chmod -h 600 /tmp/flakes
+        # Verify we have what we expect
+        flakes_perm=$(/usr/bin/stat -c "%u:%g:%a" "$flakes_dir")
+        if [ "$flakes_perm" != "0:0:600" ]; then
+            echo "Improper permissions on $flakes_dir please remove "
+            echo "to start over"
+            exit 0
+        fi
+        usr_flakes=$(ls -d "$flakes_dir"/*/ 2> /dev/null)
+        # If subdirectories exist we are already on the version of flake
+        # that has the expected structure, or the user did something they
+        # were not supposed to do. In either case we skip any operation
+        if [ -z "$usr_flakes" ]; then
+            # For podman we need a copy of the .cid file in the new
+            # hierarchy so flake-pilot knows which Container ID to
+            # use to tell podman to shut the container down. podman
+            # cleans up the original cid file the copy remains and
+            # eventually gets garbage collected by flake pilot
             # For microVMs the .mid file needs to get moved and renamed to
             # allow flake-pilot to clean up
+            created_dirs=" "
             for filepath in "$flakes_dir"/*; do
-                [ -f "$filepath" ] || continue
+	        if [ -L "$filepath" ] || [ ! -f "$filepath" ]; then
+		    continue
+	        fi	     
 
                 filename=$(basename "$filepath")
 
                 # Match format: prefix_username.extension
-                # Extract username (part after first '_' and before last '.')
+		# Extract username (part after first '_' and before last '.')
                 username=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $2}')
                 # Extract the command name
                 cmdname=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $1}')
@@ -208,27 +226,43 @@ if [ $1 -gt 1 ]; then
                     # Look up UID for the extracted username
                     if uid=$(id -u "$username" 2>/dev/null); then
                         user_dir="$flakes_dir/$uid"
-                        # Create user directory if it doesn't exist
-                        if [ ! -d "$user_dir" ]; then
-                            mkdir -p "$user_dir"
-                        fi
+		        case "$created_dirs" in
+                            *" $uid "*) ;;
+                            *)
+                                if [ -e "$user_dir" ] || [ -L "$user_dir" ]; then
+		                    echo "$user_dir exists, this is unexpected."
+			            echo "Stop any running flakes (aws, az) and "
+			            echo "remove $flakes_dir. Cannot migrate to"
+			            echo "new structure in a safe way."
+				    # Set the permissions back to what we expected before we started
+	                            chmod -h 777 "$flakes_dir"
+			            exit 0
+                                fi
+                                mkdir "$user_dir"
+                                created_dirs="$created_dirs$uid "
+                            ;;
+                        esac
                         if [[ "$filename" == *".vmid"* ]]; then
-                            mv "$filepath" "$user_dir/$cmdname.vmid"
+                            mv -T "$filepath" "$user_dir/$cmdname.vmid"
                         else
                             # We need the .cid files in 2 places
-                            cp "$filepath" "$user_dir/$cmdname.cid"
+                            cp --no-dereference --remove-destination "$filepath" "$user_dir/$cmdname.cid"
                         fi
                     fi
                     # Fix the directory permissions
-                    chown "$uid" "$user_dir"
-                    chgrp "$uid" "$user_dir"
-                    chmod 700 "$user_dir"
+                    chown -h "$uid" "$user_dir"
+                    chgrp -h "$uid" "$user_dir"
+                    chmod -h 700 "$user_dir"
                 fi
             done
+            # Now set the top level directory to the desired permissions
+            chmod 1777 $flakes_dir
+	    exit 0
         fi
+	# If we get here something went wrong set the permissions back to
+	# our expected starting state
+	chmod -h 777 "$flakes_dir"
     fi
-fi
-
 
 %files
 %defattr(-,root,root)
@@ -241,16 +275,9 @@ fi
 %doc %{_mandir}/man8/flake-ctl-init.8.gz
 %doc %{_mandir}/man8/flake-ctl-list.8.gz
 
-%post
-if [ -d /tmp/flakes ];then
-    # make sure to move an eventually existing
-    # tmp flakes dir to sticky bit permissions
-    chmod 1777 /tmp/flakes
-fi
-
-%if 0%{?suse_version} >= 1600
 %post -n flake-pilot-podman
-%tmpfiles_create flake-pilot-podman.conf
+%if 0%{?suse_version} >= 1600
+  %tmpfiles_create flake-pilot-podman.conf
 %endif
 
 %files -n flake-pilot-podman

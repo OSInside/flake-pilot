@@ -32,7 +32,8 @@ Source0:        %{name}.tar.gz
 Source1:        cargo_config
 Source2:        %{name}-rpmlintrc
 # SUSE-specific source additions (1001+)
-Source1001:     systemd-tmpfiles-for-suse.conf
+Source1001:     systemd-tmpfiles-firecracker-for-suse.conf
+Source1002:     systemd-tmpfiles-podman-for-suse.conf
 %if 0%{?debian} || 0%{?ubuntu}
 Requires:       golang-github-containers-common
 %endif
@@ -156,9 +157,11 @@ mkdir -p %{buildroot}/usr/lib/flake-pilot
 
 %if 0%{?suse_version} >= 1600
 install -D -m 644 %{SOURCE1001} %{buildroot}%{_tmpfilesdir}/flake-pilot-firecracker.conf
+install -D -m 644 %{SOURCE1002} %{buildroot}%{_tmpfilesdir}/flake-pilot-podman.conf
 %else
 mkdir -p %{buildroot}/var/lib/firecracker/images
 mkdir -p %{buildroot}/var/lib/firecracker/storage
+mkdir -p %{buildroot}/var/lib/podman/storage
 %endif
 
 mkdir -p %{buildroot}/etc/dracut.conf.d
@@ -248,6 +251,14 @@ fi
 %files -n flake-pilot-podman
 %config /etc/flakes/container-flake.yaml
 %config /etc/flakes/storage.conf
+%if 0%{?suse_version} >= 1600
+%{_tmpfilesdir}/flake-pilot-podman.conf
+%ghost %dir /var/lib/podman
+%ghost %dir %attr(0700,root,root) /var/lib/podman/storage
+%else
+%dir /var/lib/podman
+%dir %attr(0700,root,root) /var/lib/podman/storage
+%endif
 /usr/bin/podman-pilot
 /usr/sbin/flake-registry
 %doc /usr/share/man/man8/flake-ctl-podman-export.8.gz

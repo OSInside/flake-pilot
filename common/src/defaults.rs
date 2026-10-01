@@ -30,7 +30,6 @@ pub const FLAKES_DIR_USER: &str = ".config/flakes";
 pub const PODMAN_IDS_DIR: &str = "/tmp/flakes";
 pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
 pub const BUBBLEWRAP_IDS_DIR: &str = "/tmp/flakes";
-pub const FLAKES_REGISTRY: &str = "/usr/share/flakes/storage";
 pub const FLAKES_REGISTRY_RUNROOT: &str = "/run/flakes";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";

@@ -248,6 +248,11 @@ if [ -d /tmp/flakes ];then
     chmod 1777 /tmp/flakes
 fi
 
+%if 0%{?suse_version} >= 1600
+%post -n flake-pilot-podman
+%tmpfiles_create flake-pilot-podman.conf
+%endif
+
 %files -n flake-pilot-podman
 %config /etc/flakes/container-flake.yaml
 %config /etc/flakes/storage.conf
@@ -277,6 +282,11 @@ fi
 %doc /usr/share/man/man8/flake-ctl-bubblewrap-remove.8.gz
 %doc /usr/share/man/man8/flake-ctl-bubblewrap-show.8.gz
 %doc /usr/share/man/man8/bubblewrap-pilot.8.gz
+
+%if 0%{?suse_version} >= 1600
+%post -n flake-pilot-firecracker
+%tmpfiles_create flake-pilot-firecracker.conf
+%endif
 
 %files -n flake-pilot-firecracker
 %if 0%{?suse_version} >= 1600

@@ -122,6 +122,10 @@ fn podman_storage_config(podman_dir: &str) -> String {
     let runroot_dir = format!(
         "{}/{}", storage_dir, defaults::PODMAN_STORAGE_RUNROOT_NAME
     );
+    // rootless_storage_path is deprecated in favor of graphroot, but
+    // containers-storage before its config rework (podman 4.x) ignores
+    // graphroot for rootless users when CONTAINERS_STORAGE_CONF is set.
+    // Newer versions only warn about it as both point to the same path
     format!(
 r#"[storage]
 driver = "{driver}"

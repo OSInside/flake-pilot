@@ -11,6 +11,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="1200" height="400" viewBox="0 0 1200 400">
   <title>Flake Pilot</title>
+  <!--
+    Copyright (c) 2026 Marcus Schäfer
+    Licensed under CC BY-ND 4.0, see LICENSE-LOGO
+    https://creativecommons.org/licenses/by-nd/4.0/
+  -->
   <g transform="translate(20 20) scale(0.703125)">
     <defs>
       <radialGradient id="wm-badge" cx="50%" cy="40%" r="60%">

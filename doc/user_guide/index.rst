@@ -172,6 +172,12 @@ Resources
 * Packages:
   https://build.opensuse.org/package/show/Virtualization:Appliances:Builder/flake-pilot
 
+* Prebuilt app podman containers:
+  https://gallery.ecr.aws/b9k1j9y6
+
+* Prebuild app firecracker images:
+  https://ddrasqgvrmpt8.cloudfront.net
+
 * Manual pages:
   https://github.com/OSInside/flake-pilot/tree/main/doc
 

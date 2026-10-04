@@ -78,6 +78,8 @@ except ImportError:
     html_theme_options = {}
 
 html_title = f'{project} User Guide'
+html_logo = '../images/flake-pilot-logo.svg'
+html_favicon = '../images/flake-pilot-logo.svg'
 html_short_title = project
 html_static_path = ['_static']
 html_css_files = ['custom.css']
@@ -90,6 +92,8 @@ latex_elements = {
     'papersize': 'a4paper',
     'pointsize': '11pt'
 }
+
+latex_logo = '../images/flake-pilot-logo-text.png'
 
 latex_documents = [
     (

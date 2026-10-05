@@ -38,7 +38,9 @@ The registration process is two fold:
 
 1. Create the application symlink pointing to `/usr/bin/podman-pilot`
 2. Create the application default configuration below `/usr/share/flakes`.
-   Each application registered is called a **flake**
+   Each application registered is called a **flake**. A system wide
+   flake also gets an empty drop-in directory `/etc/flakes/APP.d`
+   for local adaptions of its registration
 
 On successful completion the registered *--app* name can be called
 like a normal application on this host.
@@ -164,6 +166,7 @@ FILES
 -----
 
 * /usr/share/flakes
+* /etc/flakes/APP.d
 * /etc/flakes.yml
 
 EXAMPLE

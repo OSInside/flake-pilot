@@ -40,6 +40,10 @@ with the following layout:
        │   └── other.yaml
        └── myapp.yaml
 
+   /etc/flakes/
+       └── myapp.d
+           └── local.yaml
+
 All metadata information read by **podman-pilot** uses the YAML
 markup. The main configuration `myapp.yaml` is read first
 and can be optionally extended with further `*.yaml` files
@@ -47,6 +51,12 @@ below the `myapp.d` directory. All files in the
 `myapp.d` directory will be read in alpha sort order.
 Redundant information will always overwrite the former one.
 Thus the last setting in the sequence wins.
+
+For a system wide registration the `myapp.d` directory below
+`/etc/flakes` is read last, also in alpha sort order. It allows to
+locally adapt a registration which is provided as part of the system
+without changing its files. Registrations of a user, see the
+rootless mode in **flake-pilot**, do not read it.
 
 From a content perspective the following registration parameters
 can be set for the supported container engine:

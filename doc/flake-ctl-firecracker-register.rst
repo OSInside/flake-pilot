@@ -36,7 +36,9 @@ virtual machine. The registration process is two fold:
 
 1. Create the application symlink pointing to `/usr/bin/firecracker-pilot`
 2. Create the application default configuration below `/usr/share/flakes`.
-   Each application registered is called a **flake**
+   Each application registered is called a **flake**. A system wide
+   flake also gets an empty drop-in directory `/etc/flakes/APP.d`
+   for local adaptions of its registration
 
 The registry to register in is detected from the caller. Called as any
 user other than root the registration is done in the user specific,
@@ -130,6 +132,7 @@ FILES
 -----
 
 * /usr/share/flakes
+* /etc/flakes/APP.d
 * ~/.config/flakes
 * /etc/flakes.yml
 

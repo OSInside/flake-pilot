@@ -23,6 +23,8 @@
 //
 pub const FLAKES_CONFIG: &str = "/etc/flakes.yml";
 pub const FLAKES_DIR: &str = "/usr/share/flakes";
+// Local adaptions of system wide registrations, read last
+pub const FLAKES_CONFIG_DIR: &str = "/etc/flakes";
 // User specific locations, relative to the home directory
 // of the user calling the program
 pub const FLAKES_CONFIG_USER: &str = ".config/flakes.yml";

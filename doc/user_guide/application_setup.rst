@@ -61,6 +61,14 @@ following:
    before, which allows to extend or overrule a registration without
    editing the file written by ``flake-ctl``.
 
+``/etc/flakes/NAME.d``
+   A drop-in directory for system wide registrations only. It is read
+   after ``NAME.d``, which gives its files the final word on the
+   registration. This allows to adapt a flake installed as part of
+   the system, e.g. from a package, locally. ``flake-ctl`` creates it
+   empty when the flake is registered and removes it together with
+   the flake, this also happens on a registration with ``--force``.
+
 Both are plain text and are meant to be adjusted. A change becomes
 effective with the next call of the application, no re-registration
 is needed.

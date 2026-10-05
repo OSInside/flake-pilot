@@ -20,7 +20,7 @@ Pulling an Image
 
 A firecracker image consists of a kernel, an initrd and a root
 filesystem. ``flake-ctl firecracker pull`` fetches these components
-into ``/var/lib/firecracker/images/NAME`` for a system wide setup, or
+into ``/opt/flakes/firecracker/images/NAME`` for a system wide setup, or
 into ``~/.config/flakes/firecracker/images/NAME`` for the setup of a
 user.
 

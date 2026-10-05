@@ -170,13 +170,13 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
           overlay_size: 20GB
 
           # Path to rootfs image done by app registration
-          rootfs_image_path: /var/lib/firecracker/images/NAME/rootfs
+          rootfs_image_path: /opt/flakes/firecracker/images/NAME/rootfs
 
           # Path to kernel image done by app registration
-          kernel_image_path: /var/lib/firecracker/images/NAME/kernel
+          kernel_image_path: /opt/flakes/firecracker/images/NAME/kernel
 
           # Optional path to initrd image done by app registration
-          initrd_path: /var/lib/firecracker/images/NAME/initrd
+          initrd_path: /opt/flakes/firecracker/images/NAME/initrd
 
           # Optional instance specific settings, keyed by the
           # @NAME instance selector. A boot_args option set here

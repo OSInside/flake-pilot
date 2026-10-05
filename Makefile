@@ -18,8 +18,6 @@ package: clean vendor sourcetar
 	cp package/flake-pilot.spec package/build
 	cp package/cargo_config package/build
 	cp package/flake-pilot-rpmlintrc package/build
-	cp package/systemd-tmpfiles-podman-for-suse.conf package/build
-	cp package/systemd-tmpfiles-firecracker-for-suse.conf package/build
 	# update changelog using reference file
 	helper/update_changelog.py --since package/flake-pilot.changes.ref > \
 		package/build/flake-pilot.changes

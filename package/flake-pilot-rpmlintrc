@@ -13,3 +13,9 @@ addFilter("E: filelist-forbidden-fhs23");
 
 # this comes from a rust crate
 addFilter("W: binary-or-shlib-calls-gethostbyname");
+
+# this is wanted, system wide registries for podman and
+# firecracker live below /opt/flakes because /usr and /var
+# are not writable on read-only system designs
+addFilter("filelist-forbidden-opt");
+addFilter("dir-or-file-in-opt");

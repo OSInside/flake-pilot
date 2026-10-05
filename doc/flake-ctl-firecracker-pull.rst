@@ -26,7 +26,7 @@ DESCRIPTION
 -----------
 
 Pull the components of a firecracker image from the given location
-into `/var/lib/firecracker/images/NAME` on the local machine. The
+into `/opt/flakes/firecracker/images/NAME` on the local machine. The
 registry to pull into is detected from the caller. Called as any
 user other than root the image is stored in the user specific,
 rootless registry of that user below
@@ -35,13 +35,13 @@ After completion the available firecracker images can be listed via:
 
 .. code:: bash
 
-   $ tree /var/lib/firecracker/images
+   $ tree /opt/flakes/firecracker/images
 
 and shows a file structure like in the following example
 
 .. code:: bash
 
-   /var/lib/firecracker/images
+   /opt/flakes/firecracker/images
    └── myImage
         ├── initrd
         ├── kernel

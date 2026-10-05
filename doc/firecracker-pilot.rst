@@ -128,13 +128,13 @@ can be set for the firecracker engine:
           overlay_size: 20GiB
 
           # Path to rootfs image done by app registration
-          rootfs_image_path: /var/lib/firecracker/images/NAME/rootfs
+          rootfs_image_path: /opt/flakes/firecracker/images/NAME/rootfs
 
           # Path to kernel image done by app registration
-          kernel_image_path: /var/lib/firecracker/images/NAME/kernel
+          kernel_image_path: /opt/flakes/firecracker/images/NAME/kernel
 
           # Optional path to initrd image done by app registration
-          initrd_path: /var/lib/firecracker/images/NAME/initrd
+          initrd_path: /opt/flakes/firecracker/images/NAME/initrd
 
           # Optional instance specific settings, keyed by the
           # @NAME selector used to call the app. The '@' character
@@ -221,8 +221,8 @@ FILES
 -----
 
 * /usr/share/flakes
-* /var/lib/firecracker/images
-* /var/lib/firecracker/storage
+* /opt/flakes/firecracker/images
+* /opt/flakes/firecracker/storage
 * /etc/flakes
 * ~/.config/flakes
 * ~/.config/flakes/firecracker/images

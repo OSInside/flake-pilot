@@ -44,7 +44,7 @@ pub const FLAKE_PACKAGE_FIRECRACKER:&str =
 pub const FLAKE_PACKAGE_BUBBLEWRAP:&str =
     "flake-pilot-bubblewrap";
 pub const FIRECRACKER_REGISTRY_DIR:&str =
-    "/var/lib/firecracker";
+    "/opt/flakes/firecracker";
 // Name of the firecracker registry inside of the flakes
 // directory of the calling user. Used in user mode only
 pub const FIRECRACKER_REGISTRY_NAME:&str =

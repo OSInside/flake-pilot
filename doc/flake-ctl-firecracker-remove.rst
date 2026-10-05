@@ -81,7 +81,7 @@ OPTIONS
 
 --vm <VM>
 
-  VM basename as provided via **ls -1 /var/lib/firecracker/images**
+  VM basename as provided via **ls -1 /opt/flakes/firecracker/images**
   respectively **ls -1 ~/.config/flakes/firecracker/images**
   in user mode
 
@@ -90,7 +90,7 @@ FILES
 
 * /usr/share/flakes
 * /etc/flakes/APP.d
-* /var/lib/firecracker/images
+* /opt/flakes/firecracker/images
 * ~/.config/flakes
 * ~/.config/flakes/firecracker/images
 

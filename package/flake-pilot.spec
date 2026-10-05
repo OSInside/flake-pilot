@@ -31,9 +31,6 @@ URL:            https://github.com/OSInside/flake-pilot
 Source0:        %{name}.tar.gz
 Source1:        cargo_config
 Source2:        %{name}-rpmlintrc
-# SUSE-specific source additions (1001+)
-Source1001:     systemd-tmpfiles-firecracker-for-suse.conf
-Source1002:     systemd-tmpfiles-podman-for-suse.conf
 %if 0%{?debian} || 0%{?ubuntu}
 Requires:       golang-github-containers-common
 %endif
@@ -155,14 +152,9 @@ make DESTDIR=%{buildroot}/ install_sci
 mkdir -p %{buildroot}/overlayroot
 mkdir -p %{buildroot}%{_prefix}/lib/flake-pilot
 
-%if 0%{?suse_version} >= 1600
-install -D -m 644 %{SOURCE1001} %{buildroot}%{_tmpfilesdir}/flake-pilot-firecracker.conf
-install -D -m 644 %{SOURCE1002} %{buildroot}%{_tmpfilesdir}/flake-pilot-podman.conf
-%else
-mkdir -p %{buildroot}/var/lib/firecracker/images
-mkdir -p %{buildroot}/var/lib/firecracker/storage
-mkdir -p %{buildroot}/var/lib/podman/storage
-%endif
+mkdir -p %{buildroot}/opt/flakes/firecracker/images
+mkdir -p %{buildroot}/opt/flakes/firecracker/storage
+mkdir -p %{buildroot}/opt/flakes/podman/storage
 
 mkdir -p %{buildroot}/etc/dracut.conf.d
 mkdir -p %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
@@ -248,22 +240,12 @@ if [ -d /tmp/flakes ];then
     chmod 1777 /tmp/flakes
 fi
 
-%if 0%{?suse_version} >= 1600
-%post -n flake-pilot-podman
-%tmpfiles_create flake-pilot-podman.conf
-%endif
-
 %files -n flake-pilot-podman
 %config /etc/flakes/container-flake.yaml
 %config /etc/flakes/storage.conf
-%if 0%{?suse_version} >= 1600
-%{_tmpfilesdir}/flake-pilot-podman.conf
-%ghost %dir /var/lib/podman
-%ghost %dir %attr(0700,root,root) /var/lib/podman/storage
-%else
-%dir /var/lib/podman
-%dir %attr(0700,root,root) /var/lib/podman/storage
-%endif
+%dir /opt/flakes
+%dir /opt/flakes/podman
+%dir %attr(0700,root,root) /opt/flakes/podman/storage
 %{_bindir}/podman-pilot
 /usr/sbin/flake-registry
 %doc %{_mandir}/man8/flake-ctl-podman-export.8.gz
@@ -283,22 +265,11 @@ fi
 %doc %{_mandir}/man8/flake-ctl-bubblewrap-show.8.gz
 %doc %{_mandir}/man8/bubblewrap-pilot.8.gz
 
-%if 0%{?suse_version} >= 1600
-%post -n flake-pilot-firecracker
-%tmpfiles_create flake-pilot-firecracker.conf
-%endif
-
 %files -n flake-pilot-firecracker
-%if 0%{?suse_version} >= 1600
-%{_tmpfilesdir}/flake-pilot-firecracker.conf
-%ghost %dir /var/lib/firecracker
-%ghost %dir /var/lib/firecracker/images
-%ghost %dir /var/lib/firecracker/storage
-%else
-%dir /var/lib/firecracker
-%dir /var/lib/firecracker/images
-%dir /var/lib/firecracker/storage
-%endif
+%dir /opt/flakes
+%dir /opt/flakes/firecracker
+%dir /opt/flakes/firecracker/images
+%dir /opt/flakes/firecracker/storage
 %dir %{_prefix}/lib/flake-pilot
 %config /etc/flakes/firecracker-flake.yaml
 %config /etc/flakes/firecracker.json

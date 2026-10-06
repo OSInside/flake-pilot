@@ -81,14 +81,16 @@ pub fn register(
         }
     }
 
-    // creating default app configuration
+    // creating default app configuration, a system wide flake
+    // also gets an empty drop-in directory below /etc/flakes
     let app_basename = basename(host_app_path);
-    let app_config_dir = registration::config_dir(&app_basename, usermode);
-    match fs::create_dir_all(&app_config_dir) {
-        Ok(dir) => dir,
-        Err(error) => {
-            error!("Failed creating: {}: {:?}", app_config_dir, error);
-            return false;
+    for app_config_dir in registration::config_dirs(&app_basename, usermode) {
+        match fs::create_dir_all(&app_config_dir) {
+            Ok(dir) => dir,
+            Err(error) => {
+                error!("Failed creating: {}: {:?}", app_config_dir, error);
+                return false;
+            }
         }
     }
     true
@@ -359,7 +361,12 @@ pub fn remove(
             }
         }
     }
-    if app_config_dir_exists {
+    // a system wide flake also owns the drop-in directory below
+    // /etc/flakes if there is one
+    for app_config_dir in registration::config_dirs(&app_basename, usermode) {
+        if ! Path::new(&app_config_dir).exists() {
+            continue
+        }
         match fs::remove_dir_all(&app_config_dir) {
             Ok(_) => {}
             Err(error) => {

@@ -467,12 +467,18 @@ fn merged_config(config_file: &Path) -> String {
     Provide the yaml data of the given configuration
 
     The optional drop-in files from the '.d' directory next
-    to the configuration are merged in
+    to the configuration are merged in. For a system wide
+    registration the drop-in files below /etc/flakes are
+    merged in last
     !*/
     let base_file = config_file.display().to_string();
-    registration::merge_config(
-        &base_file, &base_file.replace(".yaml", ".d")
-    )
+    let program = config_file.file_stem().unwrap_or_default().to_string_lossy();
+    let config_dirs = if base_file == registration::config_file(&program, false) {
+        registration::config_dirs(&program, false)
+    } else {
+        vec![base_file.replace(".yaml", ".d")]
+    };
+    registration::merge_config(&base_file, &config_dirs)
 }
 
 #[cfg(test)]

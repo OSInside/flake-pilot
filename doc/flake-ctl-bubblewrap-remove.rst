@@ -24,7 +24,8 @@ DESCRIPTION
 Remove the registration of the given sandbox application. This
 deletes the application symlink on the host as well as the flake
 configuration file and the configuration directory of the
-application.
+application. For a system wide flake the drop-in directory
+`/etc/flakes/APP.d` is deleted as well.
 
 The root filesystem tree the application was registered with is
 provided by the caller and is never deleted by this command. A
@@ -57,6 +58,7 @@ FILES
 -----
 
 * /usr/share/flakes
+* /etc/flakes/APP.d
 * $HOME/.config/flakes
 * /etc/flakes.yml
 

@@ -32,7 +32,8 @@ The command operates in two modes:
    In this mode the command deletes the specified application if it
    is a link pointing to `/usr/bin/firecracker-pilot`. It then also
    deletes the application configuration from `/usr/share/flakes`
-   respectively from `~/.config/flakes` in user mode. Finally the
+   and the drop-in directory `/etc/flakes/APP.d`, respectively from
+   `~/.config/flakes` in user mode. Finally the
    meta data of the instances of the application is deleted, see
    below
 
@@ -88,6 +89,7 @@ FILES
 -----
 
 * /usr/share/flakes
+* /etc/flakes/APP.d
 * /var/lib/firecracker/images
 * ~/.config/flakes
 * ~/.config/flakes/firecracker/images

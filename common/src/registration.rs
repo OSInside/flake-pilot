@@ -31,6 +31,14 @@
 //!    │   └── other.yaml
 //!    └── program_name.yaml
 //!
+//! A system wide registration is additionally extended by the
+//! drop-in files of the local system configuration, which are
+//! read last and therefore provide the final settings:
+//!
+//! /etc/flakes/
+//!    └── program_name.d
+//!        └── local.yaml
+//!
 //! The registration exists either system wide or below the
 //! flakes directory of the calling user. This module provides
 //! the lookup of those files and turns them into the engine
@@ -43,6 +51,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::config::get_flakes_dir;
+use crate::defaults;
 
 pub fn program_abs_path() -> String {
     /*!
@@ -85,6 +94,30 @@ pub fn config_dir(program: &str, usermode: bool) -> String {
     format!("{}/{}.d", get_flakes_dir(usermode), program)
 }
 
+pub fn config_dirs(program: &str, usermode: bool) -> Vec<String> {
+    /*!
+    Provide the drop-in directories of the given program in
+    the order they are read
+
+    A system wide registration is finally extended by the
+    drop-in directory below /etc/flakes. This allows local
+    adaptions of a registration which itself is provided as
+    part of the system. Registrations of the calling user
+    are not affected by it
+    !*/
+    let mut config_dirs = vec![config_dir(program, usermode)];
+    if ! usermode {
+        let local_config_dir = format!(
+            "{}/{}.d", defaults::FLAKES_CONFIG_DIR, program
+        );
+        // flakes_dir could be configured to point to /etc/flakes
+        if ! config_dirs.contains(&local_config_dir) {
+            config_dirs.push(local_config_dir);
+        }
+    }
+    config_dirs
+}
+
 pub fn is_usermode(program: &str) -> bool {
     /*!
     Check if the given program is registered for the calling user
@@ -115,25 +148,29 @@ pub fn config_files(usermode: bool) -> Vec<PathBuf> {
     config_files
 }
 
-pub fn merge_config(config_file: &str, config_dir: &str) -> String {
+pub fn merge_config(config_file: &str, config_dirs: &[String]) -> String {
     /*!
     Read the given registration together with its drop-in files
 
-    The files below config_dir are read in alpha sort order and
-    attached to the master config_file. The result is one yaml
-    document ready to be send to the yaml parser. Files which
-    cannot be read are skipped
+    The config_dirs are processed in the given order. The files
+    below each of them are read in alpha sort order and attached
+    to the master config_file. The result is one yaml document
+    ready to be send to the yaml parser. Files which cannot be
+    read are skipped
     !*/
     let base_yaml = fs::read_to_string(config_file);
-    let mut extra_yamls: Vec<_> = fs::read_dir(config_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .collect();
-    extra_yamls.sort();
+    let extra_yamls = config_dirs.iter().flat_map(|config_dir| {
+        let mut dir_yamls: Vec<_> = fs::read_dir(config_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .collect();
+        dir_yamls.sort();
+        dir_yamls
+    });
     base_yaml.into_iter().chain(
-        extra_yamls.into_iter().flat_map(fs::read_to_string)
+        extra_yamls.flat_map(fs::read_to_string)
     ).collect()
 }
 
@@ -148,7 +185,7 @@ pub fn read_config(program: &str, usermode: bool) -> Option<String> {
     if ! Path::new(&base_file).exists() {
         return None
     }
-    Some(merge_config(&base_file, &config_dir(program, usermode)))
+    Some(merge_config(&base_file, &config_dirs(program, usermode)))
 }
 
 pub fn config_from_str<T>(input: &str, origin: &str) -> T
@@ -202,7 +239,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{basename, config_dir, config_file, program_abs_path};
+    use std::fs;
+
+    use super::{
+        basename, config_dir, config_dirs, config_file, merge_config,
+        program_abs_path
+    };
 
     #[test]
     fn test_program_abs_path() {
@@ -223,5 +265,40 @@ mod tests {
     #[test]
     fn test_config_dir() {
         assert_eq!("/usr/share/flakes/app.d", config_dir("app", false));
+    }
+
+    #[test]
+    fn test_config_dirs_system() {
+        assert_eq!(
+            vec!["/usr/share/flakes/app.d", "/etc/flakes/app.d"],
+            config_dirs("app", false)
+        );
+    }
+
+    #[test]
+    fn test_merge_config_dir_order() {
+        // The files of a later directory are read after all files
+        // of the directories before it, regardless of their names
+        let root = std::env::temp_dir().join(
+            format!("flakes-merge-config-{}", std::process::id())
+        );
+        let flakes_dir = root.join("app.d");
+        let local_dir = root.join("etc").join("app.d");
+        fs::create_dir_all(&flakes_dir).unwrap();
+        fs::create_dir_all(&local_dir).unwrap();
+        let base_file = root.join("app.yaml");
+        fs::write(&base_file, "base: 1\n").unwrap();
+        fs::write(flakes_dir.join("b.yaml"), "flakes_b: 1\n").unwrap();
+        fs::write(flakes_dir.join("c.yaml"), "flakes_c: 1\n").unwrap();
+        fs::write(local_dir.join("a.yaml"), "local_a: 1\n").unwrap();
+        let merged = merge_config(
+            &base_file.to_string_lossy(),
+            &[
+                flakes_dir.to_string_lossy().to_string(),
+                local_dir.to_string_lossy().to_string()
+            ]
+        );
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!("base: 1\nflakes_b: 1\nflakes_c: 1\nlocal_a: 1\n", merged);
     }
 }

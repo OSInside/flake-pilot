@@ -1,0 +1,33 @@
+Flake Pilot Name and Logo
+=========================
+
+Copyright (c) 2026 Marcus Schäfer
+
+The Flake Pilot logo is licensed under the Creative Commons
+Attribution-NoDerivatives 4.0 International License (CC BY-ND 4.0).
+To view a copy of this license, visit
+
+    https://creativecommons.org/licenses/by-nd/4.0/
+
+This applies to the following files, including any rendering of
+them in other formats or sizes:
+
+    doc/images/flake-pilot-logo.svg
+    doc/images/flake-pilot-logo.png
+    doc/images/flake-pilot-logo-text.src.svg
+    doc/images/flake-pilot-logo-text.svg
+    doc/images/flake-pilot-logo-text.png
+
+You may copy and redistribute the logo in any medium or format,
+provided you give appropriate credit and do not distribute modified
+versions of it. Scaling the logo or converting it to another file
+format without changing the artwork is fine.
+
+The name "Flake Pilot" identifies this project. CC BY-ND 4.0 does
+not grant trademark rights. You may use the name and the logo to
+refer to the project, but not in a way that suggests your own work
+is the official Flake Pilot project or is endorsed by it.
+
+The MIT License in the LICENSE file does not apply to the files
+listed above. All other files in this repository remain under
+the terms of the MIT License.

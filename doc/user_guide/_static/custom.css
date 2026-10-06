@@ -1,5 +1,11 @@
 /* Flake Pilot user guide, small adjustments to the theme */
 
+/* The logo in the sidebar, the theme would scale it to full width */
+.wy-side-nav-search > a img.logo {
+    width: 112px;
+    margin-top: 8px;
+}
+
 /* The tagline below the title of the front page */
 p.rubric {
     margin-top: 0;

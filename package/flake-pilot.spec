@@ -153,7 +153,7 @@ make DESTDIR=%{buildroot}/ install_sci_static || \
 make DESTDIR=%{buildroot}/ install_sci
 
 mkdir -p %{buildroot}/overlayroot
-mkdir -p %{buildroot}/usr/lib/flake-pilot
+mkdir -p %{buildroot}%{_prefix}/lib/flake-pilot
 
 %if 0%{?suse_version} >= 1600
 install -D -m 644 %{SOURCE1001} %{buildroot}%{_tmpfilesdir}/flake-pilot-firecracker.conf
@@ -165,14 +165,14 @@ mkdir -p %{buildroot}/var/lib/podman/storage
 %endif
 
 mkdir -p %{buildroot}/etc/dracut.conf.d
-mkdir -p %{buildroot}/usr/lib/dracut/modules.d/80netstart
+mkdir -p %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
 cp -a firecracker-pilot/dracut/usr/lib/dracut/modules.d/80netstart/* \
-    %{buildroot}/usr/lib/dracut/modules.d/80netstart
+    %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
 install -m 644 firecracker-pilot/dracut/etc/dracut.conf.d/extramodules.conf \
     %{buildroot}/etc/dracut.conf.d/extramodules.conf
 
-install -m 755 %{buildroot}/usr/sbin/sci \
-    %{buildroot}/usr/lib/flake-pilot/sci
+install -m 755 %{buildroot}%{_sbindir}/sci \
+    %{buildroot}%{_prefix}/lib/flake-pilot/sci
 
 mkdir -p %{buildroot}/etc
 install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
@@ -182,9 +182,9 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 if [ $1 -gt 1 ]; then
     flakes_dir="/tmp/flakes/"
     if [ -d "$flakes_dir/" ]; then
-        flakes_perm=$(/usr/bin/stat -c "%a" "$flakes_dir")
+        flakes_perm=$(%{_bindir}/stat -c "%a" "$flakes_dir")
         if [ "$flakes_perm" -ne "1777" ]; then
-            /usr/bin/chmod +t $flakes_dir
+            %{_bindir}/chmod +t $flakes_dir
             # If the permissions were not already set we also need to worry
             # about the content.
             # For podman we need a copy of the .cid file in the new hierarchy
@@ -234,12 +234,12 @@ fi
 %defattr(-,root,root)
 %dir /etc/flakes
 %config /etc/flakes.yml
-/usr/bin/flake-ctl
-/usr/share/bash-completion/completions/flake-ctl
-%doc /usr/share/man/man8/flake-pilot.8.gz
-%doc /usr/share/man/man8/flake-ctl.8.gz
-%doc /usr/share/man/man8/flake-ctl-init.8.gz
-%doc /usr/share/man/man8/flake-ctl-list.8.gz
+%{_bindir}/flake-ctl
+%{_datadir}/bash-completion/completions/flake-ctl
+%doc %{_mandir}/man8/flake-pilot.8.gz
+%doc %{_mandir}/man8/flake-ctl.8.gz
+%doc %{_mandir}/man8/flake-ctl-init.8.gz
+%doc %{_mandir}/man8/flake-ctl-list.8.gz
 
 %post
 if [ -d /tmp/flakes ];then
@@ -264,24 +264,24 @@ fi
 %dir /var/lib/podman
 %dir %attr(0700,root,root) /var/lib/podman/storage
 %endif
-/usr/bin/podman-pilot
-/usr/sbin/flake-registry
-%doc /usr/share/man/man8/flake-ctl-podman-export.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-load.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-pull.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-register.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-remove.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-reset.8.gz
-%doc /usr/share/man/man8/flake-ctl-podman-show.8.gz
-%doc /usr/share/man/man8/podman-pilot.8.gz
+%{_bindir}/podman-pilot
+%{_sbindir}/flake-registry
+%doc %{_mandir}/man8/flake-ctl-podman-export.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-load.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-pull.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-register.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-remove.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-reset.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-show.8.gz
+%doc %{_mandir}/man8/podman-pilot.8.gz
 
 %files -n flake-pilot-bubblewrap
 %config /etc/flakes/bubblewrap-flake.yaml
-/usr/bin/bubblewrap-pilot
-%doc /usr/share/man/man8/flake-ctl-bubblewrap-register.8.gz
-%doc /usr/share/man/man8/flake-ctl-bubblewrap-remove.8.gz
-%doc /usr/share/man/man8/flake-ctl-bubblewrap-show.8.gz
-%doc /usr/share/man/man8/bubblewrap-pilot.8.gz
+%{_bindir}/bubblewrap-pilot
+%doc %{_mandir}/man8/flake-ctl-bubblewrap-register.8.gz
+%doc %{_mandir}/man8/flake-ctl-bubblewrap-remove.8.gz
+%doc %{_mandir}/man8/flake-ctl-bubblewrap-show.8.gz
+%doc %{_mandir}/man8/bubblewrap-pilot.8.gz
 
 %if 0%{?suse_version} >= 1600
 %post -n flake-pilot-firecracker
@@ -299,35 +299,35 @@ fi
 %dir /var/lib/firecracker/images
 %dir /var/lib/firecracker/storage
 %endif
-%dir /usr/lib/flake-pilot
+%dir %{_prefix}/lib/flake-pilot
 %config /etc/flakes/firecracker-flake.yaml
 %config /etc/flakes/firecracker.json
-%doc /usr/share/man/man8/flake-ctl-firecracker-pull.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-remove.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-register.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-show.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-network-init.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-network-add.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-network-remove.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-volume-export.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-volume-release.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-volume-add.8.gz
-%doc /usr/share/man/man8/flake-ctl-firecracker-volume-remove.8.gz
-/usr/bin/firecracker-pilot
-%doc /usr/share/man/man8/firecracker-pilot.8.gz
-/usr/lib/flake-pilot/sci
+%doc %{_mandir}/man8/flake-ctl-firecracker-pull.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-remove.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-register.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-show.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-network-init.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-network-add.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-network-remove.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-volume-export.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-volume-release.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-volume-add.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-volume-remove.8.gz
+%{_bindir}/firecracker-pilot
+%doc %{_mandir}/man8/firecracker-pilot.8.gz
+%{_prefix}/lib/flake-pilot/sci
 
 %files -n flake-pilot-firecracker-dracut-netstart
-%dir /usr/lib/dracut
-%dir /usr/lib/dracut/modules.d
-%dir /usr/lib/dracut/modules.d/80netstart
+%dir %{_prefix}/lib/dracut
+%dir %{_prefix}/lib/dracut/modules.d
+%dir %{_prefix}/lib/dracut/modules.d/80netstart
 %dir /etc/dracut.conf.d
-/usr/lib/dracut/modules.d/80netstart
+%{_prefix}/lib/dracut/modules.d/80netstart
 %config /etc/dracut.conf.d/extramodules.conf
 
 %files -n flake-pilot-firecracker-guestvm-tools
 %dir /overlayroot
-/usr/sbin/sci
-%doc /usr/share/man/man8/sci.8.gz
+%{_sbindir}/sci
+%doc %{_mandir}/man8/sci.8.gz
 
 %changelog

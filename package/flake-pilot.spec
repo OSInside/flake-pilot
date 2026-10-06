@@ -171,7 +171,7 @@ cp -a firecracker-pilot/dracut/usr/lib/dracut/modules.d/80netstart/* \
 install -m 644 firecracker-pilot/dracut/etc/dracut.conf.d/extramodules.conf \
     %{buildroot}/etc/dracut.conf.d/extramodules.conf
 
-install -m 755 %{buildroot}%{_sbindir}/sci \
+install -m 755 %{buildroot}/usr/sbin/sci \
     %{buildroot}%{_prefix}/lib/flake-pilot/sci
 
 mkdir -p %{buildroot}/etc
@@ -265,7 +265,7 @@ fi
 %dir %attr(0700,root,root) /var/lib/podman/storage
 %endif
 %{_bindir}/podman-pilot
-%{_sbindir}/flake-registry
+/usr/sbin/flake-registry
 %doc %{_mandir}/man8/flake-ctl-podman-export.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-load.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-pull.8.gz
@@ -327,7 +327,7 @@ fi
 
 %files -n flake-pilot-firecracker-guestvm-tools
 %dir /overlayroot
-%{_sbindir}/sci
+/usr/sbin/sci
 %doc %{_mandir}/man8/sci.8.gz
 
 %changelog

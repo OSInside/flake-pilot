@@ -86,6 +86,21 @@ pub const PODMAN_STORAGE_DRIVER:&str =
 // time do not use the same instance name
 pub const PODMAN_EXPORT_NAME_PREFIX:&str =
     "flake-ctl-export-";
+// Prefix of the workspace used by 'flake-ctl podman export --oci'
+// to unpack an OCI tarball. The workspace is created next to the
+// target directory and is deleted after the export
+pub const OCI_UNPACK_NAME_PREFIX:&str =
+    ".flake-ctl-oci-";
+// Markers of the OCI image layer format. A whiteout file deletes
+// the file of the same name without the prefix from the layers
+// below, the opaque whiteout deletes all contents of its directory
+pub const OCI_WHITEOUT_PREFIX:&str =
+    ".wh.";
+pub const OCI_WHITEOUT_OPAQUE:&str =
+    ".wh..wh..opq";
+// Limits applied when reading an OCI tarball
+pub const OCI_MAX_INDEX_DEPTH: usize = 8;
+pub const OCI_MAX_SYMLINKS: usize = 40;
 // Name of the process which keeps the container instance of a
 // resume flake in running state. podman-pilot creates such an
 // instance with a sleep entry point which allows to call the

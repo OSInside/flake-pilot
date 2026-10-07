@@ -37,6 +37,7 @@ pub mod defaults;
 pub mod fetch;
 pub mod instance;
 pub mod network;
+pub mod oci;
 pub mod output;
 pub mod setup;
 pub mod volume;
@@ -344,8 +345,19 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     exit(podman::load(oci, user));
                 },
                 // export
-                cli::Podman::Export { container, directory, force } => {
-                    if ! podman::export(container, directory, *force, user) {
+                cli::Podman::Export { container, oci, directory, force } => {
+                    // The arguments are mutually exclusive and one
+                    // of them is required
+                    let exported = match (container, oci) {
+                        (Some(container), _) => podman::export(
+                            container, directory, *force, user
+                        ),
+                        (_, Some(oci)) => podman::export_oci(
+                            oci, directory, *force
+                        ),
+                        (None, None) => false
+                    };
+                    if ! exported {
                         return Ok(ExitCode::FAILURE)
                     }
                 },

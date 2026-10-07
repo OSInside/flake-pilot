@@ -446,21 +446,30 @@ pub enum Podman {
         #[clap(long)]
         oci: String,
     },
-    /// Export container to directory
+    /// Export container or OCI tarball to directory
+    #[clap(group(
+        ArgGroup::new("export").required(true).args(&["container", "oci"]),
+    ))]
     Export {
         /// A container name. The name must match with a
         /// name in the local podman registry
         #[clap(long)]
-        container: String,
+        container: Option<String>,
+
+        /// Path to an OCI compliant tarball. The file system
+        /// of the image in the tarball is unpacked without
+        /// the use of the local podman registry
+        #[clap(long)]
+        oci: Option<String>,
 
         /// Path to the directory the file system of the
-        /// container is exported to. The directory is
-        /// created if it does not exist yet
+        /// container or OCI tarball is exported to. The
+        /// directory is created if it does not exist yet
         #[clap(long)]
         directory: String,
 
-        /// Export the container even if the given directory
-        /// exists. The file system of the container is
+        /// Export even if the given directory exists. The
+        /// file system of the container or OCI tarball is
         /// unpacked on top of the contents of that directory
         #[clap(long)]
         force: bool,

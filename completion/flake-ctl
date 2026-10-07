@@ -160,7 +160,7 @@ __flake_ctl_podman_load() {
 }
 
 __flake_ctl_podman_export() {
-    __comp_reply_unused "--container --directory --force --help"
+    __comp_reply_unused "--container --oci --directory --force --help"
 }
 
 __flake_ctl_complete_command() {

@@ -30,6 +30,7 @@ use crate::defaults;
 use crate::app;
 use crate::app_config;
 use crate::network;
+use crate::oci;
 use flakes::io::IO;
 use flakes::lookup::Lookup;
 use flakes::podman as engine;
@@ -114,10 +115,37 @@ pub fn export(
 ) -> bool {
     /*!
     Export the file system of the given container to a directory
+    !*/
+    export_to_directory(directory, force, || {
+        info!("Exporting container {container} to {directory}...");
+        export_container(container, directory, usermode)
+    })
+}
+
+pub fn export_oci(oci_archive: &str, directory: &str, force: bool) -> bool {
+    /*!
+    Export the file system of the image in the given OCI tarball
+    to a directory. The local podman registry is not used
+    !*/
+    if ! Path::new(oci_archive).is_file() {
+        error!("OCI archive '{oci_archive}' not found");
+        return false
+    }
+    export_to_directory(directory, force, || {
+        info!("Unpacking OCI archive {oci_archive} to {directory}...");
+        oci::unpack(oci_archive, directory)
+    })
+}
+
+fn export_to_directory(
+    directory: &str, force: bool, export: impl FnOnce() -> bool
+) -> bool {
+    /*!
+    Run the given export into directory
 
     An existing directory is taken as an export which was done
-    before and is left untouched. Only with force the container
-    is exported again, in this case the file system is unpacked
+    before and is left untouched. Only with force the export
+    is done again, in this case the file system is unpacked
     on top of the contents of that directory
     !*/
     let directory_exists = Path::new(directory).exists();
@@ -132,8 +160,7 @@ pub fn export(
             return false
         }
     }
-    info!("Exporting container {container} to {directory}...");
-    let exported = export_container(container, directory, usermode);
+    let exported = export();
     if ! exported && ! directory_exists {
         // A directory created for an export which failed must not
         // stay behind. It would let the next call believe the
@@ -665,6 +692,31 @@ mod tests {
         assert!(! export(
             "name", directory.path().to_str().unwrap(), false, true
         ));
+    }
+
+    #[test]
+    fn test_export_oci_of_missing_archive() {
+        // Nothing is created for an archive which does not exist
+        let work = tempdir().unwrap();
+        let directory = work.path().join("rootfs");
+        assert!(! export_oci(
+            "/no/such/archive.tar", directory.to_str().unwrap(), false
+        ));
+        assert!(! directory.exists());
+    }
+
+    #[test]
+    fn test_export_oci_failed_leaves_no_directory() {
+        // An archive which is not an OCI image does not leave
+        // the created directory behind
+        let work = tempdir().unwrap();
+        let archive = work.path().join("broken.tar");
+        fs::write(&archive, "no tar archive").unwrap();
+        let directory = work.path().join("rootfs");
+        assert!(! export_oci(
+            archive.to_str().unwrap(), directory.to_str().unwrap(), false
+        ));
+        assert!(! directory.exists());
     }
 
     #[test]

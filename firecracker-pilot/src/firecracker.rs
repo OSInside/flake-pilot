@@ -337,7 +337,9 @@ fn run_creation(
 
     // Provision VM
     if engine_section.overlay_size.is_some() {
-        let vm_image_file = engine_section.rootfs_image_path;
+        let vm_image_file = get_image_path(
+            engine_section.rootfs_image_path
+        );
         let tmp_dir = tempdir()?;
         if let Some(tmp_dir) = tmp_dir.path().to_str() {
             if has_includes {
@@ -350,7 +352,7 @@ fn run_creation(
                 // Mount and sync...
                 let vm_mount_point = mount_vm(
                     tmp_dir,
-                    vm_image_file,
+                    &vm_image_file,
                     &vm_overlay_file,
                     User::ROOT
                 )?;
@@ -839,13 +841,13 @@ pub fn create_firecracker_config(
     } = config().runtime();
 
     // set kernel_image_path
-    engine_section.kernel_image_path.clone_into(
-        &mut firecracker_config.boot_source.kernel_image_path
-    );
+    firecracker_config.boot_source.kernel_image_path =
+        get_image_path(engine_section.kernel_image_path);
 
     // set initrd_path
     if let Some(initrd_path) = engine_section.initrd_path {
-        initrd_path.clone_into(&mut firecracker_config.boot_source.initrd_path);
+        firecracker_config.boot_source.initrd_path =
+            get_image_path(initrd_path);
     }
 
     // setup run commandline for the command call
@@ -916,9 +918,8 @@ pub fn create_firecracker_config(
     }
 
     // set path_on_host for rootfs
-    engine_section.rootfs_image_path.clone_into(
-        &mut firecracker_config.drives[0].path_on_host
-    );
+    firecracker_config.drives[0].path_on_host =
+        get_image_path(engine_section.rootfs_image_path);
 
     // set drive section for overlay
     if engine_section.overlay_size.is_some() {
@@ -1023,6 +1024,43 @@ pub fn create_firecracker_config(
     )?;
 
     Ok(())
+}
+
+pub fn get_image_path(image_path: &str) -> String {
+    /*!
+    Lookup the given image path in the system wide firecracker
+    registries, see lookup_image_path()
+    !*/
+    lookup_image_path(image_path, &defaults::FIRECRACKER_REGISTRY_DIRS)
+}
+
+pub fn lookup_image_path(image_path: &str, registries: &[&str]) -> String {
+    /*!
+    An image registered to one of the given registries is looked
+    up in all of them in the given order. The first registry
+    which provides the image wins. This allows images registered
+    below /var/lib/firecracker to be found below /opt/flakes and
+    vice versa, with a preference to /opt/flakes. The path is
+    returned unchanged if it does not belong to any of the
+    registries, e.g. in user mode, or if the image could not be
+    found in any of them
+    !*/
+    let registry_image = registries.iter().find_map(
+        |registry| Path::new(image_path).strip_prefix(registry).ok()
+    );
+    if let Some(registry_image) = registry_image {
+        for registry in registries {
+            let lookup_path = Path::new(registry).join(registry_image);
+            if lookup_path.exists() {
+                let lookup_path = lookup_path.to_string_lossy().to_string();
+                if Lookup::is_debug() && lookup_path != image_path {
+                    debug!("Using image {lookup_path} for {image_path}");
+                }
+                return lookup_path
+            }
+        }
+    }
+    image_path.to_string()
 }
 
 pub fn has_network_setup(boot_args: &[&str]) -> bool {

@@ -28,6 +28,7 @@ use crate::firecracker::get_nfs_server_start_command;
 use crate::firecracker::get_nfs_volumes;
 use crate::firecracker::get_nfsd_threads;
 use crate::firecracker::has_network_setup;
+use crate::firecracker::lookup_image_path;
 use crate::firecracker::nfsd_is_running;
 use crate::firecracker::tap_device_exists;
 use flakes::network::get_valid_interface_name;
@@ -353,4 +354,57 @@ fn test_tap_name_is_valid_for_arbitrary_names() {
             "invalid interface name {} from {}", interface_name, name
         );
     }
+}
+
+#[test]
+fn image_lookup_prefers_first_registry() {
+    let opt = tempfile::tempdir().unwrap();
+    let var = tempfile::tempdir().unwrap();
+    let opt = opt.path().to_str().unwrap();
+    let var = var.path().to_str().unwrap();
+    for registry in [opt, var] {
+        std::fs::create_dir_all(format!("{registry}/images/vm")).unwrap();
+        std::fs::write(format!("{registry}/images/vm/rootfs"), "").unwrap();
+    }
+    let registries = [opt, var];
+    assert_eq!(
+        lookup_image_path(&format!("{var}/images/vm/rootfs"), &registries),
+        format!("{opt}/images/vm/rootfs")
+    );
+    assert_eq!(
+        lookup_image_path(&format!("{opt}/images/vm/rootfs"), &registries),
+        format!("{opt}/images/vm/rootfs")
+    );
+}
+
+#[test]
+fn image_lookup_falls_back_to_second_registry() {
+    let opt = tempfile::tempdir().unwrap();
+    let var = tempfile::tempdir().unwrap();
+    let opt = opt.path().to_str().unwrap();
+    let var = var.path().to_str().unwrap();
+    std::fs::create_dir_all(format!("{var}/images/vm")).unwrap();
+    std::fs::write(format!("{var}/images/vm/kernel"), "").unwrap();
+    let registries = [opt, var];
+    assert_eq!(
+        lookup_image_path(&format!("{opt}/images/vm/kernel"), &registries),
+        format!("{var}/images/vm/kernel")
+    );
+}
+
+#[test]
+fn image_lookup_keeps_unknown_or_missing_path() {
+    let opt = tempfile::tempdir().unwrap();
+    let var = tempfile::tempdir().unwrap();
+    let opt = opt.path().to_str().unwrap();
+    let var = var.path().to_str().unwrap();
+    let registries = [opt, var];
+    assert_eq!(
+        lookup_image_path("/home/user/images/vm/rootfs", &registries),
+        "/home/user/images/vm/rootfs"
+    );
+    assert_eq!(
+        lookup_image_path(&format!("{var}/images/vm/rootfs"), &registries),
+        format!("{var}/images/vm/rootfs")
+    );
 }

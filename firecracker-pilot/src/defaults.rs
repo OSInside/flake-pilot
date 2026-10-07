@@ -43,6 +43,14 @@ pub use flakes::defaults::{
 };
 pub const FIRECRACKER_TEMPLATE:&str =
     "/etc/flakes/firecracker.json";
+// System wide registries of firecracker images. Images are
+// looked up in the given order, the registry below /var/lib is
+// the former location and only used if the image is not
+// present in the current registry below /opt/flakes
+pub const FIRECRACKER_REGISTRY_DIRS: [&str; 2] = [
+    "/opt/flakes/firecracker",
+    "/var/lib/firecracker"
+];
 pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 // Location the kernel reports the network interfaces of the
 // host below. A TAP device created as part of the host setup

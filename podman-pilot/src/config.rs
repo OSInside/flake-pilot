@@ -64,10 +64,6 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    pub fn is_delta_container(&self) -> bool {
-        self.container.base_container.is_some()
-    }
-
     pub fn runtime(&self) -> RuntimeSection<'_> {
         self.container.runtime.as_ref().cloned().unwrap_or_default()
     }

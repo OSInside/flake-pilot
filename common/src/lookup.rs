@@ -21,7 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -33,12 +32,6 @@ pub struct Lookup {
 }
 
 impl Lookup {
-    pub fn do_trace() {
-        if Self::is_debug() {
-            debug!("{}", Backtrace::force_capture());
-        }
-    }
-
     pub fn is_debug() -> bool {
         env::var("PILOT_DEBUG").is_ok()
     }

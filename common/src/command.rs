@@ -97,15 +97,6 @@ pub struct CommandError {
     pub args: Vec<String>,
 }
 
-impl CommandError {
-    pub fn new(base: ProcessError) -> Self {
-        Self {
-            args: Vec::new(),
-            base,
-        }
-    }
-}
-
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_char('"')?;

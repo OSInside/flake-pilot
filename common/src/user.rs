@@ -27,7 +27,7 @@ use std::path::Path;
 use std::{process::Command, ffi::OsStr};
 use serde::{Serialize, Deserialize};
 use crate::command::CommandExtTrait;
-use uzers::{get_current_uid, get_current_username, get_current_groupname};
+use uzers::{get_current_uid, get_current_username};
 use crate::lookup::{Lookup};
 use crate::error::FlakeError;
 use crate::openat;
@@ -45,14 +45,6 @@ impl<'a> From<&'a str> for User<'a> {
 
 impl User<'_> {
     pub const ROOT: User<'static> = User { name: Some("root")};
-
-    pub fn get_user_id(&self) -> String {
-        get_current_uid().to_string()
-    }
-
-    pub fn get_group_name(&self) -> String {
-        get_current_groupname().unwrap().into_string().unwrap()
-    }
 
     pub fn is_calling_user(&self) -> bool {
         /*!

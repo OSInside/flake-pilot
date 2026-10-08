@@ -6,7 +6,6 @@ license = "MIT"
 
 [dependencies]
 clap = { version = "3.0", features = ["derive"] }
-claim = { version = "0.3" }
 log = { version = "0.4" }
 env_logger = { version = "0.9" }
 glob = { version = "0.3" }

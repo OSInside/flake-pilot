@@ -26,4 +26,3 @@ pub const GC_THRESHOLD: i32 = 1;
 pub const VAR_EXPANSION_LIMIT: i32 = 10;
 pub const HOST_DEPENDENCIES: &str = "removed";
 pub const SYSTEM_HOST_DEPENDENCIES: &str = "systemfiles";
-pub const PODMAN_PATH: &str = "/usr/bin/podman";

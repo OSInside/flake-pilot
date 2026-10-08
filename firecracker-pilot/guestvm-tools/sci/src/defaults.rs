@@ -52,7 +52,6 @@ pub const SYSTEMD_NETWORK_RESOLV_CONF: [&str; 2] = [
     "/run/systemd/resolve/resolv.conf",
     "/run/systemd.pre-switch-root/resolve/resolv.conf"
 ];
-pub const VM_QUIT: &str = "sci_quit";
 pub const VHOST_TRANSPORT: &str = "vmw_vsock_virtio_transport";
 pub const TERM_TYPE: &str = "xterm";
 pub const TERM_TYPE_FALLBACK: [&str; 3] = ["xterm", "vt100", "linux"];

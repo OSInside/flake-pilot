@@ -36,6 +36,7 @@
         <package name="systemd"/>
         <package name="systemd-networkd"/>
         <package name="systemd-resolved"/>
+        <package name="NetworkManager"/>
         <package name="iputils"/>
         <package name="binutils"/>
         <package name="gzip"/>

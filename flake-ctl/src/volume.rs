@@ -127,7 +127,12 @@ pub fn add(
     }
     info!("Updated {config_file}");
     info!("The host path of a volume has to be exported, see:");
-    info!("  flake-ctl firecracker volume export --path <PATH>");
+    info!(
+        "  flake-ctl firecracker volume export --path <PATH> --app {app}{}",
+        instance.as_deref()
+            .map(|instance| format!(" --instance {instance}"))
+            .unwrap_or_default()
+    );
     true
 }
 

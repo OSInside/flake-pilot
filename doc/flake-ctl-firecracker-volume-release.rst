@@ -12,10 +12,12 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker volume release --path <PATH>
+       flake-ctl firecracker volume release [OPTIONS] --path <PATH>
 
    OPTIONS:
        --path <PATH>
+       --app <APP>
+       --instance <INSTANCE>
        --help
 
 DESCRIPTION
@@ -24,6 +26,10 @@ DESCRIPTION
 Remove the flake-pilot managed NFS export entry for the given absolute
 host path from ``/etc/exports`` and restart the ``nfs-server`` systemd
 service so the updated export table becomes effective.
+
+Called with an application, only the VM of that application, or of the
+given instance of it, is removed from the entry. The entry itself is
+removed once no VM is left.
 
 Only entries previously managed by flake-pilot for the given path are
 removed. As the command changes a system-wide NFS configuration, the
@@ -37,6 +43,16 @@ OPTIONS
 
   Absolute host path to remove from the flake-pilot managed NFS exports
 
+--app <APP>
+
+  An absolute path to the application on the host. Only the VM of
+  this application is removed from the export
+
+--instance <INSTANCE>
+
+  The @NAME instance selector the application is called with. Only
+  the VM of that instance is removed from the export. Requires --app
+
 FILES
 -----
 
@@ -48,6 +64,9 @@ EXAMPLE
 .. code:: bash
 
    $ flake-ctl firecracker volume release --path /some/local/path
+
+   $ flake-ctl firecracker volume release \
+         --path /some/local/path --app $HOME/bin/claude
 
 SEE ALSO
 --------

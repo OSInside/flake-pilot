@@ -102,10 +102,11 @@ EXAMPLE
 
 .. code:: bash
 
-   $ flake-ctl firecracker volume export --path /some/local/path
-
    $ flake-ctl firecracker volume add \
          --app $HOME/bin/claude --volume /some/local/path:/some/guest/path
+
+   $ flake-ctl firecracker volume export \
+         --path /some/local/path --app $HOME/bin/claude
 
 SEE ALSO
 --------

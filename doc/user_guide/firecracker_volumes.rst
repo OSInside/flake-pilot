@@ -25,45 +25,74 @@ The setup works within the following requirements:
 * The application has to be connected to the host network with
   ``flake-ctl firecracker network add``, see
   :ref:`firecracker-networking`. The volume setup reads the gateway
-  address from that network setup.
+  address and the address of the VM from that network setup.
+
+* The local path has to be owned by a user other than ``root``. Every
+  access of the VM to the volume is performed as that user.
 
 * The guest needs a working network setup at boot and has to provide
   the NFS client tools, in particular the ``mount.nfs`` helper
   program.
 
 Managing volumes is a two step process: a local path is exported
-through NFS once, independently of any application. It is then added
-to one or more flake instances which mount it at a path of their
-choice.
+through NFS to the VM of an application, and it is added to the flake
+configuration of that application, which mounts it at a path of its
+choice. A path can be exported to and added to more than one
+application or instance.
 
 Export a Local Path
 ====================
 
 .. code-block:: bash
 
-   flake-ctl firecracker volume export --path /some/local/path
+   flake-ctl firecracker volume export \
+       --path /some/local/path --app $HOME/bin/claude
 
 Writes a ``flake-pilot`` managed entry for the given path to
-``/etc/exports``, restricted to the private firecracker network of
-the host setup, which is ``172.16.0.0/24`` unless the host uses that
-network already, see :ref:`firecracker-networking`. If the
-``nfs-server`` systemd service is not
-running yet it is started, otherwise the export table is reloaded so
-the new export becomes effective right away.
+``/etc/exports`` which allows exactly the VM of the given application
+as a client. The VM is identified by its address in the private
+firecracker network, e.g ``172.16.0.2``, read from the ``ip=`` boot
+option written by ``flake-ctl firecracker network add``. If the
+``nfs-server`` systemd service is not running yet it is started,
+otherwise the export table is reloaded so the new export becomes
+effective right away.
 
-The command expects an existing directory. As it changes a system
-wide NFS configuration, the required privileged operations are
-executed through ``sudo`` when needed. Exporting the same path again
-keeps the existing entry unchanged.
+An instance of the application which was connected to the network
+with its own address, see :ref:`firecracker-networking`, needs an
+export of its own:
+
+.. code-block:: bash
+
+   flake-ctl firecracker volume export \
+       --path /some/local/path --app $HOME/bin/claude --instance @id1
+
+Exporting the same path for further applications or instances adds
+their VMs to the same entry, exporting it again for a VM which is
+already allowed keeps the entry unchanged. An entry written by former
+versions of ``flake-pilot`` for the whole private network is replaced.
+
+The command expects an existing directory which is owned by the
+calling user. Called as ``root``, the directory has to be owned by a
+user other than ``root``, a directory owned by ``root`` is never
+exported. The path must not lead through a symbolic link, the command
+names the resolved path to use instead. As it changes a system wide
+NFS configuration, the required privileged operations are executed
+through ``sudo`` when needed.
+
+Every access of the VM to the volume is performed as the owner of the
+exported path. The entry maps all users of the VM, including
+``root``, to the user and group ID of that owner (``all_squash`` with
+``anonuid`` and ``anongid``). The application inside of the VM can
+therefore read and write the volume like its owner can, but it gets
+no further permissions on the host, in particular files it creates
+belong to the owner and not to ``root``.
 
 .. note::
 
    The export alone is not enough if a firewall is active on the
    host, it has to allow the NFS traffic of the private firecracker
    network as well. See :ref:`troubleshooting` for the services to
-   open up with ``firewalld``, and for the user and group ID the
-   exported path is owned by, which the VM has to know as well to
-   avoid permission problems.
+   open up with ``firewalld``.
 
 Release a Local Path
 =====================
@@ -77,6 +106,16 @@ path from ``/etc/exports`` and restarts the ``nfs-server`` service so
 the updated export table becomes effective. Only entries previously
 managed by ``flake-pilot`` are touched, an export created by other
 means is left in place.
+
+To withdraw the volume from one VM only, name its application, and
+its instance if it has an address of its own:
+
+.. code-block:: bash
+
+   flake-ctl firecracker volume release \
+       --path /some/local/path --app $HOME/bin/claude --instance @id1
+
+The entry is removed once no VM is left in it.
 
 .. note::
 
@@ -137,8 +176,8 @@ again, a different server.
 
    The command only changes the flake configuration of the
    application, no privileged operations are required. The local path
-   itself still has to be exported, see above, or the mount inside of
-   the guest fails.
+   itself still has to be exported to the VM of the application or
+   instance, see above, or the mount inside of the guest fails.
 
 Remove a Volume From an Application
 =====================================

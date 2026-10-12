@@ -91,22 +91,22 @@ minimal image of a Firecracker VM usually knows nothing about the
 accounts of the host. A volume exported with
 ``flake-ctl firecracker volume export``, see
 :ref:`firecracker-volumes`, therefore shows up inside the VM owned by
-a plain number if the owning host user does not exist there, and
-every access done under a different ID than the one the files belong
-to is answered with a permission error.
+a plain number if the owning host user does not exist there.
 
-The application itself is started as ``root`` by the init process of
-the guest, and the export is written with the ``no_root_squash``
-option, so ``root`` inside the VM is not mapped to ``nobody`` and can
-read and write the volume regardless of its ownership. The mismatch
-becomes visible as soon as the application runs under a user account
-of its own inside the VM, or when the files it creates should stay
-accessible to the owning user on the host, as they are created with
-the ID the process runs under.
+This does not cause permission problems: the export maps every user
+of the VM, including ``root`` which the init process of the guest
+starts the application as, to the owner of the exported path on the
+host (``all_squash`` with ``anonuid`` and ``anongid``). Every access
+is performed with the permissions of that owner, and every file the
+application creates belongs to the owner on the host. The VM never
+gets more permissions on the volume than its owner has.
 
-The fix is to give the VM a user with the same numeric IDs as the
-owner of the exported path on the host. Look the IDs up on the host
-first:
+Programs which compare the owner of a file with the user they run as,
+e.g ``git`` with its ``safe.directory`` check or ``ssh`` reading its
+configuration, can still complain about the numeric owner. If that
+is the case, give the VM a user with the same numeric IDs as the owner
+of the exported path on the host and run the application as that
+user. Look the IDs up on the host first:
 
 .. code-block:: bash
 

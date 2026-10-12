@@ -188,8 +188,11 @@ pub const NFS_EXPORTS_FILE:&str =
     "/etc/exports";
 pub const NFS_SERVER_SERVICE:&str =
     "nfs-server";
+// Every access of a VM is mapped to the owner of the exported
+// path, the anonuid and anongid options naming that owner are
+// added per export
 pub const NFS_EXPORT_OPTIONS:&str =
-    "rw,sync,no_subtree_check,no_root_squash,insecure";
+    "rw,sync,no_subtree_check,all_squash";
 // Kernel commandline option sci reads the NFS volumes of a VM
 // from. The option provides all volumes of an instance as a
 // list of NAME_OR_IP:HOST_PATH:GUEST_PATH elements

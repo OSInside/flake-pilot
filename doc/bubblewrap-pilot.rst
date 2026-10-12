@@ -62,6 +62,13 @@ locally adapt a registration which is provided as part of the system
 without changing its files. Registrations of a user, see the
 rootless mode in **flake-pilot**, do not read it.
 
+A system wide registration can be called by any user. If there is no
+system wide registration for the given application name, the
+registration of the calling user in `~/.config/flakes` is used. Such
+a flake is called by that user. In both cases the sandbox is created
+for and belongs to the calling user, bwrap needs no privileges to
+create it.
+
 From a content perspective the following registration parameters
 can be set for the sandbox engine:
 
@@ -85,16 +92,6 @@ can be set for the sandbox engine:
      # Optional registration setup
      # Sandbox runtime parameters
      runtime:
-       # Create the sandbox for a user other than the calling
-       # one. The call of bwrap is performed by sudo in this
-       # case. The behavior of sudo can be controlled via the
-       # file /etc/sudoers. The value 'any' as well as no
-       # value at all refers to the calling user. bwrap needs
-       # no privileges to create the sandbox
-       #
-       # Default: any
-       runas: any
-
        # Optional pilot options in the format:
        # - %name or %name:value
        # Pilot options are not passed to the application call

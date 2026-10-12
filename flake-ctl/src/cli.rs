@@ -157,10 +157,6 @@ pub enum Firecracker {
         #[clap(long)]
         target: Option<String>,
 
-        /// Name of the user to run firecracker.
-        #[clap(long)]
-        run_as: Option<String>,
-
         /// Resume the VM from previous execution.
         /// If the VM is still running, the app will be
         /// executed inside of this VM instance.
@@ -374,13 +370,6 @@ pub enum Bubblewrap {
         /// of the sandbox.
         #[clap(long)]
         target: Option<String>,
-
-        /// Name of the user to run bubblewrap. If not specified
-        /// the sandbox is created by the user calling the
-        /// application. Any other user requires the permission
-        /// to call sudo
-        #[clap(long)]
-        run_as: Option<String>,
 
         /// Sandbox runtime option, and optional value, used to
         /// create the sandbox, e.g "--ro-bind /etc/hosts /etc/hosts".

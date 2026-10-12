@@ -98,7 +98,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 },
                 // register
                 cli::Firecracker::Register {
-                    vm, app, target, run_as, overlay_size, resume,
+                    vm, app, target, overlay_size, resume,
                     force_vsock, include_tar, include_path, pilot_option,
                     force
                 } => {
@@ -130,7 +130,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 vm,
                                 Some(app),
                                 target.as_ref(),
-                                run_as.as_ref(),
                                 overlay_size.as_ref(),
                                 *resume,
                                 *force_vsock,
@@ -257,7 +256,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             match &command {
                 // register
                 cli::Bubblewrap::Register {
-                    rootfs, app, target, run_as, opt, pilot_option, force
+                    rootfs, app, target, opt, pilot_option, force
                 } => {
                     // Sanity check: Registering requires the pilot
                     // of this engine and its registration template
@@ -287,7 +286,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 rootfs,
                                 Some(app),
                                 target.as_ref(),
-                                run_as.as_ref(),
                                 opt.as_ref().cloned(),
                                 pilot_option.as_ref().cloned(),
                                 user,

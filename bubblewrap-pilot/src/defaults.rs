@@ -25,8 +25,6 @@ pub const VAR_EXPANSION_LIMIT: i32 = 10;
 // Name and path of the program which creates the sandbox
 pub const BWRAP: &str = "bwrap";
 pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
-// Name of the process which runs the sandbox for another user
-pub const SUDO: &str = "sudo";
 pub const PROC_DIR: &str = "/proc";
 // File name extension of the meta data files the pilot
 // creates for its instances

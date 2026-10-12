@@ -8,7 +8,6 @@ vm:
   base_vm: ~
   layers: ~
   runtime:
-    runas: root
     resume: false
     force_vsock: false
     # Optional pilot options which are always effective for this

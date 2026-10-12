@@ -54,7 +54,6 @@ pub struct AppContainer {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppContainerRuntime {
-    pub runas: Option<String>,
     pub resume: Option<bool>,
     pub attach: Option<bool>,
     pub pilot_options: Option<Vec<String>>,
@@ -69,7 +68,6 @@ pub struct AppSandbox {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppSandboxRuntime {
-    pub runas: Option<String>,
     pub pilot_options: Option<Vec<String>>,
     pub bubblewrap: Option<Vec<String>>,
 }
@@ -90,7 +88,6 @@ pub struct AppFireCracker {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppFireCrackerRuntime {
-    pub runas: Option<String>,
     pub resume: Option<bool>,
     pub force_vsock: Option<bool>,
     pub pilot_options: Option<Vec<String>>,
@@ -224,7 +221,6 @@ impl AppConfig {
         includes_path: Option<Vec<String>>,
         resume: bool,
         attach: bool,
-        run_as: Option<&String>,
         opts: Option<Vec<String>>,
         pilot_options: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
@@ -257,10 +253,6 @@ impl AppConfig {
             container_config.runtime.as_mut().unwrap()
                 .attach = Some(attach);
         }
-        if let Some(run_as) = run_as {
-            container_config.runtime.as_mut().unwrap()
-                .runas = Some(run_as.to_string());
-        }
         if let Some(opts) = &opts {
             container_config.runtime.as_mut().unwrap().podman = Some(
                 normalize_engine_options(opts)
@@ -282,7 +274,6 @@ impl AppConfig {
         rootfs: &str,
         target_app_path: &str,
         host_app_path: &str,
-        run_as: Option<&String>,
         opts: Option<Vec<String>>,
         pilot_options: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
@@ -298,10 +289,6 @@ impl AppConfig {
         sandbox_config.target_app_path = target_app_path.to_string();
         sandbox_config.host_app_path = host_app_path.to_string();
 
-        if let Some(run_as) = run_as {
-            sandbox_config.runtime.as_mut().unwrap()
-                .runas = Some(run_as.to_string());
-        }
         if let Some(pilot_options) = &pilot_options {
             sandbox_config.runtime.as_mut().unwrap().pilot_options = Some(
                 normalize_pilot_options(pilot_options)
@@ -328,7 +315,6 @@ impl AppConfig {
         vm: &String,
         target_app_path: &str,
         host_app_path: &String,
-        run_as: Option<&String>,
         overlay_size: Option<&String>,
         resume: bool,
         force_vsock: bool,
@@ -356,9 +342,6 @@ impl AppConfig {
         }
         if force_vsock {
             runtime.force_vsock = Some(force_vsock);
-        }
-        if let Some(run_as) = run_as {
-            runtime.runas = Some(run_as.to_string());
         }
         if let Some(pilot_options) = &pilot_options {
             runtime.pilot_options = Some(
@@ -516,7 +499,6 @@ mod tests {
         assert!(read_template("firecracker-flake.yaml").vm.is_some());
         let sandbox = read_template("bubblewrap-flake.yaml").sandbox.unwrap();
         let runtime = sandbox.runtime.unwrap();
-        assert_eq!(Some("any".to_string()), runtime.runas);
         assert_eq!(5, runtime.bubblewrap.unwrap().len());
     }
 

@@ -195,10 +195,6 @@ Registration Options in Short
    options listed above. Can be given more than once. See
    ``man 1 bwrap`` for what is available.
 
-``--run-as``
-   Create the sandbox as another user, through ``sudo``. Only needed
-   if the application itself requires it, ``bwrap`` does not.
-
 ``--pilot-option``
    A runtime option of the pilot, e.g ``%chdir:/work``. The option is
    stored in the ``pilot_options`` list of the flake configuration and

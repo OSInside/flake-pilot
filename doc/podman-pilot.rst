@@ -58,6 +58,15 @@ locally adapt a registration which is provided as part of the system
 without changing its files. Registrations of a user, see the
 rootless mode in **flake-pilot**, do not read it.
 
+A system wide registration can be called by any user. Its container
+runs in the system wide podman setup, the calls of the container
+engine are performed by sudo as root. The behavior of sudo can be
+controlled via the file /etc/sudoers. If there is no system wide
+registration for the given application name, the registration of
+the calling user in `~/.config/flakes` is used. Such a flake is
+called by that user and its container runs in the rootless podman
+setup of that user.
+
 From a content perspective the following registration parameters
 can be set for the supported container engine:
 
@@ -92,15 +101,6 @@ can be set for the supported container engine:
      # Optional registration setup
      # Container runtime parameters
      runtime:
-       # Run the container engine as a user other than the
-       # default target user root. The user may be either
-       # a user name or a numeric user-ID (UID) prefixed
-       # with the ‘#’ character (e.g. #0 for UID 0). The call
-       # of the container engine is performed by sudo.
-       # The behavior of sudo can be controlled via the
-       # file /etc/sudoers
-       runas: root
-
        # Resume the container from previous execution.
        # If the container is still running, the app will be
        # executed inside of this container instance.

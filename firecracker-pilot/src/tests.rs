@@ -69,7 +69,6 @@ fn instance_engine_section() -> crate::config::EngineSection<'static> {
  name: JoJo
  host_app_path: /myapp
  runtime:
-  runas: root
   firecracker:
    rootfs_image_path: /rootfs
    kernel_image_path: /kernel
@@ -257,7 +256,6 @@ fn test_configured_pilot_options() {
  name: JoJo
  host_app_path: /myapp
  runtime:
-  runas: root
   pilot_options:
     - "%port:2000"
   firecracker:

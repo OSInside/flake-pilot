@@ -123,15 +123,6 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
       host_app_path: path/to/program/on/host
 
       runtime:
-        # Run the VM engine as a user other than the
-        # default target user root. The user may be either
-        # a user name or a numeric user-ID (UID) prefixed
-        # with the ‘#’ character (e.g. #0 for UID 0). The call
-        # of the VM engine is performed by sudo.
-        # The behavior of sudo can be controlled via the
-        # file /etc/sudoers
-        runas: root
-
         # Resume the VM from previous execution.
         # If the VM is still running, the app will be
         # executed inside of this VM instance.
@@ -233,7 +224,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 
     // get flake config sections
     let RuntimeSection {
-        runas: _, resume, firecracker: engine_section, ..
+        resume, firecracker: engine_section, ..
     } = config().runtime();
 
     // check for includes
@@ -378,7 +369,7 @@ pub fn start(
     after this function
     !*/
     let RuntimeSection {
-        runas: _, resume, force_vsock, ..
+        resume, force_vsock, ..
     } = config().runtime();
 
     let mut is_blocking: bool = true;

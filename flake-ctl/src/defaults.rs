@@ -155,12 +155,9 @@ pub const BUBBLEWRAP_ID_EXTENSION:&str =
 pub const FIRECRACKER_PROCESS_NAME:&str =
     "firecracker";
 // Names of the processes a bubblewrap sandbox ID file points to.
-// The sandbox is either started directly or through sudo if the
-// registration asks for another user than the calling one
+// Name of the process which runs the sandbox
 pub const BUBBLEWRAP_PROCESS_NAME:&str =
     "bwrap";
-pub const SUDO_PROCESS_NAME:&str =
-    "sudo";
 pub const PROC_DIR:&str =
     "/proc";
 pub const INSTANCE_RUNNING:&str =

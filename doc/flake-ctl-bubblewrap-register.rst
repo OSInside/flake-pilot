@@ -20,7 +20,6 @@ SYNOPSIS
        --opt <OPT>...
        --pilot-option <PILOT_OPTION>...
        --rootfs <ROOTFS>
-       --run-as <RUN_AS>
        --target <TARGET>
 
 DESCRIPTION
@@ -114,16 +113,6 @@ OPTIONS
   tree is mounted as the read only layer of an overlay which
   becomes the root filesystem of the sandbox the application
   runs in
-
---run-as <RUN_AS>
-
-  Name of the user to run bubblewrap. If not specified the
-  sandbox is created by the user calling the application.
-  bwrap creates the sandbox through user namespaces and needs
-  no privileges. Selecting another user is therefore only
-  needed if the application itself requires it. The call of
-  bwrap is performed by sudo in this case, the calling user
-  needs the permission to do so
 
 --target <TARGET>
 

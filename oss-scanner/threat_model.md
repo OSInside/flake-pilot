@@ -57,8 +57,11 @@ The workspace consists of:
     created by root.
   - User registrations (`~/.config/flakes*`) are created by the user. They are used only when
     no system registration of the same name exists (`common/src/registration.rs`).
-  - `runas: root` selects rootful operation. Anything else means rootless operation as the
-    caller.
+  - A system registration can be called by any user; a user registration is called by that
+    user. For podman, a system registration runs in the system wide (rootful, via sudo) podman
+    setup and a user registration in the rootless setup of the caller. Bubblewrap sandboxes
+    always belong to the caller. There is no `runas` setting; a legacy `runas` key in a
+    registration is ignored.
 - **State shared between users:**
   - `/tmp/flakes/` (mode 1777) holds per-uid private directories (`/tmp/flakes/<uid>`, 0700)
     with container IDs, VM IDs, sandbox PIDs and vsock sockets.
@@ -246,7 +249,7 @@ the sudo rights the scenario assumes, and the engine used.
   those rights to make use of them instead.
 - **The caller's own configuration.** Do not report that a user's own registration, environment
   or arguments can make a pilot do things within that user's own privileges or sudo rights. This
-  includes `runas` and `%VAR` expansion. It becomes a finding only when it lets another user, the
+  includes `%VAR` expansion. It becomes a finding only when it lets another user, the
   workload or image content cross a boundary.
 - **Podman provisioning trust.** Do not report that delta containers and layers used with podman
   provisioning run their `systemfiles` script as root on the host. This trust requirement is by

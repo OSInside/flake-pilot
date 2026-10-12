@@ -309,14 +309,14 @@ pub fn reset(
         None => return false
     };
     // Only a resume flake keeps a container instance behind which
-    // could be reset. The engine of the flake runs as the
-    // configured user, its instances live in the podman storage
-    // of that user
-    let runas = match get_resume_runas(&config_file) {
-        Some(runas) => runas,
-        None => return false
-    };
-    let podman_usermode = runas != "root";
+    // could be reset. A flake registered by a user runs in the
+    // rootless podman setup of that user, a system wide flake in
+    // the system wide setup. Its instances live in the podman
+    // storage of that setup
+    if ! is_resume_flake(&config_file) {
+        return false
+    }
+    let podman_usermode = usermode;
 
     let cid_file = match get_cid_file(app, instance, usermode) {
         Some(cid_file) => cid_file,
@@ -364,9 +364,9 @@ pub fn reset(
     true
 }
 
-fn get_resume_runas(config_file: &str) -> Option<String> {
+fn is_resume_flake(config_file: &str) -> bool {
     /*!
-    Provide the user the engine of the given flake runs as
+    Check if the given flake keeps its container instance
 
     The flake is required to be a container application which is
     registered with the resume option. Only such a flake keeps
@@ -378,14 +378,14 @@ fn get_resume_runas(config_file: &str) -> Option<String> {
         Ok(app_conf) => app_conf,
         Err(error) => {
             error!("Failed to load or parse {config_file}: {error:?}");
-            return None
+            return false
         }
     };
     let container_conf = match app_conf.container {
         Some(container_conf) => container_conf,
         None => {
             error!("{config_file} is not a container registration");
-            return None
+            return false
         }
     };
     let runtime_conf = container_conf.runtime;
@@ -394,12 +394,9 @@ fn get_resume_runas(config_file: &str) -> Option<String> {
     {
         error!("{config_file} is not registered with 'resume: true'");
         error!("Only a resume flake keeps a container instance running");
-        return None
+        return false
     }
-    Some(
-        runtime_conf.and_then(|runtime_conf| runtime_conf.runas)
-            .unwrap_or_else(|| "root".to_string())
-    )
+    true
 }
 
 fn get_cid_file(

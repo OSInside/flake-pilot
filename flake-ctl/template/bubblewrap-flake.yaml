@@ -6,7 +6,6 @@ sandbox:
   target_app_path: path/to/program/in/sandbox
   host_app_path: path/to/program/on/host
   runtime:
-    runas: any
     # Optional pilot options which are always effective for this
     # application. The same options can be given at call time and
     # then take precedence over the setting here, e.g:

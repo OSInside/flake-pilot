@@ -77,7 +77,6 @@ r#"sandbox:
     assert_eq!(cfg.sandbox.name, "/var/lib/flakes/leap");
     assert_eq!(cfg.sandbox.host_app_path, "/myapp");
     assert_eq!(cfg.sandbox.target_app_path, None);
-    assert_eq!(cfg.runtime().runas, "");
     assert!(cfg.runtime().bubblewrap.is_none());
 }
 
@@ -101,7 +100,6 @@ r#"sandbox:
  target_app_path: /usr/bin/bash
  host_app_path: /myapp
  runtime:
-  runas: root
   pilot_options:
     - "%interactive"
     - "port:2000"
@@ -115,7 +113,6 @@ r#"sandbox:
 fn test_runtime_config() {
     let cfg = runtime_config();
     assert_eq!(cfg.sandbox.target_app_path, Some("/usr/bin/bash"));
-    assert_eq!(cfg.runtime().runas, "root");
     assert_eq!(
         vec!["--ro-bind /etc/resolv.conf /etc/resolv.conf", "--unshare-pid"],
         cfg.runtime().bubblewrap.unwrap()

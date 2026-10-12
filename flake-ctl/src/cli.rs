@@ -289,17 +289,44 @@ pub enum Network {
 
 #[derive(Subcommand)]
 pub enum Volume {
-    /// Export a local path through NFS for firecracker guests
+    /// Export a local path through NFS to the VM of an application
     Export {
-        /// An absolute path on the host to export via NFS
+        /// An absolute path on the host to export via NFS. The
+        /// path must be owned by the calling user, or by a user
+        /// other than root if called by root. Every access of the
+        /// VM is performed as the owner of the path
         #[clap(long)]
         path: String,
+
+        /// An absolute path to the application on the host. The
+        /// path is exported to the VM of this application, which
+        /// is identified by its address in the private network
+        #[clap(long)]
+        app: String,
+
+        /// The @NAME instance selector the application is
+        /// called with. The path is exported to the VM of that
+        /// instance
+        #[clap(long)]
+        instance: Option<String>,
     },
     /// Remove an exported local path from the NFS configuration
     Release {
         /// An absolute path on the host to remove from the NFS exports
         #[clap(long)]
         path: String,
+
+        /// An absolute path to the application on the host. Only
+        /// the VM of this application is removed from the export.
+        /// Without it, the export is deleted
+        #[clap(long)]
+        app: Option<String>,
+
+        /// The @NAME instance selector the application is
+        /// called with. Only the VM of that instance is removed
+        /// from the export
+        #[clap(long, requires = "app")]
+        instance: Option<String>,
     },
     /// Provide a volume to a VM application
     Add {

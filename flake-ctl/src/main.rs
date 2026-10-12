@@ -186,13 +186,17 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // volume
                 cli::Firecracker::Volume { command } => {
                     match &command {
-                        cli::Volume::Export { path } => {
-                            if ! firecracker::export_volume(path, user) {
+                        cli::Volume::Export { path, app, instance } => {
+                            if ! firecracker::export_volume(
+                                path, app, instance.as_ref(), user
+                            ) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         },
-                        cli::Volume::Release { path } => {
-                            if ! firecracker::release_volume(path) {
+                        cli::Volume::Release { path, app, instance } => {
+                            if ! firecracker::release_volume(
+                                path, app.as_ref(), instance.as_ref(), user
+                            ) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         },

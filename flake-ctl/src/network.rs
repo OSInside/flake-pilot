@@ -1052,13 +1052,73 @@ fn get_network(usermode: bool) -> Option<Ipv4Network> {
     }
 }
 
-pub fn get_client_network(usermode: bool) -> Option<String> {
+pub fn get_guest_address(
+    app: &str, instance: Option<&String>, usermode: bool
+) -> Option<Ipv4Addr> {
     /*!
-    Provide the private network between the host and the VMs in
-    the notation used to allow the VMs as clients, e.g in the
-    NFS exports of the host
+    Provide the address of the VM the given flake instance runs in
+
+    The address is the static ip= option of the kernel commandline
+    of the instance, as written by 'flake-ctl firecracker network
+    add'. It is used to allow exactly this VM as a client, e.g in
+    the NFS exports of the host. Only an address of the private
+    network between the host and the VMs is accepted
     !*/
-    Some(get_network(usermode)?.to_string())
+    let config_file = get_flake_config_file(app, usermode)?;
+    let mut yaml_config = read_flake_config(&config_file)?;
+    let engine_section = get_engine_section(
+        &mut yaml_config, &config_file, "volume"
+    )?;
+    let instance = instance.map(|instance| get_instance_name(instance));
+    let boot_args = get_effective_boot_args(
+        engine_section, instance.as_deref()
+    );
+    let address = match get_boot_args_address(&boot_args) {
+        Some(address) => address,
+        None => {
+            error!("No static guest address found in {config_file}");
+            error!("The address is read from the ip= boot option");
+            error!("{}", get_add_command_hint(app, instance.as_deref()));
+            return None
+        }
+    };
+    let network = get_network(usermode)?;
+    if ! is_vm_address(&network, &address) {
+        error!(
+            "Guest address {address} of {config_file} is not a VM \
+            address of the private network {network}"
+        );
+        return None
+    }
+    Some(address)
+}
+
+fn is_vm_address(network: &Ipv4Network, address: &Ipv4Addr) -> bool {
+    /*!
+    Check if the given address can be the address of a VM in the
+    given network. The network address, the gateway, which is the
+    host side, and the broadcast address are not
+    !*/
+    network.contains(address)
+        && *address != network.address
+        && *address != network.gateway()
+        && u32::from(*address) != network.broadcast()
+}
+
+fn get_add_command_hint(app: &str, instance: Option<&str>) -> String {
+    /*!
+    Provide the command which connects the given flake instance
+    to the private network
+    !*/
+    match instance {
+        Some(instance) => format!(
+            "Please run 'flake-ctl firecracker network add --app {app} \
+            --instance {instance}' first"
+        ),
+        None => format!(
+            "Please run 'flake-ctl firecracker network add --app {app}' first"
+        )
+    }
 }
 
 fn get_free_network() -> Option<Ipv4Network> {
@@ -1762,8 +1822,8 @@ mod tests {
         get_free_address, get_network_candidates, get_network_info,
         get_preferred_network, get_remove_command,
         get_route_list_default_device, get_route_list_networks,
-        select_free_network, select_outgoing_interface, Ipv4Network,
-        NetworkConfig
+        is_vm_address, select_free_network, select_outgoing_interface,
+        Ipv4Network, NetworkConfig
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -2095,5 +2155,18 @@ default via 10.0.0.1 dev wlan0 proto dhcp metric 600
         ).unwrap();
         assert_eq!(None, network_info.address);
         assert_eq!("tap-myapp", network_info.tap);
+    }
+
+    #[test]
+    fn test_is_vm_address() {
+        let network = Ipv4Network::parse("172.16.0.0/24").unwrap();
+        assert!(is_vm_address(&network, &"172.16.0.2".parse().unwrap()));
+        assert!(is_vm_address(&network, &"172.16.0.254".parse().unwrap()));
+        // network, gateway and broadcast address
+        assert!(! is_vm_address(&network, &"172.16.0.0".parse().unwrap()));
+        assert!(! is_vm_address(&network, &"172.16.0.1".parse().unwrap()));
+        assert!(! is_vm_address(&network, &"172.16.0.255".parse().unwrap()));
+        // outside of the private network
+        assert!(! is_vm_address(&network, &"192.168.1.2".parse().unwrap()));
     }
 }

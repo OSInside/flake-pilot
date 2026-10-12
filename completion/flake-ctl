@@ -54,7 +54,7 @@ __flake_ctl_firecracker_network() {
 
 __flake_ctl_firecracker_volume() {
     if [ "${COMP_WORDS[3]}" = "export" ] || [ "${COMP_WORDS[3]}" = "release" ];then
-        __comp_reply_unused "--path --help"
+        __comp_reply_unused "--path --app --instance --help"
         return 0
     fi
     if [ "${COMP_WORDS[3]}" = "add" ] || [ "${COMP_WORDS[3]}" = "remove" ];then

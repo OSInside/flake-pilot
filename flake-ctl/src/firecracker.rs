@@ -25,7 +25,9 @@
 use flakes::config::get_flakes_dir;
 use std::ffi::OsStr;
 use std::io::{self, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::net::Ipv4Addr;
+use uzers::get_current_uid;
 use std::process::{Command, Stdio};
 use tempfile::{Builder, NamedTempFile, TempDir};
 use std::path::Path;
@@ -692,22 +694,37 @@ pub fn run_as(program: &str, user: &str) -> Command {
     call
 }
 
-pub fn export_volume(path: &str, usermode: bool) -> bool {
+pub fn export_volume(
+    path: &str, app: &str, instance: Option<&String>, usermode: bool
+) -> bool {
     /*!
-    Export the given host path via NFS for firecracker guests
+    Export the given host path via NFS to the VM of a flake
 
-    The export is limited to the private network between the
-    host and the VMs, which is the network of the host setup
-    created by 'flake-ctl firecracker network init'
+    The export is limited to the VM the given flake instance runs
+    in, which is identified by its address in the private network
+    between the host and the VMs. Exporting the same path for
+    further flakes or instances adds their VMs to the export.
+
+    Only a path owned by a user can be exported. Every access of
+    a VM is mapped to that user, no matter which user, including
+    root, performs it inside of the VM. A VM therefore gets the
+    permissions of the owner of the path on it and nothing more
     !*/
     if ! validate_volume_export_path(path, true) {
         return false
     }
-    let client_network = match network::get_client_network(usermode) {
-        Some(client_network) => client_network,
+    let owner = match get_volume_owner(path) {
+        Some(owner) => owner,
         None => return false
     };
-    if ! update_nfs_exports(path, Some(&client_network)) {
+    let guest = match network::get_guest_address(app, instance, usermode) {
+        Some(guest) => guest,
+        None => return false
+    };
+    let update = NfsExportUpdate::Add {
+        guest, options: nfs_export_options(&owner)
+    };
+    if ! update_nfs_exports(path, update) {
         return false
     }
     if nfs_server_is_running() {
@@ -717,17 +734,94 @@ pub fn export_volume(path: &str, usermode: bool) -> bool {
     }
 }
 
-pub fn release_volume(path: &str) -> bool {
+pub fn release_volume(
+    path: &str, app: Option<&String>, instance: Option<&String>,
+    usermode: bool
+) -> bool {
     /*!
     Remove the given host path from the NFS exports
+
+    Called with an application only the VM of that flake instance
+    is removed from the export. The export itself is deleted once
+    no VM is left. Without an application the export is deleted
     !*/
     if ! validate_volume_export_path(path, false) {
         return false
     }
-    if ! update_nfs_exports(path, None) {
+    let update = match app {
+        Some(app) => match network::get_guest_address(
+            app, instance, usermode
+        ) {
+            Some(guest) => NfsExportUpdate::RemoveGuest(guest),
+            None => return false
+        },
+        None => NfsExportUpdate::RemoveAll
+    };
+    if ! update_nfs_exports(path, update) {
         return false
     }
     restart_nfs_server()
+}
+
+// VolumeOwner is the user every access of a VM to an exported
+// volume is mapped to
+struct VolumeOwner {
+    uid: u32,
+    gid: u32
+}
+
+fn get_volume_owner(path: &str) -> Option<VolumeOwner> {
+    /*!
+    Provide the owner of the given volume path
+
+    The path is required to be owned by the calling user. Called
+    by root, a path owned by any user other than root is accepted.
+    A path owned by root is refused, the VMs would get the
+    permissions of root on it. The path has to be given the way
+    the NFS server resolves it, a path which leads through a
+    symbolic link is refused
+    !*/
+    let resolved_path = match fs::canonicalize(path) {
+        Ok(resolved_path) => resolved_path,
+        Err(error) => {
+            error!("Failed to resolve volume path {path:?}: {error}");
+            return None
+        }
+    };
+    if resolved_path != Path::new(path) {
+        error!("Volume path {path:?} leads through a symbolic link");
+        error!("Please use the resolved path {}", resolved_path.display());
+        return None
+    }
+    let metadata = match fs::metadata(&resolved_path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            error!("Failed to read volume path {path:?}: {error}");
+            return None
+        }
+    };
+    let owner = VolumeOwner { uid: metadata.uid(), gid: metadata.gid() };
+    if owner.uid == 0 {
+        error!("Volume path {path:?} is owned by root");
+        error!("Only a path owned by a user other than root can be exported");
+        return None
+    }
+    let calling_uid = get_current_uid();
+    if calling_uid != 0 && owner.uid != calling_uid {
+        error!("Volume path {path:?} is not owned by the calling user");
+        return None
+    }
+    Some(owner)
+}
+
+fn nfs_export_options(owner: &VolumeOwner) -> String {
+    /*!
+    Provide the NFS export options for a volume of the given owner
+    !*/
+    format!(
+        "{},anonuid={},anongid={}",
+        defaults::NFS_EXPORT_OPTIONS, owner.uid, owner.gid
+    )
 }
 
 fn validate_volume_export_path(path: &str, must_exist: bool) -> bool {
@@ -756,33 +850,90 @@ fn validate_volume_export_path(path: &str, must_exist: bool) -> bool {
     true
 }
 
-fn update_nfs_exports(path: &str, client_network: Option<&str>) -> bool {
-    /*!
-    Add or remove the flake-pilot managed NFS export entry
+// NfsExportUpdate is a change of the managed NFS export of a path
+enum NfsExportUpdate {
+    /// Allow the VM of the given address with the given options
+    Add { guest: Ipv4Addr, options: String },
+    /// Remove the VM of the given address
+    RemoveGuest(Ipv4Addr),
+    /// Delete the export
+    RemoveAll
+}
 
-    The entry is created for the given client network. Without
-    a network the entry is deleted
+// NfsExportClient is a VM the managed NFS export of a path is
+// allowed for
+#[derive(Debug, PartialEq)]
+struct NfsExportClient {
+    guest: Ipv4Addr,
+    options: String
+}
+
+fn update_nfs_exports(path: &str, update: NfsExportUpdate) -> bool {
+    /*!
+    Change the flake-pilot managed NFS export entry of the path
     !*/
     let exports = match read_nfs_exports() {
         Some(exports) => exports,
         None => return false
     };
-    let desired_entry = client_network.map(
-        |client_network| nfs_export_entry(path, client_network)
-    );
+    match get_updated_nfs_exports(&exports, path, update) {
+        Some(updated_exports) => write_nfs_exports(&updated_exports),
+        None => true
+    }
+}
+
+fn get_updated_nfs_exports(
+    exports: &str, path: &str, update: NfsExportUpdate
+) -> Option<String> {
+    /*!
+    Provide the content of the exports file with the given change
+    of the managed NFS export entry of the path applied. None is
+    returned if the content stays the same
+
+    The entry lists every VM it is allowed for as a client of its
+    own. A client which is not the address of a single VM, as
+    written by former versions for the whole private network, is
+    dropped
+    !*/
     let managed_entries: Vec<&str> = exports.lines().filter(
         |line| is_flake_pilot_nfs_export(line, path)
     ).collect();
-    if let Some(ref desired_entry) = desired_entry {
-        if managed_entries.len() == 1
-            && managed_entries[0].trim() == *desired_entry
+    let mut clients = get_nfs_export_clients(&managed_entries, path);
+    match update {
+        NfsExportUpdate::Add { guest, options } => {
+            clients.retain(|client| client.guest != guest);
+            clients.push(NfsExportClient { guest, options: options.clone() });
+            // All VMs access the volume as its owner, an owner
+            // which has changed applies to all of them
+            for client in clients.iter_mut() {
+                client.options = options.clone()
+            }
+        },
+        NfsExportUpdate::RemoveGuest(guest) => {
+            if ! clients.iter().any(|client| client.guest == guest) {
+                info!("{guest} is not a client of the NFS export for {path}");
+            }
+            clients.retain(|client| client.guest != guest)
+        },
+        NfsExportUpdate::RemoveAll => clients.clear()
+    }
+    let desired_entry = if clients.is_empty() {
+        None
+    } else {
+        Some(nfs_export_entry(path, &clients))
+    };
+    match desired_entry {
+        Some(ref desired_entry) if managed_entries.len() == 1
+            && managed_entries[0].trim() == *desired_entry =>
         {
             info!("Keeping existing NFS export for {path}");
-            return true
-        }
-    } else if managed_entries.is_empty() {
-        info!("No flake-pilot NFS export entry found for {path}");
-        return true
+            return None
+        },
+        None if managed_entries.is_empty() => {
+            info!("No flake-pilot NFS export entry found for {path}");
+            return None
+        },
+        _ => { }
     }
 
     let mut updated_lines: Vec<String> = exports.lines().filter(
@@ -800,7 +951,37 @@ fn update_nfs_exports(path: &str, client_network: Option<&str>) -> bool {
     if ! updated_exports.is_empty() {
         updated_exports.push('\n');
     }
-    write_nfs_exports(&updated_exports)
+    Some(updated_exports)
+}
+
+fn get_nfs_export_clients(
+    managed_entries: &[&str], path: &str
+) -> Vec<NfsExportClient> {
+    /*!
+    Read the VMs the given managed NFS export entries allow
+    !*/
+    let mut clients: Vec<NfsExportClient> = Vec::new();
+    for entry in managed_entries {
+        let entry = entry.trim()
+            .trim_end_matches(FLAKE_PILOT_NFS_EXPORT_MARKER);
+        for client_spec in entry.split_whitespace().skip(1) {
+            let (client, options) = client_spec.split_once('(')
+                .unwrap_or((client_spec, ""));
+            match client.parse::<Ipv4Addr>() {
+                Ok(guest) if ! clients.iter().any(
+                    |known| known.guest == guest
+                ) => clients.push(NfsExportClient {
+                    guest, options: options.trim_end_matches(')').to_string()
+                }),
+                Ok(_) => { },
+                Err(_) => warn!(
+                    "Dropping NFS export of {path} for {client}, \
+                    only the address of a single VM is allowed"
+                )
+            }
+        }
+    }
+    clients
 }
 
 fn read_nfs_exports() -> Option<String> {
@@ -850,15 +1031,17 @@ fn write_nfs_exports(exports: &str) -> bool {
     run_ok(&mut call, &format!("install {}", defaults::NFS_EXPORTS_FILE))
 }
 
-fn nfs_export_entry(path: &str, client_network: &str) -> String {
+fn nfs_export_entry(path: &str, clients: &[NfsExportClient]) -> String {
     /*!
     Provide the managed NFS export line for the given path
     !*/
+    let clients: Vec<String> = clients.iter().map(
+        |client| format!("{}({})", client.guest, client.options)
+    ).collect();
     format!(
-        "{} {}({}) {}",
+        "{} {} {}",
         escape_nfs_export_path(path),
-        client_network,
-        defaults::NFS_EXPORT_OPTIONS,
+        clients.join(" "),
         FLAKE_PILOT_NFS_EXPORT_MARKER
     )
 }
@@ -1124,5 +1307,148 @@ pub fn purge_vm(vm: &str, usermode: bool) {
         Err(error) => {
             error!("Error removing directory {image_dir}: {error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    const OPTIONS: &str =
+        "rw,sync,no_subtree_check,all_squash,anonuid=1000,anongid=100";
+
+    fn add(guest: &str) -> NfsExportUpdate {
+        NfsExportUpdate::Add {
+            guest: guest.parse().unwrap(), options: OPTIONS.to_string()
+        }
+    }
+
+    fn entry(path: &str, guests: &[&str]) -> String {
+        let clients: Vec<String> = guests.iter().map(
+            |guest| format!("{guest}({OPTIONS})")
+        ).collect();
+        format!(
+            "{path} {} {FLAKE_PILOT_NFS_EXPORT_MARKER}", clients.join(" ")
+        )
+    }
+
+    #[test]
+    fn test_nfs_export_options() {
+        assert_eq!(
+            nfs_export_options(&VolumeOwner { uid: 1000, gid: 100 }),
+            OPTIONS
+        );
+        assert!(! defaults::NFS_EXPORT_OPTIONS.contains("no_root_squash"));
+        assert!(! defaults::NFS_EXPORT_OPTIONS.contains("insecure"));
+    }
+
+    #[test]
+    fn test_export_is_created_per_guest() {
+        let exports = "/other host(ro)\n";
+        let updated = get_updated_nfs_exports(
+            exports, "/srv/vol", add("172.16.0.2")
+        ).unwrap();
+        assert_eq!(
+            updated,
+            format!("/other host(ro)\n{}\n", entry("/srv/vol", &["172.16.0.2"]))
+        );
+        // A further VM is added to the same entry
+        let updated = get_updated_nfs_exports(
+            &updated, "/srv/vol", add("172.16.0.3")
+        ).unwrap();
+        assert_eq!(
+            updated,
+            format!(
+                "/other host(ro)\n{}\n",
+                entry("/srv/vol", &["172.16.0.2", "172.16.0.3"])
+            )
+        );
+        // Exporting again for a known VM changes nothing
+        assert_eq!(
+            get_updated_nfs_exports(&updated, "/srv/vol", add("172.16.0.3")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_export_replaces_network_wide_entry() {
+        let exports = format!(
+            "/srv/vol 172.16.0.0/24(rw,sync,no_subtree_check,\
+            no_root_squash,insecure) {FLAKE_PILOT_NFS_EXPORT_MARKER}\n\
+            /srv/vol 10.0.0.1(ro)\n"
+        );
+        let updated = get_updated_nfs_exports(
+            &exports, "/srv/vol", add("172.16.0.2")
+        ).unwrap();
+        // The export not managed by flake-pilot is kept as it is
+        assert_eq!(
+            updated,
+            format!(
+                "/srv/vol 10.0.0.1(ro)\n{}\n",
+                entry("/srv/vol", &["172.16.0.2"])
+            )
+        );
+        assert!(! updated.contains("no_root_squash"));
+        assert!(! updated.contains("insecure"));
+    }
+
+    #[test]
+    fn test_export_release() {
+        let exports = format!(
+            "{}\n", entry("/srv/vol", &["172.16.0.2", "172.16.0.3"])
+        );
+        let updated = get_updated_nfs_exports(
+            &exports, "/srv/vol",
+            NfsExportUpdate::RemoveGuest("172.16.0.2".parse().unwrap())
+        ).unwrap();
+        assert_eq!(
+            updated, format!("{}\n", entry("/srv/vol", &["172.16.0.3"]))
+        );
+        // The entry is deleted with its last VM
+        assert_eq!(
+            get_updated_nfs_exports(
+                &updated, "/srv/vol",
+                NfsExportUpdate::RemoveGuest("172.16.0.3".parse().unwrap())
+            ),
+            Some(String::new())
+        );
+        assert_eq!(
+            get_updated_nfs_exports(
+                &exports, "/srv/vol", NfsExportUpdate::RemoveAll
+            ),
+            Some(String::new())
+        );
+        // Nothing to release
+        assert_eq!(
+            get_updated_nfs_exports(
+                "/srv/vol 10.0.0.1(ro)\n", "/srv/vol",
+                NfsExportUpdate::RemoveAll
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_get_volume_owner() {
+        // A path owned by root is never exported
+        assert!(get_volume_owner("/").is_none());
+
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let volume = tmp_dir.path().join("volume");
+        fs::create_dir(&volume).unwrap();
+        let link = tmp_dir.path().join("link");
+        symlink(&volume, &link).unwrap();
+
+        // A path leading through a symbolic link is refused
+        assert!(get_volume_owner(link.to_str().unwrap()).is_none());
+
+        // The path is owned by the calling user, which is only
+        // accepted if that user is not root
+        let resolved = fs::canonicalize(&volume).unwrap();
+        assert_eq!(
+            get_volume_owner(resolved.to_str().unwrap()).is_some(),
+            get_current_uid() != 0
+        );
     }
 }

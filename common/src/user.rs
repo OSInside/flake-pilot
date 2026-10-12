@@ -31,6 +31,7 @@ use uzers::{get_current_uid, get_current_username};
 use crate::lookup::{Lookup};
 use crate::error::FlakeError;
 use crate::openat;
+use crate::defaults;
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct User<'a> {
@@ -92,7 +93,14 @@ impl User<'_> {
         Call command via sudo, preserving the given environment
         variables. Only variables the called program really needs
         should be listed here
+
+        The command has to be given by its absolute path, see
+        the tool definitions in defaults
         !*/
+        debug_assert!(
+            Path::new(command.as_ref()).is_absolute(),
+            "sudo target {:?} is not an absolute path", command.as_ref()
+        );
         let mut c = Command::new("sudo");
         if ! keep_env.is_empty() {
             c.arg(format!("--preserve-env={}", keep_env.join(",")));
@@ -109,7 +117,7 @@ pub fn exists(filename: &str, user: User) -> Result<bool, FlakeError> {
     /*!
     check file exists via sudo
     !*/
-    let mut call = user.run("test");
+    let mut call = user.run(defaults::TEST_TOOL);
     call.arg("-e").arg(filename);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
@@ -154,7 +162,7 @@ pub fn cp(source: &str, target: &str, user: User) -> Result<(), FlakeError> {
     }
     no_symlink_in_path(source)?;
     no_symlink_in_path(target)?;
-    let mut call = user.run("cp");
+    let mut call = user.run(defaults::CP_TOOL);
     call.arg(source).arg(target);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
@@ -181,7 +189,7 @@ pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), FlakeError> {
         )
     }
     no_symlink_in_path(filename)?;
-    let mut call = user.run("chmod");
+    let mut call = user.run(defaults::CHMOD_TOOL);
     call.arg(mode).arg(filename);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
@@ -224,7 +232,7 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), FlakeError> {
     if Path::new(dirname).exists() {
         return Ok(())
     }
-    let mut mkdir_call = user.run("mkdir");
+    let mut mkdir_call = user.run(defaults::MKDIR_TOOL);
     mkdir_call.arg("-p").arg("-m").arg(mode).arg(dirname);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", mkdir_call.get_program(), mkdir_call.get_args());
@@ -236,7 +244,7 @@ pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), FlakeError> {
     // checked again. The directory could have been replaced by a
     // link in the time between its creation and this call
     no_symlink_in_path(dirname)?;
-    let mut chmod_call = user.run("chmod");
+    let mut chmod_call = user.run(defaults::CHMOD_TOOL);
     chmod_call.arg(mode).arg(dirname);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", chmod_call.get_program(), chmod_call.get_args());

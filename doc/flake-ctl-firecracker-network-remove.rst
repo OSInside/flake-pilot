@@ -30,13 +30,13 @@ application. All of the setup created with
 
    .. code:: bash
 
-      sudo iptables -D FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
+      sudo /usr/sbin/iptables -D FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
 
 2. The TAP device of the application
 
    .. code:: bash
 
-      sudo ip tuntap del tap-<APP> mode tap
+      sudo /usr/sbin/ip tuntap del tap-<APP> mode tap
 
    The address of the device, its link state and the host route
    to the address of the application are deleted along with it

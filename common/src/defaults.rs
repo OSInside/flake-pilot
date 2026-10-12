@@ -34,6 +34,30 @@ pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
 pub const BUBBLEWRAP_IDS_DIR: &str = "/tmp/flakes";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
+// Programs called through sudo. A program given by its name is
+// looked up by sudo in its secure_path or in the PATH of the
+// caller, depending on the sudo configuration, and a sudoers
+// rule only matches the absolute path of a program. Therefore
+// every program called through sudo is given by its absolute
+// path. The locations are the ones of a merged /usr as it is
+// used by all distributions flake-pilot is packaged for
+pub const TRUE_TOOL: &str = "/usr/bin/true";
+pub const TEST_TOOL: &str = "/usr/bin/test";
+pub const SH_TOOL: &str = "/usr/bin/sh";
+pub const CP_TOOL: &str = "/usr/bin/cp";
+pub const MV_TOOL: &str = "/usr/bin/mv";
+pub const CHMOD_TOOL: &str = "/usr/bin/chmod";
+pub const MKDIR_TOOL: &str = "/usr/bin/mkdir";
+pub const INSTALL_TOOL: &str = "/usr/bin/install";
+pub const TAR_TOOL: &str = "/usr/bin/tar";
+pub const RSYNC_TOOL: &str = "/usr/bin/rsync";
+pub const MOUNT_TOOL: &str = "/usr/bin/mount";
+pub const UMOUNT_TOOL: &str = "/usr/bin/umount";
+pub const SYSTEMCTL_TOOL: &str = "/usr/bin/systemctl";
+pub const IPTABLES_TOOL: &str = "/usr/sbin/iptables";
+pub const IP_TOOL: &str = "/usr/sbin/ip";
+pub const SYSCTL_TOOL: &str = "/usr/sbin/sysctl";
+pub const NFS_EXPORTFS_TOOL: &str = "/usr/sbin/exportfs";
 // File name extension of the meta data files podman-pilot
 // creates for its container instances
 pub const PODMAN_ID_EXTENSION: &str = "cid";

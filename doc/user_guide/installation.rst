@@ -77,6 +77,11 @@ creating a network device, are delegated to the ``sudo`` binary of
 the system. Therefore a user who registers or runs a flake that
 requires such an action needs the corresponding ``sudo`` permissions.
 
+Every program is passed to ``sudo`` with its absolute path, e.g
+``/usr/bin/mount`` or ``/usr/sbin/iptables``, and never looked up in
+the ``PATH`` of the caller. A rule in /etc/sudoers which grants these
+permissions therefore has to name the programs the same way.
+
 Applications which run rootless, e.g a plain container flake started
 through rootless podman, do not need any of this.
 

@@ -685,7 +685,14 @@ pub fn run_as(program: &str, user: &str) -> Command {
     An empty user indicates that the program is called with the
     privileges of the caller. In all other cases the call is
     passed to sudo to run it as the specified user
+
+    The program has to be given by its absolute path, see the
+    tool definitions in defaults
     !*/
+    debug_assert!(
+        Path::new(program).is_absolute(),
+        "sudo target {} is not an absolute path", program
+    );
     if user.is_empty() {
         return Command::new(program)
     }
@@ -1023,7 +1030,7 @@ fn write_nfs_exports(exports: &str) -> bool {
         error!("Failed to flush temp exports file: {error}");
         return false
     }
-    let mut call = run_as("install", "root");
+    let mut call = run_as(defaults::INSTALL_TOOL, "root");
     call.arg("-m")
         .arg("644")
         .arg(temp.path())
@@ -1068,7 +1075,7 @@ fn nfs_server_is_running() -> bool {
     /*!
     Check if the NFS server systemd service is active
     !*/
-    let mut call = run_as("systemctl", "root");
+    let mut call = run_as(defaults::SYSTEMCTL_TOOL, "root");
     call.arg("is-active")
         .arg("--quiet")
         .arg(defaults::NFS_SERVER_SERVICE);
@@ -1089,7 +1096,7 @@ fn start_nfs_server() -> bool {
     Start the NFS server service
     !*/
     info!("Starting {}...", defaults::NFS_SERVER_SERVICE);
-    let mut call = run_as("systemctl", "root");
+    let mut call = run_as(defaults::SYSTEMCTL_TOOL, "root");
     call.arg("start").arg(defaults::NFS_SERVER_SERVICE);
     run_ok(&mut call, &format!("start {}", defaults::NFS_SERVER_SERVICE))
 }
@@ -1099,7 +1106,7 @@ fn restart_nfs_server() -> bool {
     Restart the NFS server service
     !*/
     info!("Restarting {}...", defaults::NFS_SERVER_SERVICE);
-    let mut call = run_as("systemctl", "root");
+    let mut call = run_as(defaults::SYSTEMCTL_TOOL, "root");
     call.arg("restart").arg(defaults::NFS_SERVER_SERVICE);
     run_ok(&mut call, &format!("restart {}", defaults::NFS_SERVER_SERVICE))
 }
@@ -1137,7 +1144,7 @@ pub fn mkdir(dirname: &String, user: &str) -> bool {
     /*!
     Make directory
     !*/
-    let mut call = run_as("mkdir", user);
+    let mut call = run_as(defaults::MKDIR_TOOL, user);
     call.arg("-p").arg(dirname);
     match call.status() {
         Ok(_) => { },
@@ -1153,7 +1160,7 @@ pub fn mv(source: &str, target: &String, user: &str) -> bool {
     /*!
     Move file
     !*/
-    let mut call = run_as("mv", user);
+    let mut call = run_as(defaults::MV_TOOL, user);
     call.arg(source).arg(target);
     match call.status() {
         Ok(_) => { },
@@ -1169,7 +1176,7 @@ pub fn copy(source: &str, target: &String, user: &str) -> bool {
     /*!
     Copy file
     !*/
-    let mut call = run_as("cp", user);
+    let mut call = run_as(defaults::CP_TOOL, user);
     call.arg(source).arg(target);
     match call.status() {
         Ok(_) => { },
@@ -1187,7 +1194,7 @@ pub fn mount_fs_image(
     /*!
     Mount filesystem image
     !*/
-    let mut call = run_as("mount", user);
+    let mut call = run_as(defaults::MOUNT_TOOL, user);
     call.arg(fs_name).arg(mount_point);
     match call.status() {
         Ok(_) => { },
@@ -1203,7 +1210,7 @@ pub fn umount(mount_point: &str, user: &str) -> bool {
     /*!
     Umount given mount_point
     !*/
-    let mut call = run_as("umount", user);
+    let mut call = run_as(defaults::UMOUNT_TOOL, user);
     call.arg(mount_point);
     match call.status() {
         Ok(_) => { },

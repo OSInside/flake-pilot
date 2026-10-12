@@ -335,7 +335,7 @@ fn run_creation(
                 // This and following actions requires root privilges
                 // make sure we request them once from sudo
                 let root_user = User::from("root");
-                let mut root = root_user.run("true");
+                let mut root = root_user.run(defaults::TRUE_TOOL);
                 root.status()?;
 
                 // Mount and sync...
@@ -1494,7 +1494,7 @@ pub fn mount_vm(
     let image_mount_point = format!(
         "{}/{}", sub_dir, defaults::IMAGE_ROOT
     );
-    let mut mount_image = user.run("mount");
+    let mut mount_image = user.run(defaults::MOUNT_TOOL);
     mount_image.arg(rootfs_image_path)
         .arg(&image_mount_point);
     if Lookup::is_debug() {
@@ -1505,7 +1505,7 @@ pub fn mount_vm(
     let overlay_mount_point = format!(
         "{}/{}", sub_dir, defaults::IMAGE_OVERLAY
     );
-    let mut mount_overlay = user.run("mount");
+    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
     mount_overlay.arg("-t")
         .arg("ext4")
         .arg("-o")
@@ -1530,7 +1530,7 @@ pub fn mount_vm(
         .try_for_each(|path| mkdir(&path, "755", User::ROOT))?;
 
     let root_mount_point = format!("{}/{}", sub_dir, defaults::OVERLAY_ROOT);
-    let mut mount_overlay = user.run("mount");
+    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
     mount_overlay.arg("-t")
         .arg("overlay")
         .arg("overlayfs")
@@ -1560,7 +1560,7 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
         defaults::IMAGE_OVERLAY,
         defaults::IMAGE_ROOT,
     ].iter().map(|mount_point| {
-        let mut umount = user.run("umount");
+        let mut umount = user.run(defaults::UMOUNT_TOOL);
         umount.stderr(Stdio::null());
         umount.stdout(Stdio::null());
         umount.arg(format!("{}/{}", sub_dir, mount_point));

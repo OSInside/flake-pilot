@@ -146,7 +146,7 @@ impl IO {
         !*/
         for tar in tar_includes {
             FlakeLog::debug(&format!("Provision tar archive: [{tar}]"));
-            let mut call = user.run("tar");
+            let mut call = user.run(defaults::TAR_TOOL);
             call.arg("-C").arg(target)
                 .arg("-xf").arg(tar);
             FlakeLog::debug(
@@ -176,7 +176,7 @@ impl IO {
         /*!
         Sync data from source path to target path
         !*/
-        let mut call = user.run("rsync");
+        let mut call = user.run(defaults::RSYNC_TOOL);
         call.args(defaults::RSYNC_OPTIONS);
         for option in options {
             call.arg(option);

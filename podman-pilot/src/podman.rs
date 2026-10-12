@@ -185,7 +185,7 @@ pub fn create(
         // provisioning needs root permissions for mount
         // make sure we have them for this session via sudo
         user = User::from("root");
-        let mut root = user.run("true");
+        let mut root = user.run(flakes::defaults::TRUE_TOOL);
         root.status()?;
     }
 
@@ -702,7 +702,7 @@ pub fn sync_host(
     temp_files_from.write_all(removed_files_contents.as_bytes())?;
     cp(temp_files_from.path().to_str().unwrap(), &files_from, User::ROOT)?;
 
-    let mut call = user.run("rsync");
+    let mut call = user.run(flakes::defaults::RSYNC_TOOL);
     call.args(flakes::defaults::RSYNC_OPTIONS);
     if ignore_missing {
         call.arg("--ignore-missing-args");
@@ -827,7 +827,7 @@ pub fn build_system_dependencies(
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
         }
-        let mut call = user.run("sh");
+        let mut call = user.run(flakes::defaults::SH_TOOL);
         call.arg(system_deps);
         if Lookup::is_debug() {
             debug!("{:?} {:?}", call.get_program(), call.get_args());

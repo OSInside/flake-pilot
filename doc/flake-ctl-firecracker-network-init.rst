@@ -38,7 +38,7 @@ this setup by:
 
    .. code:: bash
 
-      sudo sysctl -w net.ipv4.ip_forward=1
+      sudo /usr/sbin/sysctl -w net.ipv4.ip_forward=1
 
 3. Setting up Network Address Translation (NAT) on the outgoing
    interface. This is the given interface or, if none is given, the
@@ -46,8 +46,8 @@ this setup by:
 
    .. code:: bash
 
-      sudo iptables -t nat -A POSTROUTING -o <OUTGOING_INTERFACE> -j MASQUERADE
-      sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+      sudo /usr/sbin/iptables -t nat -A POSTROUTING -o <OUTGOING_INTERFACE> -j MASQUERADE
+      sudo /usr/sbin/iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
 All traffic of the VMs appears as if it would originate from the
 outgoing interface. As the setup changes the network configuration of

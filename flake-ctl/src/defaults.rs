@@ -182,6 +182,8 @@ pub const IPTABLES_TOOL:&str =
     "iptables";
 pub const IP_TOOL:&str =
     "ip";
+pub const SYSCTL_TOOL:&str =
+    "sysctl";
 pub const NFS_EXPORTFS_TOOL:&str =
     "exportfs";
 pub const NFS_EXPORTS_FILE:&str =
@@ -200,8 +202,8 @@ pub const NFS_VOLUME_DELIMITER:char =
 // Kernel switch to turn the host into a router. Required to
 // forward the traffic of a VM from its TUN/TAP device to the
 // outgoing interface of the host
-pub const PROC_IP_FORWARD:&str =
-    "/proc/sys/net/ipv4/ip_forward";
+pub const SYSCTL_IP_FORWARD:&str =
+    "net.ipv4.ip_forward";
 // Setup of the private network between the host and the VMs.
 // The addresses only exist between the TAP device of an instance
 // and the VM behind it. The traffic to the outside world is

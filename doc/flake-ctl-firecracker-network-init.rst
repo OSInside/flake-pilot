@@ -38,7 +38,7 @@ this setup by:
 
    .. code:: bash
 
-      sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+      sudo sysctl -w net.ipv4.ip_forward=1
 
 3. Setting up Network Address Translation (NAT) on the outgoing
    interface. This is the given interface or, if none is given, the

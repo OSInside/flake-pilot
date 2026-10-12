@@ -1425,11 +1425,11 @@ fn enable_ip_forward() -> bool {
     /*!
     Turn on IPv4 forwarding on the host
     !*/
-    let proc_file = defaults::PROC_IP_FORWARD;
+    let ip_forward = format!("{}=1", defaults::SYSCTL_IP_FORWARD);
     info!("Enabling IP forwarding...");
-    let mut call = run_as("sh", "root");
-    call.arg("-c").arg(format!("echo 1 > {proc_file}"));
-    run_ok(&mut call, &format!("write 1 to {proc_file}"))
+    let mut call = run_as(defaults::SYSCTL_TOOL, "root");
+    call.arg("-w").arg(&ip_forward);
+    run_ok(&mut call, &format!("run sysctl -w {ip_forward}"))
 }
 
 struct NatRule<'a> {

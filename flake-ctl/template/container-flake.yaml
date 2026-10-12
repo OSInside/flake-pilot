@@ -9,7 +9,6 @@ container:
   check_host_dependencies: false
   layers: ~
   runtime:
-    runas: any
     resume: false
     attach: false
     # Optional pilot options which are always effective for this

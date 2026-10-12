@@ -61,6 +61,8 @@ r#"container:
  host_app_path: /myapp
  check_host_dependencies: false
  runtime:
+  # runas is no longer used, registrations which still
+  # provide it must stay readable
   runas: root
   pilot_options:
     - "%ignore_missing_volume_path"

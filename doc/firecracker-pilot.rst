@@ -61,6 +61,12 @@ locally adapt a registration which is provided as part of the system
 without changing its files. Registrations of a user, see the
 rootless mode in **flake-pilot**, do not read it.
 
+A system wide registration can be called by any user, a registration
+of a user is called by that user. The VM is started by the calling
+user. Actions which need root privileges, like mounting the VM images
+to provision included data, are performed by sudo. The behavior of
+sudo can be controlled via the file /etc/sudoers.
+
 From a content perspective the following registration parameters
 can be set for the firecracker engine:
 
@@ -72,15 +78,6 @@ can be set for the firecracker engine:
       host_app_path: path/to/program/on/host
 
       runtime:
-        # Run the VM engine as a user other than the
-        # default target user root. The user may be either
-        # a user name or a numeric user-ID (UID) prefixed
-        # with the ‘#’ character (e.g. #0 for UID 0). The call
-        # of the VM engine is performed by sudo.
-        # The behavior of sudo can be controlled via the
-        # file /etc/sudoers
-        runas: root
-
         # Resume the VM from previous execution.
         # If the VM is still running, the app will be
         # executed inside of this VM instance.

@@ -26,7 +26,6 @@ __flake_ctl_firecracker_register() {
         --force-vsock
         --resume
         --pilot-option
-        --run-as
         --target
         --vm
         --help
@@ -75,7 +74,6 @@ __flake_ctl_bubblewrap_register() {
         --opt
         --pilot-option
         --rootfs
-        --run-as
         --target
         --force
         --help
@@ -137,7 +135,6 @@ __flake_ctl_podman_register() {
         --opt
         --resume
         --pilot-option
-        --run-as
         --target
         --help
     "

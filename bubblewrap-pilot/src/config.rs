@@ -107,17 +107,6 @@ pub struct SandboxSection<'a> {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct RuntimeSection<'a> {
-    /// Name of the user the sandbox is created for
-    ///
-    /// bubblewrap uses user namespaces and needs no privileges.
-    /// The sandbox therefore belongs to the calling user unless
-    /// another user is configured here. A sandbox of another
-    /// user is created through sudo
-    ///
-    /// Default: any, which is the calling user
-    #[serde(default)]
-    pub runas: &'a str,
-
     /// Optional pilot options in the format:
     /// - %name or %name:value
     ///
@@ -126,7 +115,7 @@ pub struct RuntimeSection<'a> {
     /// here is always effective and does not have to be given
     /// at call time. An option of the same name provided at call
     /// time takes precedence over the configured one
-    #[serde(default)]
+    #[serde(default, borrow)]
     pub pilot_options: Option<Vec<&'a str>>,
 
     /// Caller arguments for the bubblewrap engine in the format:

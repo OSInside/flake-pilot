@@ -120,15 +120,6 @@ pub struct VMSection<'a> {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct RuntimeSection<'a> {
-    /// Run the VM engine as a user other than the
-    /// default target user root. The user may be either
-    /// a user name or a numeric user-ID (UID) prefixed
-    /// with the ‘#’ character (e.g. #0 for UID 0). The call
-    /// of the VM engine is performed by sudo.
-    /// The behavior of sudo can be controlled via the
-    /// file /etc/sudoers
-    pub runas: &'a str,
-
     /// Resume the VM from previous execution.
     /// If the VM is still running, the app will be
     /// executed inside of this VM instance.
@@ -153,9 +144,10 @@ pub struct RuntimeSection<'a> {
     /// here is always effective and does not have to be given
     /// at call time. An option of the same name provided at call
     /// time takes precedence over the configured one
-    #[serde(default)]
+    #[serde(default, borrow)]
     pub pilot_options: Option<Vec<&'a str>>,
 
+    #[serde(borrow)]
     pub firecracker: EngineSection<'a>,
 }
 

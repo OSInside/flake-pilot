@@ -47,6 +47,16 @@ pub fn config() -> &'static Config<'static> {
     &CONFIG
 }
 
+/// Returns whether the calling program is registered for the
+/// calling user only, see `flakes::registration`
+///
+/// A system wide flake can be called by any user and runs in the
+/// system wide podman setup. A flake registered by a user runs in
+/// the rootless podman setup of that user
+pub fn is_usermode() -> bool {
+    *USERMODE
+}
+
 /// Reads the given container runtime configuration
 ///
 /// The yaml document is expected to be the registration of
@@ -134,11 +144,6 @@ pub struct ContainerSection<'a> {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct RuntimeSection<'a> {
-    /// Shows which user has created this registration
-    /// file and serves as indicator for using the system wide
-    /// or user specific flake setup
-    pub runas: &'a str,
-
     /// Resume the container from previous execution.
     ///
     /// If the container is still running, the app will be
@@ -164,7 +169,7 @@ pub struct RuntimeSection<'a> {
     /// here is always effective and does not have to be given
     /// at call time. An option of the same name provided at call
     /// time takes precedence over the configured one
-    #[serde(default)]
+    #[serde(default, borrow)]
     pub pilot_options: Option<Vec<&'a str>>,
 
     /// Caller arguments for the podman engine in the format:

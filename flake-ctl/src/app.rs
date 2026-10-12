@@ -33,7 +33,6 @@ use std::path::Path;
 use flakes::config::get_flakes_dir;
 use flakes::registration;
 use flakes::registration::basename;
-use uzers::{get_current_username};
 
 pub fn register(
     app: Option<&String>, target: Option<&String>,
@@ -119,10 +118,6 @@ pub fn create_container_config(
     containing the required information to launch the
     application inside of the container engine.
     !*/
-    let mut current_user = String::new();
-    current_user.push_str(
-        get_current_username().unwrap().to_str().unwrap()
-    );
     if base.is_none() && layers.is_some() {
         error!("Layer(s) specified without a base");
         return false;
@@ -146,7 +141,6 @@ pub fn create_container_config(
         includes_path,
         resume,
         attach,
-        Some(&current_user),
         opts,
         pilot_options,
     ) {
@@ -165,7 +159,6 @@ pub fn create_vm_config(
     vm: &String,
     app: Option<&String>,
     target: Option<&String>,
-    run_as: Option<&String>,
     overlay_size: Option<&String>,
     resume: bool,
     force_vsock: bool,
@@ -191,7 +184,6 @@ pub fn create_vm_config(
         vm,
         target_app_path,
         host_app_path,
-        run_as,
         overlay_size,
         resume,
         force_vsock,
@@ -214,7 +206,6 @@ pub fn create_sandbox_config(
     rootfs: &str,
     app: Option<&String>,
     target: Option<&String>,
-    run_as: Option<&String>,
     opts: Option<Vec<String>>,
     pilot_options: Option<Vec<String>>,
     usermode: bool,
@@ -246,7 +237,6 @@ pub fn create_sandbox_config(
         rootfs,
         target_app_path,
         host_app_path,
-        run_as,
         opts,
         pilot_options,
     ) {

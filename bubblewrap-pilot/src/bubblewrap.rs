@@ -73,10 +73,6 @@ pub fn create(program_name: &str) -> Result<String, FlakeError> {
       host_app_path: path/to/program/on/host
 
       runtime:
-        # Name of the user the sandbox is created for. The
-        # value 'any' refers to the calling user
-        runas: any
-
         # Pilot options which are always effective for this
         # application. The same options can be given at call
         # time and then take precedence over the setting here
@@ -219,7 +215,7 @@ fn run_sandbox(
     !*/
     let RuntimeSection { bubblewrap, .. } = config().runtime();
 
-    let mut call = setup_bwrap_call(get_sandbox_user());
+    let mut call = Command::new(defaults::BWRAP_PATH);
     let sandbox_options = get_sandbox_options(
         instance, bubblewrap, &get_sandbox_workdir()
     )?;
@@ -463,9 +459,7 @@ fn process_running(sandbox_id: &str) -> bool {
 
     The name of the process is checked too, to not report a
     process which just reuses the ID of an already terminated
-    sandbox as running. Depending on the user the sandbox was
-    created for, this is either bwrap itself or the sudo
-    process which runs it
+    sandbox as running
     !*/
     let pid = match sandbox_id.parse::<u32>() {
         Ok(pid) => pid,
@@ -478,7 +472,7 @@ fn process_running(sandbox_id: &str) -> bool {
     match fs::read_to_string(process_name_file) {
         Ok(process_name) => {
             let process_name = process_name.trim();
-            process_name == defaults::BWRAP || process_name == defaults::SUDO
+            process_name == defaults::BWRAP
         },
         Err(_) => false
     }
@@ -526,30 +520,11 @@ fn get_sandbox_user() -> User<'static> {
     Provide the user the sandbox is created for
 
     bubblewrap creates the sandbox through user namespaces and
-    needs no privileges. The sandbox therefore belongs to the
-    calling user unless the flake configures another one
+    needs no privileges. The sandbox therefore always belongs to
+    the calling user. A system wide flake can be called by any
+    user, a flake registered by a user is called by that user
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    if runas.is_empty() || runas == "any" {
-        User::from(CALLING_USER.as_str())
-    } else {
-        User::from(runas)
-    }
-}
-
-fn setup_bwrap_call(user: User) -> Command {
-    /*!
-    Create the call of the bwrap program
-
-    As no privileges are needed the program is called directly.
-    Only a sandbox which belongs to another user than the caller
-    is created through sudo
-    !*/
-    if user.is_calling_user() {
-        Command::new(defaults::BWRAP_PATH)
-    } else {
-        user.run(defaults::BWRAP_PATH)
-    }
+    User::from(CALLING_USER.as_str())
 }
 
 fn write_sandbox_id_file(sandbox_id_file: &str, pid: u32) {

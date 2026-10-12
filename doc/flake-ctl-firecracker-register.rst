@@ -24,7 +24,6 @@ SYNOPSIS
        --resume
        --force-vsock
        --overlay-size <OVERLAY_SIZE>
-       --run-as <RUN_AS>
        --target <TARGET>
        --vm <VM>
 
@@ -112,10 +111,6 @@ OPTIONS
   Force using a vsock to communicate between guest and
   host if resume is set to false. In resume mode the vsock
   setup is always required.
-
---run-as <RUN_AS>
-
-  Name of the user to run firecracker
 
 --target <TARGET>
 

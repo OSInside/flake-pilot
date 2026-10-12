@@ -23,7 +23,7 @@
 // SOFTWARE.
 //
 use crate::defaults;
-use crate::config::{RuntimeSection, config};
+use crate::config::{RuntimeSection, config, is_usermode};
 
 use atty::Stream;
 use rand::prelude::*;
@@ -131,7 +131,7 @@ pub fn create(
 
     // get runtime section
     let RuntimeSection {
-        runas, resume, attach, podman, ..
+        resume, attach, podman, ..
     } = config().runtime();
 
     // Read optional @NAME pilot argument to differentiate
@@ -162,9 +162,10 @@ pub fn create(
         name.to_string()
     };
 
-    // depending on the user either the system wide flake
-    // setup or the user specific flake setup is read
-    let mut usermode = false;
+    // A flake registered by the calling user runs in the user
+    // specific podman setup, a system wide flake in the system
+    // wide setup
+    let usermode = is_usermode();
     // depending on the user specific operations are restricted
     let mut supports_provsioning = true;
     // name of the user calling the program
@@ -173,14 +174,13 @@ pub fn create(
     let user;
 
     // setup user and features
-    if runas != "root" {
+    if usermode {
         // The system wide storage conf is not in use.
         // This indicates a user specific storage setup is in place.
         // all provisioning operations need root permissions
         // and will be disabled
         user = User::from(calling_user_name.to_str().unwrap());
         supports_provsioning = false;
-        usermode = true
     } else {
         // provisioning needs root permissions for mount
         // make sure we have them for this session via sudo
@@ -741,11 +741,10 @@ pub fn usermode() -> bool {
     /*!
     Check if the flake runs in a rootless podman setup
 
-    A flake which is configured to run as another user than
-    root uses the podman storage of the calling user
+    A flake registered by the calling user uses the podman
+    storage of that user
     !*/
-    let RuntimeSection { runas, .. } = config().runtime();
-    runas != "root"
+    is_usermode()
 }
 
 pub fn container_exists(cid: &str) -> Result<bool, FlakeError> {

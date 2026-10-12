@@ -256,14 +256,20 @@ fn instance_details(
     } else {
         None
     };
-    let FlakeDetails { image, runas, vm } = match config {
+    let FlakeDetails { image, vm } = match config {
         Some(ref config_file) => flake_details(
             config_file, engine, &name, storage_dir.as_deref()
         ),
         None => FlakeDetails::default()
     };
     let status = if engine == defaults::PODMAN_ENGINE {
-        podman_state.status(&id, uid, runas.as_deref(), config.is_some())
+        // A flake registered by a user runs in the rootless podman
+        // setup of that user, a system wide flake in the system
+        // wide setup
+        let podman_usermode = config.as_deref().is_some_and(
+            |config_file| is_user_registration(config_file, &name)
+        );
+        podman_state.status(&id, uid, podman_usermode, config.is_some())
     } else if engine == defaults::BUBBLEWRAP_ENGINE {
         sandbox_status(&id)
     } else {
@@ -389,14 +395,23 @@ fn flake_config_file(
     None
 }
 
+fn is_user_registration(config_file: &str, name: &str) -> bool {
+    /*!
+    Check if the given flake config is the registration of a user
+
+    Any flake config which is not the system wide registration of
+    the flake the given instance belongs to is a registration of
+    a user
+    !*/
+    config_file != registration::config_file(flake_name(name), false)
+}
+
 // FlakeDetails is the information the show command reads
 // from the configuration of a flake
 #[derive(Default)]
 struct FlakeDetails {
     /// Name of the image the instance was created from
     image: Option<String>,
-    /// Name of the user the engine runs as
-    runas: Option<String>,
     /// Setup of a VM instance, None for a container instance
     vm: Option<VmInfo>,
 }
@@ -407,8 +422,8 @@ fn flake_details(
     /*!
     Read the details of the flake the given instance belongs to
 
-    This is the name of the image the instance was created from
-    and the user the engine runs as. A VM instance also provides
+    This is the name of the image the instance was created from.
+    A VM instance also provides
     the network, the volumes and the storage volume attached to
     it. The storage volume is looked up in the given storage_dir
     !*/
@@ -429,16 +444,12 @@ fn flake_details(
     if engine == defaults::PODMAN_ENGINE {
         if let Some(container_conf) = app_conf.container {
             details.image = Some(container_conf.name);
-            details.runas = container_conf.runtime
-                .and_then(|runtime| runtime.runas);
         }
         return details
     }
     if engine == defaults::BUBBLEWRAP_ENGINE {
         if let Some(sandbox_conf) = app_conf.sandbox {
             details.image = Some(sandbox_conf.name);
-            details.runas = sandbox_conf.runtime
-                .and_then(|runtime| runtime.runas);
         }
         return details
     }
@@ -446,7 +457,6 @@ fn flake_details(
         details.image = Some(vm_conf.name);
         let mut engine_section = None;
         if let Some(runtime) = vm_conf.runtime {
-            details.runas = runtime.runas;
             engine_section = runtime.firecracker;
         }
         details.vm = Some(
@@ -564,14 +574,9 @@ fn sandbox_status(sandbox_id: &str) -> String {
     Provide the status of the sandbox with the given sandbox ID
 
     The sandbox ID file contains the process ID of the bwrap
-    process. If the sandbox is created for another user than
-    the calling one, bwrap is called through sudo and the
-    process ID belongs to that sudo call
+    process
     !*/
-    process_status(
-        sandbox_id,
-        &[defaults::BUBBLEWRAP_PROCESS_NAME, defaults::SUDO_PROCESS_NAME]
-    )
+    process_status(sandbox_id, &[defaults::BUBBLEWRAP_PROCESS_NAME])
 }
 
 fn process_status(id: &str, process_names: &[&str]) -> String {
@@ -618,7 +623,7 @@ impl PodmanState {
     }
 
     fn status(
-        &mut self, cid: &str, uid: u32, runas: Option<&str>, has_config: bool
+        &mut self, cid: &str, uid: u32, usermode: bool, has_config: bool
     ) -> String {
         /*!
         Provide the status of the container with the given cid
@@ -632,7 +637,6 @@ impl PodmanState {
         if ! has_config {
             return defaults::INSTANCE_UNKNOWN.to_string()
         }
-        let usermode = runas.unwrap_or("root") != "root";
         if usermode && uid != get_current_uid() {
             return defaults::INSTANCE_UNKNOWN.to_string()
         }

@@ -270,6 +270,7 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 %config /etc/flakes.yml
 %{_bindir}/flake-ctl
 %{_datadir}/bash-completion/completions/flake-ctl
+%doc doc/sudoers/flake-pilot.sudoers
 %doc %{_mandir}/man8/flake-pilot.8.gz
 %doc %{_mandir}/man8/flake-ctl.8.gz
 %doc %{_mandir}/man8/flake-ctl-init.8.gz

@@ -143,7 +143,9 @@ of the user with the ID 1000 the following setup is used:
 
 Creating and deleting these mounts is not allowed for a standard
 user. A caller which is not root passes the calls to sudo, the
-behavior of sudo can be controlled via the file /etc/sudoers.
+behavior of sudo can be controlled via the file /etc/sudoers. These rights make the
+user equivalent to root, see the reference policy flake-pilot.sudoers
+shipped with the flake-pilot package.
 
 The merged directory of the overlay becomes the root filesystem
 of the sandbox. It is provided to bwrap as the read only source of

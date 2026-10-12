@@ -27,7 +27,9 @@ use std::path::Path;
 use flakes::config::{
     get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_podman_ids_dir
 };
-use flakes::defaults::{FLAKES_CONFIG_USER, FLAKES_DIR_USER};
+use flakes::defaults::{FLAKES_CONFIG_USER, FLAKES_DIR_USER, META_DIR_MODE};
+use flakes::io::IO;
+use flakes::user::{User, mkdir};
 use uzers::{get_current_uid, get_user_by_uid};
 use uzers::os::unix::UserExt;
 
@@ -40,12 +42,20 @@ pub fn init(usermode: bool, force: bool) -> bool {
     podman storage configuration the flakes of that user are
     stored in. Files which already exist are kept unless the
     creation is forced
+
+    In addition the meta data directories shared by the pilots of
+    all users are checked and created if needed, see
+    init_meta_dirs(). For the root user this is the only action,
+    the system wide setup is provided with the package
     !*/
     if ! usermode {
-        error!("Only the user specific setup can be created");
-        error!("The system wide setup is provided with the package");
-        error!("Please call 'flake-ctl init' as a normal user");
-        return false
+        if ! init_meta_dirs() {
+            return false
+        }
+        info!("The system wide setup is provided with the package");
+        info!("Call 'flake-ctl init' as a normal user to create the");
+        info!("setup of that user");
+        return true
     }
     let home = match user_home() {
         Some(home) => home,
@@ -84,7 +94,47 @@ pub fn init(usermode: bool, force: bool) -> bool {
     info!("Flake registrations of this user are stored in {flakes_dir}");
     info!("To let podman commands operate on this flake storage run:");
     info!("export CONTAINERS_STORAGE_CONF={storage_conf}");
-    true
+    init_meta_dirs()
+}
+
+fn init_meta_dirs() -> bool {
+    /*!
+    Make sure the meta data directories of the pilots are in place
+
+    The directories are shared by the flakes of all users, every
+    user keeps a private directory below them. The flake-pilot
+    package lets systemd-tmpfiles create them at boot. A directory
+    which does not exist, e.g on a host without systemd, is created
+    here as root, through sudo for a caller who is not root. The
+    pilots do not create it and refuse to run without it. An
+    existing directory has to be set up the way
+    IO::meta_dir_problem() expects
+    !*/
+    let mut ids_dirs = vec![
+        get_podman_ids_dir(false),
+        get_firecracker_ids_dir(false),
+        get_bubblewrap_ids_dir(false)
+    ];
+    ids_dirs.sort();
+    ids_dirs.dedup();
+    let mut result = true;
+    for ids_dir in ids_dirs {
+        if fs::symlink_metadata(&ids_dir).is_err() {
+            info!("Creating meta data directory {ids_dir}");
+            if let Err(error) = mkdir(
+                &ids_dir, META_DIR_MODE, User::ROOT
+            ) {
+                error!("Failed to create {ids_dir}: {error}");
+                result = false;
+                continue
+            }
+        }
+        if let Some(problem) = IO::meta_dir_problem(&ids_dir) {
+            error!("{problem}");
+            result = false
+        }
+    }
+    result
 }
 
 fn flakes_config(flakes_dir: &str, storage_conf: &str) -> String {

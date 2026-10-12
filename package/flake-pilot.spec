@@ -31,6 +31,7 @@ URL:            https://github.com/OSInside/flake-pilot
 Source0:        %{name}.tar.gz
 Source1:        cargo_config
 Source2:        %{name}-rpmlintrc
+Source3:        systemd-tmpfiles-flake-pilot.conf
 # SUSE-specific source additions (1001+)
 Source1001:     systemd-tmpfiles-firecracker-for-suse.conf
 Source1002:     systemd-tmpfiles-podman-for-suse.conf
@@ -52,6 +53,7 @@ BuildRequires:  glibc-static
 BuildRequires:  cargo
 BuildRequires:  openssl-devel
 BuildRequires:  rust
+BuildRequires:  systemd-rpm-macros
 %endif
 %if 0%{?debian} || 0%{?ubuntu}
 BuildRequires:  libssl-dev
@@ -61,6 +63,7 @@ BuildRequires:  python3-pygments
 BuildRequires:  rust-all
 %endif
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
+%{!?_tmpfilesdir:%global _tmpfilesdir %{_prefix}/lib/tmpfiles.d}
 
 %description
 Run flake applications using a symlink structure pointing
@@ -154,6 +157,10 @@ make DESTDIR=%{buildroot}/ install_sci
 
 mkdir -p %{buildroot}/overlayroot
 mkdir -p %{buildroot}%{_prefix}/lib/flake-pilot
+
+# The meta data directory shared by the pilots of all users is
+# created at boot, see the comment in the file
+install -D -m 644 %{SOURCE3} %{buildroot}%{_tmpfilesdir}/flake-pilot.conf
 
 %if 0%{?suse_version} >= 1600
 install -D -m 644 %{SOURCE1001} %{buildroot}%{_tmpfilesdir}/flake-pilot-firecracker.conf
@@ -264,10 +271,23 @@ install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
 	chmod -h 777 "$flakes_dir"
     fi
 
+%post
+# Create the meta data directory now, not only at the next boot.
+# An existing directory which belongs to another user is handed
+# over to root
+%if 0%{?suse_version} || 0%{?fedora}
+%tmpfiles_create flake-pilot.conf
+%else
+if [ -x /usr/bin/systemd-tmpfiles ]; then
+    /usr/bin/systemd-tmpfiles --create %{_tmpfilesdir}/flake-pilot.conf || :
+fi
+%endif
+
 %files
 %defattr(-,root,root)
 %dir /etc/flakes
 %config /etc/flakes.yml
+%{_tmpfilesdir}/flake-pilot.conf
 %{_bindir}/flake-ctl
 %{_datadir}/bash-completion/completions/flake-ctl
 %doc doc/sudoers/flake-pilot.sudoers

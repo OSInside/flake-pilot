@@ -32,6 +32,15 @@ pub const FLAKES_DIR_USER: &str = ".config/flakes";
 pub const PODMAN_IDS_DIR: &str = "/tmp/flakes";
 pub const FIRECRACKER_IDS_DIR: &str = "/tmp/flakes";
 pub const BUBBLEWRAP_IDS_DIR: &str = "/tmp/flakes";
+// Permissions of the meta data directories shared by the pilots
+// of all users. Like /tmp everybody can create an entry in them
+// but only delete the own ones. The directories are not created
+// by the pilots, see IO::private_dir
+pub const META_DIR_MODE: &str = "1777";
+// Configuration which lets systemd-tmpfiles create the default
+// meta data directory, provided by the flake-pilot package
+pub const META_DIR_TMPFILES_CONF: &str =
+    "/usr/lib/tmpfiles.d/flake-pilot.conf";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
 // Programs called through sudo. A program given by its name is

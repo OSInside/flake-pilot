@@ -189,6 +189,11 @@ pub fn create(
         root.status()?;
     }
 
+    // Make sure CID dir exists. The meta data directory it is
+    // placed in is not created by the pilot, a missing one is an
+    // error which is reported before the storage paths are created
+    let container_ids_dir = engine::init_cid_dir(user)?;
+
     // read podman storage setup
     let storage = read_storage_conf(usermode)?;
 
@@ -200,9 +205,6 @@ pub fn create(
         calling_user_name.to_str().unwrap()
     );
     mkdir(&container_runroot, "700", user)?;
-
-    // Make sure CID dir exists
-    let container_ids_dir = engine::init_cid_dir(user)?;
 
     let container_cid_file = engine::cid_file(
         &container_ids_dir, &format!("{program_name}{suffix}")

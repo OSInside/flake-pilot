@@ -26,14 +26,13 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{
     DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt
 };
-use std::path::Path;
 
 use uzers::get_current_uid;
 
 use crate::defaults;
 use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
-use crate::user::{User, mkdir};
+use crate::user::{User, octal_mode};
 use crate::command::CommandExtTrait;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -41,38 +40,26 @@ pub struct IO {
 }
 
 impl IO {
-    pub fn private_dir(base: &str, user: User) -> Result<String, FlakeError> {
+    pub fn private_dir(base: &str) -> Result<String, FlakeError> {
         /*!
         Provide a private directory for the calling user below base
 
         Meta data like container/VM ID files or communication sockets
-        must not be writable by other users. As the base directory is
-        shared between all users of the system it is created with the
-        sticky bit set, like /tmp. The per user directory below it is
-        created with 0700 permissions and is required to be owned by
-        the calling user.
+        must not be writable by other users. The base directory is
+        shared between all users of the system and has to be set up
+        as meta_dir_problem() expects, like /tmp. It is not created
+        here: it has to belong to root, which a pilot called by a
+        user cannot ensure without root privileges. It is created by
+        systemd-tmpfiles at boot or by 'flake-ctl init'. A missing or
+        differently set up base directory is an error.
+
+        The per user directory below it is created with 0700
+        permissions and is required to be owned by the calling user.
         !*/
-        if ! Path::new(base).exists() {
-            mkdir(base, "1777", user)?;
-        }
-        let base_attributes = fs::symlink_metadata(base)?;
-        if ! base_attributes.is_dir() {
+        if let Some(problem) = Self::meta_dir_problem(base) {
             return Err(FlakeError::IOError {
-                kind: "Insecure meta data directory".to_string(),
-                message: format!("{base} is not a directory")
-            })
-        }
-        let base_mode = base_attributes.permissions().mode();
-        if base_mode & 0o002 != 0 && base_mode & 0o1000 == 0 {
-            // A directory which everybody can write to allows to
-            // delete and replace the meta data of other users unless
-            // the sticky bit restricts this to the file owner
-            return Err(FlakeError::IOError {
-                kind: "Insecure meta data directory".to_string(),
-                message: format!(
-                    "{base} is world writable without the sticky bit set. \
-                    Please fix this with: chmod 1777 {base}"
-                )
+                kind: "Invalid meta data directory".to_string(),
+                message: problem
             })
         }
         let private_dir = format!("{}/{}", base, get_current_uid());
@@ -96,6 +83,52 @@ impl IO {
             )?;
         }
         Ok(private_dir)
+    }
+
+    pub fn meta_dir_problem(base: &str) -> Option<String> {
+        /*!
+        Tell what is wrong with the given meta data base directory,
+        None if it is set up as expected
+
+        Every user creates a private directory in it, which requires
+        it to be writable for everybody. The sticky bit restricts the
+        deletion of an entry to its owner and to the owner of the
+        directory. The latter therefore has to be root. A user who
+        owns the directory can delete and replace the private
+        directories of all other users
+        !*/
+        let attributes = match fs::symlink_metadata(base) {
+            Ok(attributes) => attributes,
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Some(format!(
+                    "{base} does not exist. It is created at boot by \
+                    systemd-tmpfiles, see {}, or by calling \
+                    'flake-ctl init' as root",
+                    defaults::META_DIR_TMPFILES_CONF
+                ))
+            },
+            Err(error) => return Some(format!("Cannot access {base}: {error}"))
+        };
+        if ! attributes.is_dir() {
+            return Some(format!(
+                "{base} is not a directory, please remove it as root"
+            ))
+        }
+        if attributes.uid() != 0 {
+            return Some(format!(
+                "{base} does not belong to root, please fix this as \
+                root with: chown root:root {base}"
+            ))
+        }
+        let mode = attributes.permissions().mode() & 0o7777;
+        if octal_mode(defaults::META_DIR_MODE).ok() != Some(mode) {
+            return Some(format!(
+                "{base} has the permissions {mode:o} instead of {}, \
+                please fix this as root with: chmod {} {base}",
+                defaults::META_DIR_MODE, defaults::META_DIR_MODE
+            ))
+        }
+        None
     }
 
     pub fn no_symlink(path: &str) -> Result<(), FlakeError> {
@@ -196,5 +229,74 @@ impl IO {
             return Err(FlakeError::SyncFailed)
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IO;
+    use std::fs;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::path::Path;
+    use tempfile::tempdir;
+    use uzers::get_current_uid;
+
+    fn meta_dir(base: &str, mode: u32) -> String {
+        let ids_dir = format!("{base}/flakes");
+        fs::create_dir(&ids_dir).unwrap();
+        fs::set_permissions(&ids_dir, fs::Permissions::from_mode(mode))
+            .unwrap();
+        ids_dir
+    }
+
+    #[test]
+    fn test_private_dir_refuses_a_missing_base() {
+        // The base directory is not created by the pilots
+        let workdir = tempdir().unwrap();
+        let base = format!("{}/flakes", workdir.path().to_str().unwrap());
+        let error = IO::private_dir(&base).unwrap_err();
+        assert!(format!("{error}").contains("flake-ctl init"));
+        assert!(! Path::new(&base).exists());
+    }
+
+    #[test]
+    fn test_private_dir_refuses_a_symlink() {
+        // A link is refused even if it points to a proper directory
+        let workdir = tempdir().unwrap();
+        let base = workdir.path().to_str().unwrap();
+        let ids_dir = meta_dir(base, 0o1777);
+        let link = format!("{base}/link");
+        symlink(&ids_dir, &link).unwrap();
+        assert!(
+            IO::meta_dir_problem(&link).unwrap()
+                .contains("is not a directory")
+        );
+        assert!(IO::private_dir(&link).is_err());
+    }
+
+    #[test]
+    fn test_private_dir_owner_and_mode_of_the_base() {
+        let workdir = tempdir().unwrap();
+        let base = workdir.path().to_str().unwrap();
+        let ids_dir = meta_dir(base, 0o1777);
+        let private_dir = format!("{ids_dir}/{}", get_current_uid());
+        if get_current_uid() == 0 {
+            // The base belongs to root, only the mode matters
+            assert_eq!(private_dir, IO::private_dir(&ids_dir).unwrap());
+            fs::set_permissions(&ids_dir, fs::Permissions::from_mode(0o777))
+                .unwrap();
+            assert!(
+                IO::meta_dir_problem(&ids_dir).unwrap().contains("chmod")
+            );
+        } else {
+            // A base which belongs to the caller is refused, whatever
+            // its mode, and nothing is created in it
+            assert!(
+                IO::meta_dir_problem(&ids_dir).unwrap()
+                    .contains("chown root")
+            );
+            assert!(IO::private_dir(&ids_dir).is_err());
+            assert!(! Path::new(&private_dir).exists());
+        }
     }
 }

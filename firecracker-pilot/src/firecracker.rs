@@ -1344,12 +1344,10 @@ pub fn get_ids_dir() -> Result<String, FlakeError> {
     Provide the private directory of the calling user to store
     the VM ID files and the sockets to talk to the VM instances
 
-    Root privileges are only used if the base directory, which is
-    shared by all users, does not exist yet. It has to belong to
-    root as the owner of a sticky directory is allowed to delete
-    and replace the private directories of all other users in it
+    The base directory shared by all users is not created by the
+    pilot, see IO::private_dir
     !*/
-    IO::private_dir(&get_firecracker_ids_dir(false), User::ROOT)
+    IO::private_dir(&get_firecracker_ids_dir(false))
 }
 
 pub fn get_overlay_dir() -> Result<String, FlakeError> {

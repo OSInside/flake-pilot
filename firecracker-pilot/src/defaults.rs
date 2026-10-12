@@ -49,12 +49,13 @@ pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 // with 'flake-ctl firecracker network add' shows up here
 pub const SYS_CLASS_NET: &str =
     "/sys/class/net";
-// Tools called through sudo, maintained in the common area:
-// iptables looks up the netfilter rules of the host setup created
-// with 'flake-ctl firecracker network init', which requires root
-// privileges. mount and umount provide the VM image to provision
-// included data into it. true requests the root privileges once
-// before the provisioning starts
+// Tools maintained in the common area: iptables looks up the
+// netfilter rules of the host setup created with 'flake-ctl
+// firecracker network init'. It is called with the privileges of
+// the caller and can only read them if that is root. mount and
+// umount are called through sudo to provide the VM image to
+// provision included data into it. true requests the root
+// privileges once before the provisioning starts
 pub use flakes::defaults::{
     IPTABLES_TOOL, MOUNT_TOOL, UMOUNT_TOOL, TRUE_TOOL
 };

@@ -297,6 +297,7 @@ mod tests {
     use super::{User, chmod, cp, mkdir, no_symlink_in_path, octal_mode};
     use std::fs;
     use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::os::unix::net::UnixListener;
     use std::path::Path;
     use tempfile::tempdir;
     use uzers::get_current_username;
@@ -361,6 +362,25 @@ mod tests {
         let attributes = fs::symlink_metadata(&dirname).unwrap();
         assert!(attributes.is_dir());
         assert_eq!(0o700, attributes.permissions().mode() & 0o7777);
+    }
+
+    #[test]
+    fn test_chmod_of_a_socket_for_the_calling_user() {
+        // firecracker-pilot restricts the vsock socket of a VM this
+        // way, the socket belongs to the user who started the VM
+        let workdir = tempdir().unwrap();
+        let base = workdir.path().to_str().unwrap();
+        let socket = format!("{base}/vm.sock");
+        let _listener = UnixListener::bind(&socket).unwrap();
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o777))
+            .unwrap();
+        let user = calling_user();
+        chmod(&socket, "600", User::from(user.as_str())).unwrap();
+        assert_eq!(
+            0o600,
+            fs::symlink_metadata(&socket).unwrap()
+                .permissions().mode() & 0o7777
+        );
     }
 
     #[test]

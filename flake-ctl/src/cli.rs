@@ -258,6 +258,14 @@ pub enum Network {
         /// each of them
         #[clap(long)]
         instance: Option<String>,
+
+        /// Name of the user who runs the VM. The TAP device of
+        /// the instance belongs to this user, nobody else can
+        /// connect a VM to it. Defaults to the calling user.
+        /// Another user can only be named for a system wide
+        /// flake, which is set up by root and run by any user
+        #[clap(long)]
+        user: Option<String>,
     },
     /// Disconnect a VM application from the host network
     Remove {
@@ -272,7 +280,17 @@ pub enum Network {
         /// deleted
         #[clap(long)]
         instance: Option<String>,
+
+        /// Name of the user the network setup was created for.
+        /// Defaults to the calling user
+        #[clap(long)]
+        user: Option<String>,
     },
+    /// Delete the network setup of the host: the firewall setup,
+    /// the TAP devices of all applications and IP forwarding if
+    /// it was enabled by init. The addresses of the applications
+    /// are kept for the next setup
+    Cleanup,
 }
 
 #[derive(Subcommand)]

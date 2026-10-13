@@ -75,16 +75,91 @@ pub fn read_network_config(usermode: bool) -> Option<NetworkConfig> {
     }
 }
 
-pub fn get_tap_name(meta_name: &str) -> String {
+pub fn get_tap_name(uid: u32, meta_name: &str) -> String {
     /*!
     Construct the name of the TAP device of a flake instance
 
     The meta_name is the name of the flake application optionally
-    extended by the @NAME instance selector. The name has to be
-    created the same way by the tool that creates the device and
-    by the pilot that connects the VM to it
+    extended by the @NAME instance selector. The device belongs to
+    the user with the given ID, who is the only one allowed to
+    connect a VM to it. The ID is part of the name, which keeps
+    the devices of two users running the same flake apart. The
+    name has to be created the same way by the tool that creates
+    the device and by the pilot that connects the VM to it
     !*/
-    get_valid_interface_name(defaults::TAP_DEVICE_PREFIX, meta_name)
+    get_valid_interface_name(
+        defaults::TAP_DEVICE_PREFIX, &format!("{uid}_{meta_name}")
+    )
+}
+
+// FirewallRule is a netfilter rule of the host firewall setup
+#[derive(Debug, PartialEq)]
+pub struct FirewallRule {
+    /// Name of the iptables table, e.g filter or nat
+    pub table: &'static str,
+    /// Name of the chain the rule belongs to
+    pub chain: String,
+    /// Match and target of the rule
+    pub spec: Vec<String>
+}
+
+impl FirewallRule {
+    pub fn new(table: &'static str, chain: &str, spec: &[&str]) -> Self {
+        FirewallRule {
+            table,
+            chain: chain.to_string(),
+            spec: spec.iter().map(|arg| arg.to_string()).collect()
+        }
+    }
+}
+
+pub fn get_tap_match() -> String {
+    /*!
+    Provide the interface match of all TAP devices of VM instances
+    in the notation of iptables
+    !*/
+    format!("{}+", defaults::TAP_DEVICE_PREFIX)
+}
+
+pub fn get_jump_rules() -> Vec<FirewallRule> {
+    /*!
+    Provide the rules which lead from the builtin chains into the
+    chains of the host firewall setup
+
+    All traffic which is forwarded or masqueraded passes the chains
+    of the setup. Their rules only match traffic of the TAP devices,
+    other traffic returns to the builtin chain unchanged. Traffic to
+    the host itself only enters the setup if it comes from a TAP
+    device
+    !*/
+    let tap_match = get_tap_match();
+    vec![
+        FirewallRule::new(
+            "nat", "POSTROUTING", &["-j", defaults::FIREWALL_NAT_CHAIN]
+        ),
+        FirewallRule::new(
+            "filter", "FORWARD", &["-j", defaults::FIREWALL_FORWARD_CHAIN]
+        ),
+        FirewallRule::new(
+            "filter", "INPUT",
+            &["-i", &tap_match, "-j", defaults::FIREWALL_INPUT_CHAIN]
+        )
+    ]
+}
+
+pub fn get_masquerade_rule(
+    network: &str, outgoing_interface: &str
+) -> FirewallRule {
+    /*!
+    Provide the rule which masquerades the traffic of the VMs
+
+    Only traffic which originates from the private network of the
+    VMs and leaves through the outgoing interface is rewritten
+    !*/
+    FirewallRule::new(
+        "nat", defaults::FIREWALL_NAT_CHAIN,
+        &["-s", network, "-o", outgoing_interface, "-j", "MASQUERADE"]
+    )
 }
 
 pub fn get_valid_interface_name(prefix: &str, name: &str) -> String {
@@ -146,7 +221,55 @@ fn name_hash(name: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_network_config_file, NetworkConfig};
+    use super::{
+        get_jump_rules, get_masquerade_rule, get_network_config_file,
+        get_tap_name, NetworkConfig
+    };
+    use crate::defaults::IFNAMSIZ;
+
+    #[test]
+    fn test_get_tap_name() {
+        // the ID of the user is part of the name, the devices of two
+        // users running the same flake are kept apart
+        assert_eq!("tap-1000_myapp", get_tap_name(1000, "myapp"));
+        assert_ne!(get_tap_name(1000, "myapp"), get_tap_name(1001, "myapp"));
+        // a name which is too long is shortened and made unique
+        let long_name = get_tap_name(1000, "myapplication@instance");
+        assert!(long_name.len() < IFNAMSIZ);
+        assert!(long_name.starts_with("tap-1000_"));
+        assert_ne!(long_name, get_tap_name(1000, "myapplication@other"));
+    }
+
+    #[test]
+    fn test_firewall_rules() {
+        let jump_rules: Vec<(String, String, String)> = get_jump_rules()
+            .into_iter()
+            .map(|rule| (rule.table.to_string(), rule.chain, rule.spec.join(" ")))
+            .collect();
+        assert_eq!(
+            vec![
+                (
+                    "nat".to_string(), "POSTROUTING".to_string(),
+                    "-j FLAKE_PILOT_NAT".to_string()
+                ),
+                (
+                    "filter".to_string(), "FORWARD".to_string(),
+                    "-j FLAKE_PILOT_FORWARD".to_string()
+                ),
+                (
+                    "filter".to_string(), "INPUT".to_string(),
+                    "-i tap-+ -j FLAKE_PILOT_INPUT".to_string()
+                )
+            ],
+            jump_rules
+        );
+        let masquerade = get_masquerade_rule("172.16.0.0/24", "eth0");
+        assert_eq!("nat", masquerade.table);
+        assert_eq!("FLAKE_PILOT_NAT", masquerade.chain);
+        assert_eq!(
+            "-s 172.16.0.0/24 -o eth0 -j MASQUERADE", masquerade.spec.join(" ")
+        );
+    }
 
     #[test]
     fn test_get_network_config_file() {

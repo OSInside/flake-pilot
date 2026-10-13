@@ -352,6 +352,7 @@ fi
 %doc %{_mandir}/man8/flake-ctl-firecracker-network-init.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-network-add.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-network-remove.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-network-cleanup.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-volume-export.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-volume-release.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-volume-add.8.gz

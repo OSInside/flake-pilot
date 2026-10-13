@@ -258,7 +258,7 @@ fn instance_details(
     };
     let FlakeDetails { image, vm } = match config {
         Some(ref config_file) => flake_details(
-            config_file, engine, &name, storage_dir.as_deref()
+            config_file, engine, uid, &name, storage_dir.as_deref()
         ),
         None => FlakeDetails::default()
     };
@@ -417,7 +417,8 @@ struct FlakeDetails {
 }
 
 fn flake_details(
-    config_file: &str, engine: &str, name: &str, storage_dir: Option<&str>
+    config_file: &str, engine: &str, uid: u32, name: &str,
+    storage_dir: Option<&str>
 ) -> FlakeDetails {
     /*!
     Read the details of the flake the given instance belongs to
@@ -458,14 +459,14 @@ fn flake_details(
             engine_section = runtime.firecracker;
         }
         details.vm = Some(
-            vm_details(engine_section.as_ref(), name, storage_dir)
+            vm_details(engine_section.as_ref(), uid, name, storage_dir)
         );
     }
     details
 }
 
 fn vm_details(
-    engine_section: Option<&AppFireCrackerEngine>, name: &str,
+    engine_section: Option<&AppFireCrackerEngine>, uid: u32, name: &str,
     storage_dir: Option<&str>
 ) -> VmInfo {
     /*!
@@ -485,7 +486,7 @@ fn vm_details(
         engine_section, instance_selector(name)
     );
     VmInfo {
-        network: get_network_info(&boot_args, name),
+        network: get_network_info(&boot_args, uid, name),
         volumes: get_volume_info(&boot_args),
         storage: storage_dir.and_then(
             |storage_dir| storage_info(engine_section, name, storage_dir)

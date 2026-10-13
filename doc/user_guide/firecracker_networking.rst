@@ -64,14 +64,19 @@ configurable. Only the address of an application is variable. It is
 assigned once, when the application is connected, and is written to
 its flake configuration. Therefore an application keeps its address
 across calls and across reboots of the host until it is disconnected
-again. The address handed out is the lowest one of the private
-network which is not used by another flake registration, addresses of
-applications which were disconnected are handed out again.
+again. The addresses of all users are allocated in one file,
+``/var/lib/firecracker/network-state.yaml``, which belongs to root.
+The address handed out is the lowest one of the private network which
+is not allocated to another application, addresses of applications
+which were disconnected are handed out again.
 
 Every instance of an application has its own address and its own TAP
-device. The host side of each TAP device carries the gateway address,
-the guest side is configured by the kernel of the VM from the ``ip=``
-option on its commandline. No DHCP server is involved:
+device. The TAP device belongs to the user who runs the instance, its
+name contains the ID of that user, e.g ``tap-1000_claude``. Nobody
+else can connect a VM to it. The host side of each TAP device carries
+the gateway address, the guest side is configured by the kernel of the
+VM from the ``ip=`` option on its commandline. No DHCP server is
+involved:
 
 .. image:: ../images/firecracker-network.png
    :align: center
@@ -85,11 +90,12 @@ The traffic of an instance takes the following path:
    to
 
 2. IP forwarding on the host passes the packet from the TAP device on
-   to the outgoing interface. One ``FORWARD`` rule per TAP device
-   allows this
+   to the outgoing interface. The firewall setup of the host allows
+   this for traffic of the private network leaving through the
+   outgoing interface only
 
-3. The NAT rule of the outgoing interface rewrites the sender address
-   to the address of that interface. On the network of the host the
+3. The NAT rule rewrites the sender address of that traffic to the
+   address of the outgoing interface. On the network of the host the
    traffic of the instance appears as if it would originate from the
    host itself
 
@@ -97,23 +103,47 @@ The traffic of an instance takes the following path:
    back to the TAP device the connection came from. As all TAP
    devices carry the same gateway address, and with it the same
    route to the private network, a host route of the form
-   ``172.16.0.3/32 dev tap-claude_id1`` per instance makes sure the
+   ``172.16.0.3/32 dev tap-1000_claude`` per instance makes sure the
    packets are delivered to the device the instance is connected to
 
+The Firewall Setup
+------------------
+
+All netfilter rules of the setup live in chains of their own,
+``FLAKE_PILOT_NAT``, ``FLAKE_PILOT_FORWARD`` and ``FLAKE_PILOT_INPUT``,
+which are entered by one jump rule from the builtin chains each. They
+only match the traffic of the private network and of the TAP devices,
+the other traffic of the host is not affected. The setup isolates the
+instances:
+
+* Traffic between two instances is dropped, also between two
+  instances of the same user.
+
+* Traffic from the outside world to an instance is dropped. Only the
+  answers to connections the instance opened pass back.
+
+* Traffic from an instance to another interface of the host than the
+  outgoing interface is dropped.
+
+* Traffic from an instance to the host itself is dropped, except for
+  the DHCP, DNS and NFS service of the host, which the instance may
+  reach through its gateway. These services are allowed per instance,
+  for the address and the TAP device of the instance only. NFS is
+  allowed in version 4, which needs no other port, see
+  :ref:`firecracker-volumes`.
+
+* IPv6 is switched off on the TAP devices, the setup is IPv4 only.
+
+``man 8 flake-ctl-firecracker-network-init`` lists the rules.
+
 .. note::
 
-   The instances share the private network but they are not connected
-   to each other. There is no route between two TAP devices, the only
-   peer of an instance is the host.
-
-.. note::
-
-   Only the address in the flake configuration is persistent. IP
-   forwarding, the netfilter rules and the TAP devices are runtime
-   state of the host, after a reboot they have to be created again.
-   An application which is configured to use a network does not
-   start if its TAP device or the netfilter rules of the host are
-   missing. The error message names the command which creates the
+   Only the address in the flake configuration and its allocation are
+   persistent. IP forwarding, the firewall setup and the TAP devices
+   are runtime state of the host, after a reboot they have to be
+   created again. An application which is configured to use a network
+   does not start if its TAP device or the firewall setup of the host
+   is missing. The error message names the command which creates the
    missing part.
 
 The Commands
@@ -127,14 +157,24 @@ Prepare the Host
    flake-ctl firecracker network init
 
 Selects the private network of the VMs, enables IP forwarding and
-creates the NAT rules on the outgoing interface, the one the traffic
-of the VMs leaves the host through. By default this is the interface
-of the IPv4 default route of the host, another interface can be
-specified with ``--outgoing-interface``, e.g ``--outgoing-interface
-eth0``. This is done once per host, and again after a reboot, not
-once per application. Network and interface are recorded such that
-the following commands use the same network and know where to route
-the traffic to.
+creates the firewall setup for the outgoing interface, the one the
+traffic of the VMs leaves the host through. By default this is the
+interface of the IPv4 default route of the host, another interface can
+be specified with ``--outgoing-interface``, e.g
+``--outgoing-interface eth0``. This is done once per host, and again
+after a reboot, not once per application. Network and interface are
+recorded such that the following commands use the same network and
+know where to route the traffic to. If IP forwarding was switched
+off, the state file records that Flake Pilot switched it on.
+
+Rules of former versions of Flake Pilot for single TAP devices are
+deleted. The rules for all traffic former versions created, a
+``MASQUERADE`` rule for the outgoing interface and a ``FORWARD`` rule
+for all answers, cannot be told apart from rules created by other
+means and are only reported along with the command to delete them.
+TAP devices of former versions are named without the ID of the user,
+they are not used anymore and stay until the next reboot or until they
+are deleted by hand.
 
 .. warning::
 
@@ -150,10 +190,12 @@ Connect an Application
 
    flake-ctl firecracker network add --app $HOME/bin/claude
 
-Assigns a free address to the application, writes the network setup
-to its flake configuration, creates its TAP device, connects that
-device to the outgoing interface and routes the address of the
-application to it.
+Allocates a free address to the application, writes the network setup
+to its flake configuration, creates its TAP device for the calling
+user, makes the device the gateway of the application, routes the
+address of the application to it and allows the application the DHCP,
+DNS and NFS service of the host. The command requires the firewall
+setup of ``init`` to be active.
 
 As every instance needs its own address and its own TAP device, the
 command has to be called for each selector the application is called
@@ -163,6 +205,17 @@ with:
 
    flake-ctl firecracker network add --app $HOME/bin/claude --instance @id1
 
+A system wide flake is set up by root and run by other users. Its TAP
+device has to belong to the user who runs it, root names that user
+with ``--user``. The address of an instance is part of the flake
+configuration, the same instance can therefore only be connected for
+one user. Give every user an instance of their own:
+
+.. code-block:: bash
+
+   sudo flake-ctl firecracker network add --app /usr/bin/claude \
+       --instance @tux --user tux
+
 Disconnect an Application
 -------------------------
 
@@ -170,11 +223,12 @@ Disconnect an Application
 
    flake-ctl firecracker network remove --app $HOME/bin/claude
 
-Deletes the TAP device, its forwarding rule and the network setup in
-the flake configuration. The address becomes free for another
-application. Called with ``--instance`` only the setup of that
-instance is deleted. The host setup of the ``init`` command is shared
-by all applications and stays in place.
+Deletes the firewall rules of the application, its TAP device, the
+network setup in its flake configuration and the allocation of its
+address. The address becomes free for another application. Called
+with ``--instance`` only the setup of that instance is deleted, with
+``--user`` the setup created for that user. The host setup of the
+``init`` command is shared by all applications and stays in place.
 
 .. note::
 
@@ -183,12 +237,27 @@ by all applications and stays in place.
    the VM should fall back to a dynamic setup, ``ip=dhcp`` has to be
    added to its ``boot_args`` by hand.
 
+Delete the Host Setup
+---------------------
+
+.. code-block:: bash
+
+   flake-ctl firecracker network cleanup
+
+Deletes the TAP devices of all connected applications, the firewall
+setup and switches IP forwarding off again if ``init`` switched it on.
+The address allocations and the flake configurations are kept, the
+host is left in the state it has after a reboot. Calling ``init`` and
+``add`` again connects the applications with the addresses they had
+before.
+
 All commands change the network configuration of the host and
-therefore call the required ``ip`` and ``iptables`` commands through
-``sudo``. They can be called more than once: a device, a route or a
-rule which is already there is not created twice, and one which is
-gone is not deleted again. After a reboot of the host, calling ``init`` and
-``add`` again restores the setup with the same addresses.
+therefore call the required ``ip``, ``iptables``, ``sysctl`` and
+``install`` commands through ``sudo``. They can be called more than
+once: a device, a route, a rule or a chain which is already there is
+not created twice, and one which is gone is not deleted again. After a
+reboot of the host, calling ``init`` and ``add`` again restores the
+setup with the same addresses.
 
 The Result in the Flake Configuration
 =====================================

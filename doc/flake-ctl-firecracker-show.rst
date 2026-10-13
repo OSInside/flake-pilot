@@ -78,6 +78,7 @@ address
 tap
   Name of the TUN/TAP device the VM is connected to. This is the
   device the traffic of the instance appears on at the host side.
+  The name contains the ID of the user who runs the instance.
   Only shown for an instance which is connected to a network
 
 volumes

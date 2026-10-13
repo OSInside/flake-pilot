@@ -17,6 +17,7 @@ SYNOPSIS
    OPTIONS:
        --app <APP>
        --instance <INSTANCE>
+       --user <USER>
        --help
 
 DESCRIPTION
@@ -26,17 +27,19 @@ Delete the network setup of the given firecracker flake
 application. All of the setup created with
 **flake-ctl-firecracker-network-add**(8) is reverted:
 
-1. The route from the TAP device to the outside world
+1. The rules which allow the VM the services of the host. All rules
+   of the ``FLAKE_PILOT_INPUT`` chain which match the TAP device of
+   the application are deleted
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -D FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
+      sudo /usr/sbin/iptables -D FLAKE_PILOT_INPUT -i tap-<UID>_<APP> ...
 
 2. The TAP device of the application
 
    .. code:: bash
 
-      sudo /usr/sbin/ip tuntap del tap-<APP> mode tap
+      sudo /usr/sbin/ip tuntap del tap-<UID>_<APP> mode tap
 
    The address of the device, its link state and the host route
    to the address of the application are deleted along with it
@@ -47,6 +50,8 @@ application. All of the setup created with
    deleted from the kernel commandline of the VM. Sections which
    became empty are dropped such that the configuration is the
    same as it was before the setup was created
+
+4. The address allocation in the network state file
 
 The address of the application becomes available again and is
 handed out to the next application which is connected. The
@@ -61,9 +66,9 @@ A device or rule which is not present is not deleted. This allows
 to call the command more than once and also covers the case that
 the setup on the host was already flushed, e.g by a reboot.
 
-The NAT setup of the host is shared by all VM applications and is
-therefore not touched. It stays in place until the host is
-rebooted or the rules are deleted by other means.
+The firewall setup of the host is shared by all VM applications and
+is therefore not touched. It is deleted as a whole by
+**flake-ctl-firecracker-network-cleanup**\(8).
 
 **NOTE:** The command does not check whether the application is
 running. Deleting the network setup of a running instance cuts
@@ -91,13 +96,20 @@ OPTIONS
   for. For convenience the plain name without the ``@`` prefix is
   accepted as well
 
+--user <USER>
+
+  Name of the user the network setup was created for, see
+  **flake-ctl-firecracker-network-add**\(8). Defaults to the calling
+  user
+
 FILES
 -----
 
 * /usr/share/flakes
 * $HOME/.config/flakes
 * /etc/flakes/network.yaml
-* $HOME/.config/flakes/network.yaml
+* $HOME/.config/flakes/firecracker/network.yaml
+* /var/lib/firecracker/network-state.yaml
 
 EXAMPLE
 -------
@@ -111,7 +123,7 @@ EXAMPLE
 SEE ALSO
 --------
 
-flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-init(8), firecracker-pilot(8)
+flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-cleanup(8), firecracker-pilot(8)
 
 AUTHOR
 ------

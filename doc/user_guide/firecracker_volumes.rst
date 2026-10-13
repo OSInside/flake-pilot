@@ -81,11 +81,14 @@ through ``sudo`` when needed.
 
 Every access of the VM to the volume is performed as the owner of the
 exported path. The entry maps all users of the VM, including
-``root``, to the user and group ID of that owner (``all_squash`` with
-``anonuid`` and ``anongid``). The application inside of the VM can
-therefore read and write the volume like its owner can, but it gets
-no further permissions on the host, in particular files it creates
-belong to the owner and not to ``root``.
+``root``, to the user and group ID of the exported path (``all_squash``
+with ``anonuid`` and ``anongid``). The application inside of the VM
+can therefore read and write the volume like its owner can, but it
+gets no further permissions on the host, in particular files it
+creates belong to the owner and not to ``root``. Changing the
+ownership of a file on the volume fails for the same reason, see
+:ref:`troubleshooting` for this and for applications which expect to
+run as the owner of their files.
 
 .. note::
 

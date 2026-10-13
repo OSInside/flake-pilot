@@ -93,33 +93,55 @@ accounts of the host. A volume exported with
 :ref:`firecracker-volumes`, therefore shows up inside the VM owned by
 a plain number if the owning host user does not exist there.
 
-This does not cause permission problems: the export maps every user
-of the VM, including ``root`` which the init process of the guest
-starts the application as, to the owner of the exported path on the
-host (``all_squash`` with ``anonuid`` and ``anongid``). Every access
-is performed with the permissions of that owner, and every file the
-application creates belongs to the owner on the host. The VM never
-gets more permissions on the volume than its owner has.
-
-Programs which compare the owner of a file with the user they run as,
-e.g ``git`` with its ``safe.directory`` check or ``ssh`` reading its
-configuration, can still complain about the numeric owner. If that
-is the case, give the VM a user with the same numeric IDs as the owner
-of the exported path on the host and run the application as that
-user. Look the IDs up on the host first:
+The export maps every user of the VM, including ``root`` which the
+init process of the guest starts the application as, to the user and
+group ID of the exported path on the host (``all_squash`` with
+``anonuid`` and ``anongid``). The IDs are the ones of the path itself,
+the group is therefore not necessarily the primary group of its
+owner. Look them up on the host with:
 
 .. code-block:: bash
 
    stat -c '%u %g' /some/local/path
 
-For a path owned by the calling user this is the same as:
+The same numbers are listed as ``anonuid`` and ``anongid`` in the
+entry of the path in ``/etc/exports``.
+
+Every access of the VM is performed with the permissions of that
+owner on the host, and every file the application creates belongs to
+the owner and to the group of the path. Reading and writing the
+volume therefore works for any user of the VM, as long as the owner
+on the host is allowed to do it. The following still fails with a
+permission error:
+
+* Changing the ownership of a file to another user or group, e.g with
+  ``chown`` or ``chgrp``, even when done as ``root`` inside of the VM.
+  Programs which restore the ownership of the files they write when
+  running as ``root`` report this as well, e.g ``tar`` on extraction,
+  ``cp -a`` or ``rsync -a``. The files are written nevertheless, they
+  belong to the owner of the volume. Options which do not restore the
+  ownership avoid the messages, e.g ``tar --no-same-owner`` or
+  ``rsync -rlt``.
+
+* Accessing a file below the exported path which the owner on the
+  host cannot access either, e.g a file of another host user which is
+  not readable for the owner.
+
+Programs which compare the owner of a file with the user they run as
+can refuse to work with the volume, as the application runs as
+``root`` inside of the VM but the files belong to the numeric ID of
+the owner. ``git`` for example reports the repository as owned by
+someone else (``detected dubious ownership``). For ``git`` the
+location can be marked as safe in the image of the VM:
 
 .. code-block:: bash
 
-   id -u; id -g
+   git config --global --add safe.directory /some/guest/path
 
-With the IDs known, create a matching group and user in the VM, e.g
-for the ID ``1000``:
+The general solution is to run the application inside of the VM as a
+user with the same numeric IDs as the exported path on the host.
+Create a matching group and user in the image of the VM, e.g for the
+ID ``1000``:
 
 .. code-block:: bash
 
@@ -133,6 +155,18 @@ the ``groupadd`` call can be left out and ``useradd -g`` points to
 the existing group. Adding the user to the image description of the
 VM, see :ref:`building-images`, keeps the setup in place across a
 rebuild of the image and applies to every application based on it.
+
+The init process of the guest always starts the application as
+``root``. To run it as the new user, add a small wrapper script to
+the image, e.g ``/usr/local/bin/claude-as-myuser``:
+
+.. code-block:: bash
+
+   #!/bin/sh
+   exec runuser -u myuser -- env HOME=/home/myuser /usr/bin/claude "$@"
+
+and register the application with the script as its target, e.g
+``--target /usr/local/bin/claude-as-myuser``.
 
 .. note::
 

@@ -116,12 +116,6 @@ pub fn create(
           - --storage-opt size=10G
           - -ti
 
-    include:
-      tar:
-        - tar-archive-file-name-to-include
-      path:
-        - file-or-directory-to-include
-
     Calling this method returns a vector including the
     container ID and and the name of the container ID
     file.
@@ -405,13 +399,11 @@ fn run_podman_creation(
 
     let is_delta_container = config().container.base_container.is_some();
     let check_host_dependencies = config().container.check_host_dependencies;
-    let has_includes =
-        !config().tars().is_empty() || !config().paths().is_empty();
 
     let mut provisioning_failed = None;
 
     if ! supports_provsioning && (
-        is_delta_container || check_host_dependencies || has_includes
+        is_delta_container || check_host_dependencies
     ) {
         return Err(FlakeError::ProvisioningNotSupported)
     }
@@ -515,21 +507,6 @@ fn run_podman_creation(
                 user, ignore_missing,
                 defaults::HOST_DEPENDENCIES
             )?;
-        }
-
-        if has_includes && provisioning_failed.is_none() {
-            if Lookup::is_debug() {
-                debug!("Syncing includes...");
-            }
-            match IO::sync_includes(
-                &instance_mount_point, config().tars(),
-                config().paths(), user
-            ) {
-                Ok(_) => { },
-                Err(error) => {
-                    provisioning_failed = Some(error);
-                }
-            }
         }
 
         let _ = umount_container(&cid, false);

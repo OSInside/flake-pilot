@@ -33,7 +33,6 @@ use crate::defaults;
 use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
 use crate::user::{User, octal_mode};
-use crate::command::CommandExtTrait;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct IO {
@@ -169,38 +168,6 @@ impl IO {
                 .custom_flags(libc::O_NOFOLLOW)
                 .open(path)?
         )
-    }
-
-    pub fn sync_includes(
-        target: &String, tar_includes: Vec<&str>, path_includes: Vec<&str>, user: User
-    ) -> Result<(), FlakeError> {
-        /*!
-        Sync custom include data to target path
-        !*/
-        for tar in tar_includes {
-            FlakeLog::debug(&format!("Provision tar archive: [{tar}]"));
-            let mut call = user.run(defaults::TAR_TOOL);
-            call.arg("-C").arg(target)
-                .arg("-xf").arg(tar);
-            FlakeLog::debug(
-                &format!("{:?} {:?}", call.get_program(), call.get_args())
-            );
-            let output = call.perform()?;
-            FlakeLog::debug(
-                &format!("{}", String::from_utf8_lossy(&output.stdout))
-            );
-            FlakeLog::debug(
-                &format!("{}", String::from_utf8_lossy(&output.stderr))
-            );
-        }
-        for path in path_includes {
-            FlakeLog::debug(&format!("Provision path: [{path}]"));
-            Self::sync_data(
-                path, &format!("{target}/{path}"),
-                ["--mkpath"].to_vec(), user
-            )?;
-        }
-        Ok(())
     }
 
     pub fn sync_data(

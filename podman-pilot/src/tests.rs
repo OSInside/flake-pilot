@@ -31,8 +31,6 @@ r#"container:
  name: JoJo
  host_app_path: /myapp
  check_host_dependencies: false
-include:
- tar: ~
 "#);
     assert_eq!(cfg.container.name, "JoJo");
 }
@@ -44,8 +42,6 @@ r#"container:
  name: JoJo
  host_app_path: /myapp
  check_host_dependencies: false
-include:
- tar: ~
 container:
  name: Dio
  host_app_path: /other
@@ -68,6 +64,8 @@ r#"container:
     - "%ignore_missing_volume_path"
     - "%port:2000"
     - "remove"
+# include is no longer supported, registrations which still
+# provide it must stay readable
 include:
  tar: ~
 "#)
@@ -104,8 +102,6 @@ r#"container:
  name: JoJo
  host_app_path: /myapp
  check_host_dependencies: false
-include:
- tar: ~
 "#);
     assert!(cfg.pilot_options().is_empty());
     assert!(

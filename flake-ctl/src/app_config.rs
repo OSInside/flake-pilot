@@ -36,7 +36,6 @@ type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 // AppConfig represents application yaml configuration
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub include: AppInclude,
     pub container: Option<AppContainer>,
     pub vm: Option<AppFireCracker>,
     pub sandbox: Option<AppSandbox>,
@@ -71,12 +70,6 @@ pub struct AppSandboxRuntime {
     pub pilot_options: Option<Vec<String>>,
     pub bubblewrap: Option<Vec<String>>,
 }
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct AppInclude {
-    pub tar: Option<Vec<String>>,
-    pub path: Option<Vec<String>>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppFireCracker {
     pub name: String,
@@ -138,20 +131,6 @@ fn normalize_engine_options(opts: &[String]) -> Vec<String> {
     opts.iter().map(
         |opt| opt.strip_prefix('\\').unwrap_or(opt).to_string()
     ).collect()
-}
-
-impl AppInclude {
-    fn set(&mut self, tar: Option<Vec<String>>, path: Option<Vec<String>>) {
-        /*!
-        Set the data to sync into the instance of the flake
-        !*/
-        if tar.is_some() {
-            self.tar = tar;
-        }
-        if path.is_some() {
-            self.path = path;
-        }
-    }
 }
 
 pub fn template_exists(template_file: &str, pilot_package: &str) -> bool {
@@ -217,8 +196,6 @@ impl AppConfig {
         base: Option<&String>,
         check_host_dependencies: bool,
         layers: Option<Vec<String>>,
-        includes_tar: Option<Vec<String>>,
-        includes_path: Option<Vec<String>>,
         resume: bool,
         attach: bool,
         opts: Option<Vec<String>>,
@@ -263,7 +240,6 @@ impl AppConfig {
                 normalize_pilot_options(pilot_options)
             );
         }
-        yaml_config.include.set(includes_tar, includes_path);
 
         yaml_config.to_file(config_file)
     }
@@ -318,8 +294,6 @@ impl AppConfig {
         overlay_size: Option<&String>,
         resume: bool,
         force_vsock: bool,
-        includes_tar: Option<Vec<String>>,
-        includes_path: Option<Vec<String>>,
         pilot_options: Option<Vec<String>>,
         usermode: bool,
     ) -> Result<(), GenericError> {
@@ -397,7 +371,6 @@ impl AppConfig {
         if force_vsock {
             boot_args.push("sci_force_vsock=1".to_string());
         }
-        yaml_config.include.set(includes_tar, includes_path);
 
         yaml_config.to_file(config_file)
     }
@@ -410,38 +383,10 @@ impl AppConfig {
         deserializing the data from a given yaml configuration
 
         The optional drop-in files from the '.d' directory next
-        to the configuration are merged in
+        to the configuration are merged in. A configuration which
+        cannot be read is reported as error
         !*/
-        let yaml_config: AppConfig =
-            serde_yaml::from_str(&merged_config(config_file)).expect(
-                "Failed to import config file"
-            );
-        Ok(yaml_config)
-    }
-
-    pub fn init_from_file_optional_include(
-        config_file: &Path
-    ) -> Result<AppConfig, GenericError> {
-        /*!
-        Returns an instance of AppConfig like init_from_file does,
-        but accepts a configuration without an include section
-
-        A missing include section is read as an empty one. This is
-        meant for callers which only inspect a configuration and
-        have no use for the data to sync into the instance. A
-        configuration which cannot be read is reported as error
-        !*/
-        let mut yaml_config: serde_yaml::Value =
-            serde_yaml::from_str(&merged_config(config_file))?;
-        if let Some(sections) = yaml_config.as_mapping_mut() {
-            let include = serde_yaml::Value::String("include".to_string());
-            if ! sections.contains_key(&include) {
-                sections.insert(
-                    include, serde_yaml::to_value(AppInclude::default())?
-                );
-            }
-        }
-        Ok(serde_yaml::from_value(yaml_config)?)
+        Ok(serde_yaml::from_str(&merged_config(config_file))?)
     }
 }
 
@@ -503,34 +448,30 @@ mod tests {
     }
 
     #[test]
-    fn test_init_from_file_optional_include() {
+    fn test_init_from_file() {
         let config_dir = tempdir().unwrap();
         let config_file = config_dir.path().join("myapp.yaml");
         let vm = "vm:\n  name: leap\n  target_app_path: /usr/bin/myapp\n  \
             host_app_path: /usr/bin/myapp\n";
-        // a missing include section is read as an empty one
         fs::write(&config_file, vm).unwrap();
-        let app_conf = AppConfig::init_from_file_optional_include(
+        let app_conf = AppConfig::init_from_file(
             Path::new(&config_file)
         ).unwrap();
         assert_eq!("leap", app_conf.vm.unwrap().name);
-        assert!(app_conf.include.tar.is_none());
-        assert!(app_conf.include.path.is_none());
-        // a present include section is read as it is
+        // the include section is no longer supported, a registration
+        // which still provides it must stay readable
         fs::write(
             &config_file, format!("include:\n  tar:\n    - /data.tar\n{vm}")
         ).unwrap();
-        let app_conf = AppConfig::init_from_file_optional_include(
+        let app_conf = AppConfig::init_from_file(
             Path::new(&config_file)
         ).unwrap();
-        assert_eq!(Some(vec!["/data.tar".to_string()]), app_conf.include.tar);
+        assert_eq!("leap", app_conf.vm.unwrap().name);
         // a configuration which does not match the model is
         // reported as error instead of a panic
         fs::write(&config_file, "vm:\n  name: leap\n").unwrap();
         assert!(
-            AppConfig::init_from_file_optional_include(
-                Path::new(&config_file)
-            ).is_err()
+            AppConfig::init_from_file(Path::new(&config_file)).is_err()
         );
     }
 }

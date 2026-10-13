@@ -18,8 +18,6 @@ SYNOPSIS
    OPTIONS:
        --app <APP>
        --force
-       --include-tar <INCLUDE_TAR>...
-       --include-path <INCLUDE_PATH>...
        --pilot-option <PILOT_OPTION>...
        --resume
        --force-vsock
@@ -74,16 +72,6 @@ OPTIONS
   registration. Please have in mind that a failed registration
   still causes an eventual existing former registration to be
   deleted in this case !
-
---include-tar <INCLUDE_TAR>...
-
-  Name of a tar file to be included on top of the VM instance.
-  This option can be specified multiple times
-
---include-path <INCLUDE_PATH>...
-
-  Name of a file or directory to be included on top of the VM instance.
-  This option can be specified multiple times
 
 --overlay-size <OVERLAY_SIZE>
 

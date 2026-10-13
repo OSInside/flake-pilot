@@ -20,8 +20,6 @@ __flake_ctl_firecracker_help() {
 __flake_ctl_firecracker_register() {
     __comp_reply_unused "
         --app
-        --include-tar
-        --include-path
         --overlay-size
         --force-vsock
         --resume
@@ -128,8 +126,6 @@ __flake_ctl_podman_register() {
         --attach
         --base
         --container
-        --include-tar
-        --include-path
         --info
         --layer
         --opt

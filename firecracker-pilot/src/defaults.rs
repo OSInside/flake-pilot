@@ -24,16 +24,6 @@
 //
 pub const FIRECRACKER: &str =
     "firecracker";
-pub const IMAGE_ROOT: &str =
-    "image";
-pub const IMAGE_OVERLAY: &str =
-    "overlayroot";
-pub const OVERLAY_ROOT: &str =
-    "overlayroot/rootfs";
-pub const OVERLAY_UPPER: &str =
-    "overlayroot/rootfs_upper";
-pub const OVERLAY_WORK: &str =
-    "overlayroot/rootfs_work";
 // The location of the storage volumes and the name of the vsock
 // sockets are shared with flake-ctl and are therefore maintained
 // in the common area
@@ -49,16 +39,11 @@ pub const FIRECRACKER_VSOCK_PORT_START: u32 = 49200;
 // with 'flake-ctl firecracker network add' shows up here
 pub const SYS_CLASS_NET: &str =
     "/sys/class/net";
-// Tools maintained in the common area: iptables looks up the
+// Tool maintained in the common area: iptables looks up the
 // netfilter rules of the host setup created with 'flake-ctl
 // firecracker network init'. It is called with the privileges of
-// the caller and can only read them if that is root. mount and
-// umount are called through sudo to provide the VM image to
-// provision included data into it. true requests the root
-// privileges once before the provisioning starts
-pub use flakes::defaults::{
-    IPTABLES_TOOL, MOUNT_TOOL, UMOUNT_TOOL, TRUE_TOOL
-};
+// the caller and can only read them if that is root
+pub use flakes::defaults::IPTABLES_TOOL;
 // Kernel commandline option which provides the NFS volumes of a
 // VM. The option is written by 'flake-ctl firecracker volume add'
 // and is read by sci inside of the guest. It provides all volumes

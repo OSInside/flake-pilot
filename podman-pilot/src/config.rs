@@ -69,8 +69,6 @@ pub fn config_from_str(input: &str) -> Config<'static> {
 pub struct Config<'a> {
     #[serde(borrow)]
     pub container: ContainerSection<'a>,
-    #[serde(borrow)]
-    pub include: IncludeSection<'a>
 }
 
 impl<'a> Config<'a> {
@@ -89,21 +87,6 @@ impl<'a> Config<'a> {
             None => Vec::new()
         }
     }
-
-    pub fn tars(&self) -> Vec<&'a str> {
-        self.include.tar.as_ref().cloned().unwrap_or_default()
-    }
-
-    pub fn paths(&self) -> Vec<&'a str> {
-        self.include.path.as_ref().cloned().unwrap_or_default()
-    }
-}
-
-#[derive(Deserialize)]
-pub struct IncludeSection<'a> {
-    #[serde(borrow)]
-    tar: Option<Vec<&'a str>>,
-    path: Option<Vec<&'a str>>,
 }
 
 #[derive(Deserialize)]

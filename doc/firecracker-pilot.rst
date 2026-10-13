@@ -63,11 +63,8 @@ rootless mode in **flake-pilot**, do not read it.
 
 A system wide registration can be called by any user, a registration
 of a user is called by that user. The VM is started by the calling
-user. Actions which need root privileges, like mounting the VM images
-to provision included data, are performed by sudo. The behavior of
-sudo can be controlled via the file /etc/sudoers. These rights make the
-user equivalent to root, see the reference policy flake-pilot.sudoers
-shipped with the flake-pilot package.
+user, firecracker-pilot needs no root privileges and calls nothing
+through sudo.
 
 From a content perspective the following registration parameters
 can be set for the firecracker engine:

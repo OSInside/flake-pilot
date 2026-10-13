@@ -428,9 +428,7 @@ fn flake_details(
     it. The storage volume is looked up in the given storage_dir
     !*/
     let mut details = FlakeDetails::default();
-    // The include section is of no interest for the show command,
-    // a flake config without one is read nevertheless
-    let app_conf = match AppConfig::init_from_file_optional_include(
+    let app_conf = match AppConfig::init_from_file(
         Path::new(config_file)
     ) {
         Ok(app_conf) => app_conf,

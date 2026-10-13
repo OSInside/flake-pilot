@@ -174,18 +174,6 @@ pub enum Firecracker {
         #[clap(long)]
         overlay_size: Option<String>,
 
-        /// Name of a tar file to be included on top of
-        /// the VM instance. This option can be
-        /// specified multiple times.
-        #[clap(long, multiple = true, requires = "overlay-size")]
-        include_tar: Option<Vec<String>>,
-
-        /// Name of a file or directory to be included on top of
-        /// the VM instance. This option can be
-        /// specified multiple times.
-        #[clap(long, multiple = true, requires = "overlay-size")]
-        include_path: Option<Vec<String>>,
-
         /// Pilot option, and optional value, in the format
         /// %name or %name:value. Pilot options are not passed
         /// to the application call but control the behavior of
@@ -586,18 +574,6 @@ pub enum Podman {
         /// were provided on the command line.
         #[clap(long, multiple = true)]
         layer: Option<Vec<String>>,
-
-        /// Name of a tar file to be included on top of
-        /// the container instance. This option can be
-        /// specified multiple times.
-        #[clap(long, multiple = true)]
-        include_tar: Option<Vec<String>>,
-
-        /// Name of a file or directory to be included on top of
-        /// the VM instance. This option can be
-        /// specified multiple times.
-        #[clap(long, multiple = true)]
-        include_path: Option<Vec<String>>,
 
         /// Resume the container from previous execution.
         /// If the container is still running, the app will be

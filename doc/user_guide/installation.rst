@@ -80,9 +80,8 @@ the system. The packages do not install a ``sudo`` policy.
 
    The ``sudo`` rights these actions need cannot be restricted to
    what Flake Pilot does with them. They make a user equivalent to
-   root. This applies to every bubblewrap flake, to firecracker
-   flakes with includes and to every podman flake from the system
-   registry. Read :ref:`privileges` before you grant them, and start
+   root. This applies to every bubblewrap flake and to every podman
+   flake from the system registry. Read :ref:`privileges` before you grant them, and start
    from the reference policy described there.
 
 Next Steps

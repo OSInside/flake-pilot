@@ -17,7 +17,7 @@ Privileges and Trust
    **The sudo rights Flake Pilot needs are root rights.**
 
    Many features of Flake Pilot run general purpose programs like
-   ``podman``, ``mount``, ``tar``, ``cp`` or ``iptables`` as root
+   ``podman``, ``mount``, ``rsync``, ``cp`` or ``iptables`` as root
    through ``sudo``. These rights cannot be limited to the calls
    Flake Pilot makes. A user who has them can become root on the
    host, with or without Flake Pilot.
@@ -86,9 +86,6 @@ What Each Program Grants
      - Mount an image which contains setuid binaries, bind mount a
        file of the user over ``/etc/passwd`` or ``/etc/sudoers``,
        remove any mount of the host.
-   * - ``tar``
-     - Extract an archive over system files, run commands through
-       ``--to-command`` or ``--checkpoint-action``.
    * - ``rsync``
      - Copy any file over any other file, run commands through
        ``--rsh``.
@@ -142,15 +139,13 @@ What Each Feature Needs
    * - podman flake from the system registry, ``podman-pilot`` and
        ``flake-ctl podman``
      - ``podman``, ``true``, ``mkdir``, ``chmod``; for delta
-       containers, layers and includes also ``test``, ``cp``,
-       ``rsync``, ``tar``, ``sh``
+       containers and layers also ``test``, ``cp``, ``rsync``, ``sh``
      - root
      - **root**
    * - firecracker flake, ``firecracker-pilot``, from either registry
-     - for an overlay with includes ``true``, ``mount``, ``umount``,
-       ``mkdir``, ``chmod``, ``tar``, ``rsync``
-     - root
-     - **root**
+     - none
+     - calling user
+     - nothing
    * - ``flake-ctl firecracker pull``
      - ``mount``, ``umount``, ``mkdir``, ``cp``, ``mv``
      - root
@@ -177,13 +172,13 @@ What This Means in Practice
 Podman flakes from the user registry run without root.
   ``podman`` is still called through ``sudo``, as the calling user,
   and ``sudo`` requires a rule for that, see the reference policy.
-  Delta containers, layers and includes are not provisioned for these
-  flakes, as provisioning requires root.
+  Delta containers and layers are not provisioned for these flakes,
+  as provisioning requires root.
 
-Firecracker flakes without includes run without root.
-  ``firecracker-pilot`` starts the VM as the calling user. Root is
-  only needed to provision include sections into the overlay of a
-  VM.
+Firecracker flakes run without root.
+  ``firecracker-pilot`` starts the VM as the calling user and calls
+  nothing through ``sudo``. Root is only needed for the host setup
+  of ``flake-ctl firecracker``, see below.
 
 The metadata directory is provided by root, not by the pilots.
   All pilots keep the state of their instances in a private
@@ -205,10 +200,10 @@ A system wide podman flake is not usable by everybody.
   users, but running a podman flake from it requires root podman.
   Every user who runs it has to be trusted with root.
 
-Every bubblewrap flake and every firecracker flake with includes requires root.
+Every bubblewrap flake requires root.
   This applies to flakes in the registry of the user as well. Running
-  them in a VM or a sandbox isolates the application, but the user
-  who starts them needs root equivalent ``sudo`` rights.
+  them in a sandbox isolates the application, but the user who starts
+  them needs root equivalent ``sudo`` rights.
 
 Host setup is a task for the administrator.
   The network and NFS setup of ``flake-ctl firecracker`` changes the
@@ -218,8 +213,8 @@ Host setup is a task for the administrator.
 The content of a flake is trusted with root as well.
   A delta container may ship a ``/systemfiles`` script which
   ``podman-pilot`` runs as root to collect the files to provision
-  from the host. Include archives are extracted as root. Register
-  only containers and images whose authors you trust with root.
+  from the host. Register only containers and images whose authors
+  you trust with root.
 
 A password does not limit the rights, but it limits who uses them.
   ``sudo`` asks for the password of the calling user and caches it

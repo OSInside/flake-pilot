@@ -175,14 +175,14 @@ pub const TAR_TOOL:&str =
 // part of the container, like the sleep program it kills
 pub const KILL_TOOL:&str =
     "kill";
-pub const IPTABLES_TOOL:&str =
-    "iptables";
-pub const IP_TOOL:&str =
-    "ip";
-pub const SYSCTL_TOOL:&str =
-    "sysctl";
-pub const NFS_EXPORTFS_TOOL:&str =
-    "exportfs";
+// Programs called through sudo. They are given by their absolute
+// path and are maintained along with the other programs called
+// this way in the common area
+pub use flakes::defaults::{
+    IPTABLES_TOOL, IP_TOOL, SYSCTL_TOOL, NFS_EXPORTFS_TOOL,
+    INSTALL_TOOL, SYSTEMCTL_TOOL, MKDIR_TOOL, MV_TOOL, CP_TOOL,
+    MOUNT_TOOL, UMOUNT_TOOL
+};
 pub const NFS_EXPORTS_FILE:&str =
     "/etc/exports";
 pub const NFS_SERVER_SERVICE:&str =

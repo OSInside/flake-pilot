@@ -90,7 +90,7 @@ pub fn init_cid_dir(user: User) -> Result<String, FlakeError> {
     directory of the calling user to store the CID files in
     !*/
     let usermode = user.get_name() != "root";
-    IO::private_dir(&get_podman_ids_dir(usermode), user)
+    IO::private_dir(&get_podman_ids_dir(usermode))
 }
 
 pub fn cid_dir(usermode: bool) -> String {

@@ -53,21 +53,21 @@ The command performs the following steps:
 
    .. code:: bash
 
-      sudo ip tuntap add tap-<APP> mode tap
+      sudo /usr/sbin/ip tuntap add tap-<APP> mode tap
 
 3. Connect the TAP device to the outgoing interface
 
    .. code:: bash
 
-      sudo ip addr add 172.16.0.1/24 dev tap-<APP>
-      sudo ip link set tap-<APP> up
-      sudo iptables -A FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
+      sudo /usr/sbin/ip addr add 172.16.0.1/24 dev tap-<APP>
+      sudo /usr/sbin/ip link set tap-<APP> up
+      sudo /usr/sbin/iptables -A FORWARD -i tap-<APP> -o <OUTGOING> -j ACCEPT
 
 4. Route the address of the application to its TAP device
 
    .. code:: bash
 
-      sudo ip route add 172.16.0.2/32 dev tap-<APP>
+      sudo /usr/sbin/ip route add 172.16.0.2/32 dev tap-<APP>
 
    Every TAP device provides the same gateway address and thus
    the same route to the private network. Without a host route

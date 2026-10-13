@@ -50,7 +50,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::{self};
 use flakes::config::get_firecracker_ids_dir;
 use std::os::fd::AsRawFd;
-use uzers::{get_current_uid, get_user_by_uid};
+use uzers::{get_current_uid, get_current_username, get_user_by_uid};
 use uzers::os::unix::UserExt;
 
 use crate::defaults;
@@ -335,7 +335,7 @@ fn run_creation(
                 // This and following actions requires root privilges
                 // make sure we request them once from sudo
                 let root_user = User::from("root");
-                let mut root = root_user.run("true");
+                let mut root = root_user.run(defaults::TRUE_TOOL);
                 root.status()?;
 
                 // Mount and sync...
@@ -475,8 +475,14 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
     let mut retry_count = 0;
     let vsock_uds_path = get_vsock_uds_path(program_name)?;
     // The socket provides command execution inside of the VM.
-    // Only the owner of the VM instance is allowed to talk to it
-    chmod(&vsock_uds_path, "600", User::ROOT)?;
+    // Only the owner of the VM instance is allowed to talk to it.
+    // The socket is created by the firecracker process the pilot
+    // started for the calling user and belongs to that user, who
+    // therefore changes its permissions without sudo
+    let calling_user = get_current_username()
+        .and_then(|name| name.into_string().ok())
+        .unwrap_or_default();
+    chmod(&vsock_uds_path, "600", User::from(calling_user.as_str()))?;
     loop {
         if retry_count == defaults::RETRIES {
             if Lookup::is_debug() {
@@ -1242,11 +1248,14 @@ fn iptables(
     Create an iptables call applying the given command,
     e.g '-S' or '-C', to the given chain or rule
 
-    The netfilter rules are only readable for root, therefore the
-    call is passed to sudo the same way 'flake-ctl firecracker
-    network init' calls the tool which created the rules
+    The netfilter rules are only readable for root. The call is
+    nevertheless made with the privileges of the caller and not
+    passed to sudo: the rules are only looked at for a sanity
+    check, and a sudo rule for iptables would allow to change any
+    rule of the host. For a caller who is not root the rules cannot
+    be read and the check is skipped, see get_missing_nat_rule()
     !*/
-    let mut call = User::ROOT.run(defaults::IPTABLES_TOOL);
+    let mut call = Command::new(defaults::IPTABLES_TOOL);
     if let Some(table) = table {
         call.arg("-t").arg(table);
     }
@@ -1334,8 +1343,11 @@ pub fn get_ids_dir() -> Result<String, FlakeError> {
     /*!
     Provide the private directory of the calling user to store
     the VM ID files and the sockets to talk to the VM instances
+
+    The base directory shared by all users is not created by the
+    pilot, see IO::private_dir
     !*/
-    IO::private_dir(&get_firecracker_ids_dir(false), User::ROOT)
+    IO::private_dir(&get_firecracker_ids_dir(false))
 }
 
 pub fn get_overlay_dir() -> Result<String, FlakeError> {
@@ -1494,7 +1506,7 @@ pub fn mount_vm(
     let image_mount_point = format!(
         "{}/{}", sub_dir, defaults::IMAGE_ROOT
     );
-    let mut mount_image = user.run("mount");
+    let mut mount_image = user.run(defaults::MOUNT_TOOL);
     mount_image.arg(rootfs_image_path)
         .arg(&image_mount_point);
     if Lookup::is_debug() {
@@ -1505,7 +1517,7 @@ pub fn mount_vm(
     let overlay_mount_point = format!(
         "{}/{}", sub_dir, defaults::IMAGE_OVERLAY
     );
-    let mut mount_overlay = user.run("mount");
+    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
     mount_overlay.arg("-t")
         .arg("ext4")
         .arg("-o")
@@ -1520,6 +1532,9 @@ pub fn mount_vm(
     }
     mount_overlay.perform()?;
     // 4. mount as overlay
+    // The directories are created in the overlay image mounted
+    // above. Its filesystem root belongs to root, and so has the
+    // upper directory, which becomes the root directory of the VM
     [
         defaults::OVERLAY_ROOT,
         defaults::OVERLAY_UPPER,
@@ -1530,7 +1545,7 @@ pub fn mount_vm(
         .try_for_each(|path| mkdir(&path, "755", User::ROOT))?;
 
     let root_mount_point = format!("{}/{}", sub_dir, defaults::OVERLAY_ROOT);
-    let mut mount_overlay = user.run("mount");
+    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
     mount_overlay.arg("-t")
         .arg("overlay")
         .arg("overlayfs")
@@ -1560,7 +1575,7 @@ pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
         defaults::IMAGE_OVERLAY,
         defaults::IMAGE_ROOT,
     ].iter().map(|mount_point| {
-        let mut umount = user.run("umount");
+        let mut umount = user.run(defaults::UMOUNT_TOOL);
         umount.stderr(Stdio::null());
         umount.stdout(Stdio::null());
         umount.arg(format!("{}/{}", sub_dir, mount_point));

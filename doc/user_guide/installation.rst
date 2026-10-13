@@ -74,11 +74,16 @@ Privileges
 Flake Pilot does not install any setuid binary. Actions which need
 more privileges than the calling user has, like mounting an image or
 creating a network device, are delegated to the ``sudo`` binary of
-the system. Therefore a user who registers or runs a flake that
-requires such an action needs the corresponding ``sudo`` permissions.
+the system. The packages do not install a ``sudo`` policy.
 
-Applications which run rootless, e.g a plain container flake started
-through rootless podman, do not need any of this.
+.. warning::
+
+   The ``sudo`` rights these actions need cannot be restricted to
+   what Flake Pilot does with them. They make a user equivalent to
+   root. This applies to every bubblewrap flake, to firecracker
+   flakes with includes and to every podman flake from the system
+   registry. Read :ref:`privileges` before you grant them, and start
+   from the reference policy described there.
 
 Next Steps
 ==========

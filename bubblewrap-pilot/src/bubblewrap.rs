@@ -484,7 +484,7 @@ fn get_ids_dir() -> Result<String, FlakeError> {
     private directory of the calling user to store the meta
     data files of its instances in
     !*/
-    IO::private_dir(&get_bubblewrap_ids_dir(usermode()), get_sandbox_user())
+    IO::private_dir(&get_bubblewrap_ids_dir(usermode()))
 }
 
 fn get_sandbox_id_file(sandbox_ids_dir: &str, program_name: &str) -> String {

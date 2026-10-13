@@ -185,9 +185,14 @@ pub fn create(
         // provisioning needs root permissions for mount
         // make sure we have them for this session via sudo
         user = User::from("root");
-        let mut root = user.run("true");
+        let mut root = user.run(flakes::defaults::TRUE_TOOL);
         root.status()?;
     }
+
+    // Make sure CID dir exists. The meta data directory it is
+    // placed in is not created by the pilot, a missing one is an
+    // error which is reported before the storage paths are created
+    let container_ids_dir = engine::init_cid_dir(user)?;
 
     // read podman storage setup
     let storage = read_storage_conf(usermode)?;
@@ -200,9 +205,6 @@ pub fn create(
         calling_user_name.to_str().unwrap()
     );
     mkdir(&container_runroot, "700", user)?;
-
-    // Make sure CID dir exists
-    let container_ids_dir = engine::init_cid_dir(user)?;
 
     let container_cid_file = engine::cid_file(
         &container_ids_dir, &format!("{program_name}{suffix}")
@@ -702,7 +704,7 @@ pub fn sync_host(
     temp_files_from.write_all(removed_files_contents.as_bytes())?;
     cp(temp_files_from.path().to_str().unwrap(), &files_from, User::ROOT)?;
 
-    let mut call = user.run("rsync");
+    let mut call = user.run(flakes::defaults::RSYNC_TOOL);
     call.args(flakes::defaults::RSYNC_OPTIONS);
     if ignore_missing {
         call.arg("--ignore-missing-args");
@@ -827,7 +829,7 @@ pub fn build_system_dependencies(
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
         }
-        let mut call = user.run("sh");
+        let mut call = user.run(flakes::defaults::SH_TOOL);
         call.arg(system_deps);
         if Lookup::is_debug() {
             debug!("{:?} {:?}", call.get_program(), call.get_args());

@@ -44,6 +44,14 @@ Install the packages of the engines you want to use as described in
 :ref:`installation`. Every engine comes with its own pilot and only
 the ones you registered applications for are needed.
 
+.. warning::
+
+   Bubblewrap flakes, firecracker flakes with includes and system wide
+   podman flakes run programs as root through ``sudo``. The ``sudo``
+   rights they need make a user equivalent to root. See
+   :ref:`privileges` for which flakes run without them before granting
+   these rights to anyone.
+
 Next, prepare your user environment. Applications registered as a
 normal user are placed in a directory of your choice, typically
 ``$HOME/bin``, which has to be part of your search path:
@@ -153,6 +161,7 @@ share data with the host.
 
    introduction
    installation
+   privileges
    getting_started
    container_apps
    vm_apps

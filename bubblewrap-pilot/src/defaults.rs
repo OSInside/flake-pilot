@@ -73,9 +73,10 @@ pub const OVERLAY_DIR_MODE: &str = "755";
 // Filesystem types used to create the root of the sandbox
 pub const OVERLAY_TYPE: &str = "overlay";
 pub const TMPFS_TYPE: &str = "tmpfs";
-// Programs which create and delete the mounts on the host
-pub const MOUNT_TOOL: &str = "/usr/bin/mount";
-pub const UMOUNT_TOOL: &str = "/usr/bin/umount";
+// Programs which create and delete the mounts on the host. They
+// are called through sudo and are therefore maintained along with
+// the other programs called this way in the common area
+pub use flakes::defaults::{MOUNT_TOOL, UMOUNT_TOOL};
 // Pilot option which selects the working directory of the
 // application in the sandbox
 pub const PILOT_CHDIR_OPTION: &str = "%chdir";

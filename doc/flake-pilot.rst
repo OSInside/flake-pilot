@@ -51,6 +51,14 @@ FILES
        # started through the bubblewrap-pilot
        bubblewrap_ids_dir: /tmp/flakes
 
+       # The metadata directories are shared by all users, each
+       # of them keeps a private directory below. They have to
+       # belong to root and to have the permissions 1777, like
+       # /tmp. The pilots do not create them and refuse to run
+       # without them. /tmp/flakes is created at boot through
+       # /usr/lib/tmpfiles.d/flake-pilot.conf, a different
+       # directory by calling 'flake-ctl init' as root
+
        # Path to the podman storage configuration file
        # this information is used by the podman-pilot to
        # launch containers with a custom storage setup

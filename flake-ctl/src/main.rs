@@ -255,12 +255,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             return Ok(ExitCode::FAILURE)
                         }
                     }
-                    if ! vm.is_none() {
-                        app::purge(
-                            vm.as_ref().map(String::as_str).unwrap(),
-                            defaults::FIRECRACKER_PILOT,
-                            user
-                        );
+                    if ! vm.is_none() && ! app::purge(
+                        vm.as_ref().map(String::as_str).unwrap(),
+                        defaults::FIRECRACKER_PILOT,
+                        user
+                    ) {
+                        return Ok(ExitCode::FAILURE)
                     }
                 }
             }
@@ -465,12 +465,12 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     ) {
                         return Ok(ExitCode::FAILURE)
                     }
-                    if ! container.is_none() {
-                        app::purge(
-                            container.as_ref().map(String::as_str).unwrap(),
-                            defaults::PODMAN_PILOT,
-                            user
-                        );
+                    if ! container.is_none() && ! app::purge(
+                        container.as_ref().map(String::as_str).unwrap(),
+                        defaults::PODMAN_PILOT,
+                        user
+                    ) {
+                        return Ok(ExitCode::FAILURE)
                     }
                 }
             }

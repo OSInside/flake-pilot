@@ -127,7 +127,10 @@ OPTIONS
 
 --name <NAME>
 
-  Image name used as local identifier
+  Image name used as local identifier. The name is the directory
+  of the image in the registry. It has to start with a letter or
+  digit and may only contain letters, digits, ``.``, ``_`` and
+  ``-``, up to 255 characters
 
 --rootfs <ROOTFS>
 

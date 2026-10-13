@@ -45,6 +45,9 @@ use crate::fetch::{fetch_file, send_request};
 const FLAKE_PILOT_NFS_EXPORT_MARKER: &str =
     "# flake-pilot firecracker volume";
 
+// The name of an image is a directory name in the registry
+const IMAGE_NAME_MAX_LEN: usize = 255;
+
 pub fn get_registry_dir(usermode: bool) -> String {
     /*!
     Provide the toplevel firecracker registry directory
@@ -71,11 +74,86 @@ pub fn get_images_dir(usermode: bool) -> String {
     )
 }
 
-pub fn get_image_dir(name: &str, usermode: bool) -> String {
+pub fn get_image_dir(name: &str, usermode: bool) -> io::Result<String> {
     /*!
     Provide the directory of the image registered as name
+
+    The images directory has to exist, see init_toplevel_image_dir
     !*/
-    format!("{}/{}", get_images_dir(usermode), name)
+    image_dir_below(&get_images_dir(usermode), name)
+}
+
+pub fn validate_image_name(name: &str) -> io::Result<()> {
+    /*!
+    Check the name of an image in the firecracker registry
+
+    The name is used as a directory name in the registry. It has
+    to start with an alphanumeric character and may only contain
+    alphanumeric characters, '.', '_' and '-'. This rules out
+    path separators as well as '.' and '..'
+    !*/
+    let mut chars = name.chars();
+    let valid = name.len() <= IMAGE_NAME_MAX_LEN
+        && chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
+    if ! valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Invalid image name '{name}': expected up to \
+                {IMAGE_NAME_MAX_LEN} characters out of [A-Za-z0-9._-], \
+                starting with [A-Za-z0-9]"
+            )
+        ))
+    }
+    Ok(())
+}
+
+fn image_dir_below(images_dir: &str, name: &str) -> io::Result<String> {
+    /*!
+    Provide the directory of the image registered as name below
+    the given images directory
+
+    The directory is joined to the real path of the images
+    directory. An existing entry of that name has to resolve to
+    itself, a symlink could lead out of the registry. The result
+    is passed to remove_dir_all and mv, partly as root, and
+    therefore must not point anywhere else
+    !*/
+    validate_image_name(name)?;
+    let real_images_dir = fs::canonicalize(images_dir).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("Failed to resolve images directory {images_dir}: {error}")
+        )
+    })?;
+    let image_dir = real_images_dir.join(name);
+    match fs::symlink_metadata(&image_dir) {
+        Ok(_) => {
+            if fs::canonicalize(&image_dir).ok().as_ref() != Some(&image_dir) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Image directory {} is a symlink, refusing to use it",
+                        image_dir.display()
+                    )
+                ))
+            }
+        },
+        Err(error) if error.kind() == io::ErrorKind::NotFound => { },
+        Err(error) => {
+            return Err(io::Error::new(
+                error.kind(),
+                format!("Failed to access {}: {error}", image_dir.display())
+            ))
+        }
+    }
+    image_dir.into_os_string().into_string().map_err(|image_dir| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Image directory {image_dir:?} is not valid UTF-8")
+        )
+    })
 }
 
 pub fn registry_user(usermode: bool) -> &'static str {
@@ -179,15 +257,15 @@ pub async fn pull_component_image(
     optional initrd.
     !*/
     let mut result = 255;
-    let image_dir = get_image_dir(name, usermode);
     struct Component<'a> {
         uri: String,
         file: Cow<'a, str>
     }
     info!("Fetching Component image...");
-    if ! pull_new(name, force, usermode) {
-        return result
-    }
+    let image_dir = match pull_new(name, force, usermode) {
+        Some(image_dir) => image_dir,
+        None => return result
+    };
     match tempdir() {
         Ok(tmp_dir) => {
             let mut download_files: Vec<Component> = Vec::new();
@@ -277,13 +355,12 @@ pub async fn pull_kis_image(
     date is not fetched again and does not fail the pull
     !*/
     let mut result = 255;
-    let image_dir = get_image_dir(name, usermode);
     let uri = uri.unwrap();
 
     info!("Fetching KIS image...");
 
-    let pull_state = match pull_init(name, force, usermode) {
-        Some(pull_state) => pull_state,
+    let (pull_state, image_dir) = match pull_init(name, force, usermode) {
+        Some(pull) => pull,
         None => return result
     };
 
@@ -1088,17 +1165,16 @@ fn run_ok(call: &mut Command, action: &str) -> bool {
 pub fn mv(source: &str, target: &String, user: &str) -> bool {
     /*!
     Move file
+
+    The target is always treated as the new name of the source,
+    never as a directory to move the source into. A directory
+    which appeared at the target in the meantime therefore fails
+    the move instead of receiving the source. Only an empty
+    directory gets replaced
     !*/
     let mut call = run_as(defaults::MV_TOOL, user);
-    call.arg(source).arg(target);
-    match call.status() {
-        Ok(_) => { },
-        Err(error) => {
-            error!("Failed to mv: {source} -> {target}: {error:?}");
-            return false
-        }
-    }
-    true
+    call.arg("--no-target-directory").arg(source).arg(target);
+    run_ok(&mut call, &format!("mv: {source} -> {target}"))
 }
 
 #[derive(Debug, PartialEq)]
@@ -1110,49 +1186,59 @@ pub enum PullState {
     Update
 }
 
-pub fn pull_init(name: &str, force: bool, usermode: bool) -> Option<PullState> {
+pub fn pull_init(
+    name: &str, force: bool, usermode: bool
+) -> Option<(PullState, String)> {
     /*!
     Initialize pull and tell whether it registers a new image or
-    updates an existing one
+    updates an existing one, along with the image directory
 
     With force an existing image is deleted upfront which turns
     the pull into a pull from scratch. None is returned if the
-    registry could not be prepared for the pull
+    name is invalid or the registry could not be prepared for
+    the pull
     !*/
+    if let Err(error) = validate_image_name(name) {
+        error!("{error}");
+        return None
+    }
     if ! init_toplevel_image_dir(&get_registry_dir(usermode)) {
         return None
     }
-    let image_dir = get_image_dir(name, usermode);
+    let image_dir = match get_image_dir(name, usermode) {
+        Ok(image_dir) => image_dir,
+        Err(error) => {
+            error!("{error}");
+            return None
+        }
+    };
     if force && Path::new(&image_dir).exists() {
         if ! remove_image_dir(&image_dir) {
             return None
         }
-        return Some(PullState::New)
+        return Some((PullState::New, image_dir))
     }
     if Path::new(&image_dir).exists() {
-        return Some(PullState::Update)
+        return Some((PullState::Update, image_dir))
     }
-    Some(PullState::New)
+    Some((PullState::New, image_dir))
 }
 
-pub fn pull_new(name: &str, force: bool, usermode: bool) -> bool {
+pub fn pull_new(name: &str, force: bool, usermode: bool) -> Option<String> {
     /*!
-    Initialize new pull
+    Initialize new pull and provide the image directory
 
     Used for pulls that provide no way to tell an existing image
     apart from its origin. For those an already existing image
     is an error
     !*/
     match pull_init(name, force, usermode) {
-        Some(PullState::New) => true,
-        Some(PullState::Update) => {
-            error!(
-                "Image directory '{}' already exists",
-                get_image_dir(name, usermode)
-            );
-            false
+        Some((PullState::New, image_dir)) => Some(image_dir),
+        Some((PullState::Update, image_dir)) => {
+            error!("Image directory '{image_dir}' already exists");
+            None
         },
-        None => false
+        None => None
     }
 }
 
@@ -1169,13 +1255,17 @@ pub fn remove_image_dir(image_dir: &str) -> bool {
     }
 }
 
-pub fn purge_vm(vm: &str, usermode: bool) {
+pub fn purge_vm(vm: &str, usermode: bool) -> bool {
     /*!
     Iterate over all yaml config files and find those connected
     to the VM. Delete all app registrations for this VM along
     with the meta data of their instances and also delete the
     VM from the local registry
     !*/
+    if let Err(error) = validate_image_name(vm) {
+        error!("{error}");
+        return false
+    }
     for registration in app::image_flakes(
         vm, defaults::FIRECRACKER_ENGINE, usermode
     ) {
@@ -1186,11 +1276,11 @@ pub fn purge_vm(vm: &str, usermode: bool) {
             instance::remove_vm_meta_data(&registration.name, usermode);
         }
     }
-    let image_dir = get_image_dir(vm, usermode);
-    match fs::remove_dir_all(&image_dir) {
-        Ok(_) => { },
+    match get_image_dir(vm, usermode) {
+        Ok(image_dir) => remove_image_dir(&image_dir),
         Err(error) => {
-            error!("Error removing directory {image_dir}: {error}");
+            error!("{error}");
+            false
         }
     }
 }
@@ -1312,6 +1402,88 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn test_validate_image_name() {
+        for name in ["claude", "leap-15.6", "my_VM.1", "0"] {
+            assert!(validate_image_name(name).is_ok(), "{}", name);
+        }
+        let too_long = "a".repeat(IMAGE_NAME_MAX_LEN + 1);
+        for name in [
+            "", ".", "..", "../etc", "a/b", "/abs", ".hidden", "-opt",
+            "a b", "a*", "näme", "a\n", too_long.as_str()
+        ] {
+            assert!(validate_image_name(name).is_err(), "{:?}", name);
+        }
+    }
+
+    #[test]
+    fn test_image_dir_below() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let images_dir = tmp_dir.path().join("images");
+        fs::create_dir(&images_dir).unwrap();
+        let real_images_dir = fs::canonicalize(&images_dir).unwrap();
+        let images_dir = images_dir.to_str().unwrap();
+
+        // a new and an existing image resolve below the real path
+        // of the images directory
+        assert_eq!(
+            image_dir_below(images_dir, "new").unwrap(),
+            real_images_dir.join("new").to_str().unwrap()
+        );
+        fs::create_dir(real_images_dir.join("present")).unwrap();
+        assert_eq!(
+            image_dir_below(images_dir, "present").unwrap(),
+            real_images_dir.join("present").to_str().unwrap()
+        );
+
+        // names which leave the registry are refused
+        assert!(image_dir_below(images_dir, "../outside").is_err());
+        assert!(image_dir_below(images_dir, "..").is_err());
+
+        // a symlink is refused wherever it points to, dangling
+        // or not
+        symlink(tmp_dir.path(), real_images_dir.join("escape")).unwrap();
+        assert!(image_dir_below(images_dir, "escape").is_err());
+        symlink("/nonexistent", real_images_dir.join("dangling")).unwrap();
+        assert!(image_dir_below(images_dir, "dangling").is_err());
+
+        // the images directory has to exist
+        let missing = tmp_dir.path().join("missing");
+        assert!(image_dir_below(missing.to_str().unwrap(), "new").is_err());
+    }
+
+    #[test]
+    fn test_mv_never_moves_into_target() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let source = tmp_dir.path().join("source");
+        let target = tmp_dir.path().join("target");
+        let new_source = || {
+            fs::create_dir(&source).unwrap();
+            fs::write(source.join("rootfs"), "data").unwrap();
+        };
+        let source_str = source.to_str().unwrap();
+        let target_str = target.to_str().unwrap().to_string();
+
+        // a target which does not exist is created
+        new_source();
+        assert!(mv(source_str, &target_str, ""));
+        assert!(target.join("rootfs").is_file());
+
+        // a target directory which is not empty fails the move,
+        // the source is not placed inside of it
+        new_source();
+        assert!(! mv(source_str, &target_str, ""));
+        assert!(source.join("rootfs").is_file());
+        assert!(! target.join("source").exists());
+
+        // an empty target directory is replaced
+        fs::remove_dir_all(&target).unwrap();
+        fs::create_dir(&target).unwrap();
+        assert!(mv(source_str, &target_str, ""));
+        assert!(target.join("rootfs").is_file());
+        assert!(! target.join("source").exists());
     }
 
     #[test]

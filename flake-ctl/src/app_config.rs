@@ -300,7 +300,7 @@ impl AppConfig {
         /*!
         save stores an AppConfig to the given file
         !*/
-        let image_dir = firecracker::get_image_dir(vm, usermode);
+        let image_dir = firecracker::get_image_dir(vm, usermode)?;
         let mut yaml_config = AppConfig::from_template(
             defaults::FLAKE_TEMPLATE_FIRECRACKER
         );

@@ -120,22 +120,6 @@ Cmnd_Alias FLAKE_PODMAN_SYSTEM = FLAKE_PODMAN, \
 %flake-pilot ALL = (root) FLAKE_PODMAN_SYSTEM
 
 #
-# flake-ctl firecracker pull
-# -------------------------------------------------------------------
-# Runs as: root
-# GRANTS:  ROOT
-#
-# The downloaded root filesystem image is mounted to add the sci
-# program and the directories the VM needs. mv moves the image into
-# the system wide image store.
-#
-Cmnd_Alias FLAKE_FIRECRACKER_PULL = \
-    /usr/bin/mount, /usr/bin/umount, /usr/bin/mkdir, /usr/bin/cp, \
-    /usr/bin/mv
-
-%flake-pilot ALL = (root) FLAKE_FIRECRACKER_PULL
-
-#
 # flake-ctl firecracker network init, add, remove
 # -------------------------------------------------------------------
 # Runs as: root

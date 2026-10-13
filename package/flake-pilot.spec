@@ -156,7 +156,6 @@ make DESTDIR=%{buildroot}/ install_sci_static || \
 make DESTDIR=%{buildroot}/ install_sci
 
 mkdir -p %{buildroot}/overlayroot
-mkdir -p %{buildroot}%{_prefix}/lib/flake-pilot
 
 # The meta data directory shared by the pilots of all users is
 # created at boot, see the comment in the file
@@ -177,9 +176,6 @@ cp -a firecracker-pilot/dracut/usr/lib/dracut/modules.d/80netstart/* \
     %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
 install -m 644 firecracker-pilot/dracut/etc/dracut.conf.d/extramodules.conf \
     %{buildroot}/etc/dracut.conf.d/extramodules.conf
-
-install -m 755 %{buildroot}/usr/sbin/sci \
-    %{buildroot}%{_prefix}/lib/flake-pilot/sci
 
 mkdir -p %{buildroot}/etc
 install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
@@ -347,7 +343,6 @@ fi
 %dir /var/lib/firecracker/images
 %dir /var/lib/firecracker/storage
 %endif
-%dir %{_prefix}/lib/flake-pilot
 %config /etc/flakes/firecracker-flake.yaml
 %config /etc/flakes/firecracker.json
 %doc %{_mandir}/man8/flake-ctl-firecracker-pull.8.gz
@@ -363,7 +358,6 @@ fi
 %doc %{_mandir}/man8/flake-ctl-firecracker-volume-remove.8.gz
 %{_bindir}/firecracker-pilot
 %doc %{_mandir}/man8/firecracker-pilot.8.gz
-%{_prefix}/lib/flake-pilot/sci
 
 %files -n flake-pilot-firecracker-dracut-netstart
 %dir %{_prefix}/lib/dracut

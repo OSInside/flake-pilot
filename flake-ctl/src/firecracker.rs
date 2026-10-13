@@ -243,64 +243,9 @@ pub async fn pull_component_image(
                     }
                 }
             }
-            // Check for sci and add it to rootfs image if not present
-            let tmp_dir_path = tmp_dir.path().display().to_string();
-            if mount_fs_image(&rootfs_file, &tmp_dir_path, "root") {
-                let sci_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/usr/sbin/sci"
-                );
-                // required for overlay mount process
-                let overlay_root_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/overlayroot"
-                );
-                // required for /proc/sys/kernel/sysrq based force_reboot
-                let proc_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/proc"
-                );
-                // required for the switch root into the overlay
-                let sys_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/sys"
-                );
-                let dev_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/dev"
-                );
-                // required for PTS allocation
-                let dev_pts_in_image = format!(
-                    "{}/{}", tmp_dir_path, "/dev/pts"
-                );
-                if ! Path::new(&sci_in_image).exists() {
-                    info!("Copying sci to rootfs...");
-                    if ! copy(
-                        defaults::FIRECRACKER_SCI, &sci_in_image, "root"
-                    ) {
-                        umount(&tmp_dir_path, "root");
-                        return result
-                    }
-                }
-                if ! Path::new(&overlay_root_in_image).exists() && ! mkdir(&overlay_root_in_image, "root") {
-                    umount(&tmp_dir_path, "root");
-                    return result
-                }
-                if ! Path::new(&proc_in_image).exists() && ! mkdir(&proc_in_image, "root") {
-                    umount(&tmp_dir_path, "root");
-                    return result
-                }
-                if ! Path::new(&sys_in_image).exists() && ! mkdir(&sys_in_image, "root") {
-                    umount(&tmp_dir_path, "root");
-                    return result
-                }
-                if ! Path::new(&dev_in_image).exists() && ! mkdir(&dev_in_image, "root") {
-                    umount(&tmp_dir_path, "root");
-                    return result
-                }
-                if ! Path::new(&dev_pts_in_image).exists() && ! mkdir(&dev_pts_in_image, "root") {
-                    umount(&tmp_dir_path, "root");
-                    return result
-                }
-                umount(&tmp_dir_path, "root");
-            }
 
             // Move to final firecracker image store
+            let tmp_dir_path = tmp_dir.path().display().to_string();
             if ! mv(&tmp_dir_path, &image_dir, registry_user(usermode)) {
                 return result
             }
@@ -1140,22 +1085,6 @@ fn run_ok(call: &mut Command, action: &str) -> bool {
     }
 }
 
-pub fn mkdir(dirname: &String, user: &str) -> bool {
-    /*!
-    Make directory
-    !*/
-    let mut call = run_as(defaults::MKDIR_TOOL, user);
-    call.arg("-p").arg(dirname);
-    match call.status() {
-        Ok(_) => { },
-        Err(error) => {
-            error!("Failed to mkdir: {dirname}: {error:?}");
-            return false
-        }
-    }
-    true
-}
-
 pub fn mv(source: &str, target: &String, user: &str) -> bool {
     /*!
     Move file
@@ -1171,57 +1100,6 @@ pub fn mv(source: &str, target: &String, user: &str) -> bool {
     }
     true
 }
-
-pub fn copy(source: &str, target: &String, user: &str) -> bool {
-    /*!
-    Copy file
-    !*/
-    let mut call = run_as(defaults::CP_TOOL, user);
-    call.arg(source).arg(target);
-    match call.status() {
-        Ok(_) => { },
-        Err(error) => {
-            error!("Failed to cp: {source} -> {target}: {error:?}");
-            return false
-        }
-    }
-    true
-}
-
-pub fn mount_fs_image(
-    fs_name: &str, mount_point: &String, user: &str
-) -> bool {
-    /*!
-    Mount filesystem image
-    !*/
-    let mut call = run_as(defaults::MOUNT_TOOL, user);
-    call.arg(fs_name).arg(mount_point);
-    match call.status() {
-        Ok(_) => { },
-        Err(error) => {
-            error!("Failed to execute mount: {error:?}");
-            return false
-        }
-    }
-    true
-}
-
-pub fn umount(mount_point: &str, user: &str) -> bool {
-    /*!
-    Umount given mount_point
-    !*/
-    let mut call = run_as(defaults::UMOUNT_TOOL, user);
-    call.arg(mount_point);
-    match call.status() {
-        Ok(_) => { },
-        Err(error) => {
-            error!("Failed to execute mount: {error:?}");
-            return false
-        }
-    }
-    true
-}
-
 
 #[derive(Debug, PartialEq)]
 pub enum PullState {

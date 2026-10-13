@@ -4,7 +4,7 @@
 Flake Pilot User Guide
 =======================
 
-.. rubric:: Application Isolation - Secure Execution with a Native Feel
+.. rubric:: Application Isolation with a Native Feel
 
 Flake Pilot registers, provisions and launches applications that are
 not installed on your host but are provided inside a runtime
@@ -17,6 +17,10 @@ that is needed to run it, the image, the engine and the provisioning
 of the instance, is handled behind that name.
 
 An application registered this way is called a **flake**.
+
+How far a flake is separated from the host depends on the engine and
+on what you share with it, see :ref:`isolation-limits` and
+:ref:`privileges` before you run code you do not trust.
 
 .. image:: ../images/architecture.png
    :align: center
@@ -101,12 +105,15 @@ the host they can reach.
 
    claude
 
-The application feels local, but the code it runs never touches the
-host system. The write layer of the instance lives in an overlay of
-its own and the data you want the tool to see is shared explicitly.
-:ref:`vm-apps` shows the complete example, :ref:`firecracker-networking`
-connects the instance to the outside world and
-:ref:`firecracker-volumes` shares a host directory with it over NFS.
+The application feels local, but it runs on the kernel of the VM and
+cannot see the file system of the host. The write layer of the
+instance lives in an overlay of its own. What the tool reaches beyond
+that is up to you: :ref:`firecracker-volumes` shares a host directory
+with it over NFS, which the tool then reads and writes with the rights
+of the owner of that directory, and :ref:`firecracker-networking`
+connects it to everything the host reaches through its outgoing
+interface. :ref:`vm-apps` shows the complete example and
+:ref:`isolation-limits` summarizes what remains reachable.
 
 An Application Collection With Podman
 =====================================
@@ -155,6 +162,64 @@ call of the application. Paths you want to change on the host are
 bound into the sandbox explicitly.
 :ref:`sandbox-apps` describes the tree, the overlay and the options to
 share data with the host.
+
+The overlay protects the files of the host from changes, it does not
+contain the program. A sandbox is not a security boundary, see
+:ref:`isolation-limits`.
+
+.. _isolation-limits:
+
+Isolation and Its Limits
+========================
+
+A flake separates an application from the host as far as its engine
+does, minus everything you share with it. None of the engines makes a
+flake safe for hostile code on its own. Before you run code you do
+not trust, check what it can reach:
+
+``firecracker``
+   The application runs on a kernel of its own and cannot see the
+   file system of the host. It reaches the host through what you
+   connect it to:
+
+   * A volume, see :ref:`firecracker-volumes`. Every user of the VM
+     reads and writes the exported directory with the rights of its
+     owner on the host. Code in the VM can change, delete or add any
+     file in it, e.g a script or a build file you later run on the
+     host. Export the directory the application works on, not your
+     home directory.
+
+   * The network, see :ref:`firecracker-networking`. A connected VM
+     reaches everything the host reaches through its outgoing
+     interface, the local network and internal services included,
+     and appears there with the address of the host. The firewall
+     setup only keeps it away from other instances, from the other
+     interfaces of the host and from the services of the host except
+     DHCP, DNS and NFS.
+
+   A VM which is neither connected nor given a volume talks to the
+   host only through the serial console or vsock connection of the
+   pilot which starts it.
+
+``podman``
+   The application shares the kernel of the host. It is separated by
+   the container runtime and reaches every path, device and network
+   you hand to it with ``--opt``, e.g ``--volume`` or ``--net host``.
+   Running the container with the ``krun`` runtime adds a VM, see
+   :ref:`krun-runtime`.
+
+``bubblewrap``
+   Not a security boundary. The overlay keeps the tree unchanged, but
+   the application shares the kernel and, unless further ``bwrap``
+   options restrict it, the network and the other namespaces of the
+   caller. Every path bound writable is changed for real. Use it to
+   keep a host clean, not to contain a program, see
+   :ref:`sandbox-apps`.
+
+The trust you place in Flake Pilot itself is a separate question.
+Some features need ``sudo`` rights which make a user equivalent to
+root, and the ``/systemfiles`` script of a delta container runs as
+root while it is provisioned. :ref:`privileges` lists these features.
 
 .. toctree::
    :hidden:

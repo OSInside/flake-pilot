@@ -21,8 +21,6 @@ SYNOPSIS
        --check_host_dependencies
        --container <CONTAINER>
        --force
-       --include-tar <INCLUDE_TAR>...
-       --include-path <INCLUDE_PATH>...
        --info
        --layer <LAYER>...
        --opt <OPT>...
@@ -98,16 +96,6 @@ OPTIONS
   registration. Please have in mind that a failed registration
   still causes an eventual existing former registration to be
   deleted in this case !
-
---include-tar <INCLUDE_TAR>...
-
-  Name of a tar file to be included on top of the container instance.
-  This option can be specified multiple times
-
---include-path <INCLUDE_PATH>...
-
-  Name of a file or directory to be included on top of the container
-  instance. This option can be specified multiple times
 
 --info
 

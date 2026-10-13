@@ -58,7 +58,6 @@ pub const MV_TOOL: &str = "/usr/bin/mv";
 pub const CHMOD_TOOL: &str = "/usr/bin/chmod";
 pub const MKDIR_TOOL: &str = "/usr/bin/mkdir";
 pub const INSTALL_TOOL: &str = "/usr/bin/install";
-pub const TAR_TOOL: &str = "/usr/bin/tar";
 pub const RSYNC_TOOL: &str = "/usr/bin/rsync";
 pub const MOUNT_TOOL: &str = "/usr/bin/mount";
 pub const UMOUNT_TOOL: &str = "/usr/bin/umount";

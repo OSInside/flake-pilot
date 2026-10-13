@@ -22,9 +22,9 @@ The workspace consists of:
   and provisioning of host files into the container.
 - **`bubblewrap-pilot/`**: sandbox flakes. The root is an overlay of a directory tree of the
   host, built with kernel overlayfs and then run in `bwrap`.
-- **`firecracker-pilot/`**: microVM flakes. Each launch creates an overlay disk image, mounts
-  the image to provision includes, boots Firecracker, and talks to the guest over vsock or the
-  serial console.
+- **`firecracker-pilot/`**: microVM flakes. Each launch creates an overlay disk image if one
+  is configured, boots Firecracker as the calling user, and talks to the guest over vsock or the
+  serial console. It calls nothing through `sudo`.
 - **`firecracker-pilot/guestvm-tools/sci/`**: `sci`, the static init (PID 1) inside the guest.
   It does the following:
   - sets up the overlay root and calls `switch_root`;
@@ -37,7 +37,7 @@ The workspace consists of:
   - argument handling (`lookup.rs`);
   - the `sudo` wrappers (`user.rs`);
   - symlink-safe file operations (`openat.rs`);
-  - private metadata directories and include sync (`io.rs`);
+  - private metadata directories and the rsync helper of layer provisioning (`io.rs`);
   - podman helpers (`podman.rs`).
 - **`flake-ctl/`**: the management CLI (register/remove, image pull/load/export, Firecracker
   networking and NFS volume export).
@@ -79,8 +79,7 @@ Treat the following as attacker-controlled:
    untrusted. Typical examples are third-party tools and AI coding agents; the docs recommend
    Firecracker specifically for isolating AI agents. This covers:
    - everything the workload writes, including files in the persisted Firecracker overlay image
-     and in bubblewrap upper directories, which host-side code later mounts, reads, extracts
-     into or rsyncs into, often as root via sudo;
+     and in bubblewrap upper directories, which host-side code later reads or mounts;
    - all bytes the guest sends back to the host over the vsock or serial channel, which are
      written to the caller's terminal;
    - the guest's influence on exit codes and on files the pilot reads afterwards.
@@ -102,9 +101,9 @@ Treat the following as attacker-controlled:
 4. **Image content.** For flakes *without* provisioning, container images, VM root filesystems
    and sandbox trees are workload content (see 1). The pilot must not let image content cause
    host-side effects beyond running the workload in isolation. Examples:
-   - symlinks in an image that make root-run `mkdir`, `cp`, `tar` or `rsync` write outside the
-     mount;
-   - crafted ext4 overlay images mounted by root.
+   - symlinks in an image that make root-run `mkdir`, `cp` or `rsync` write outside the
+     mount during podman provisioning;
+   - crafted filesystem images mounted by root.
 
 **Trusted** in this model:
 
@@ -123,9 +122,8 @@ In scope (roughly in order of interest):
 - **Escape from the isolation through pilot or `sci` behavior.** Host-side handling of
   workload-controlled data that leads to file reads/writes, mounts or code execution on the host
   beyond what the registration explicitly shares. Examples:
-  - mounting the guest-writable Firecracker overlay and extracting or rsyncing includes into it
-    as root (`firecracker-pilot/src/firecracker.rs` `run_creation`/`mount_vm`,
-    `common/src/io.rs` `sync_includes`);
+  - mounting container instances and layers as root and rsyncing into them during podman
+    provisioning (`podman-pilot/src/podman.rs`, `common/src/io.rs` `sync_data`);
   - bubblewrap overlay setup (`bubblewrap-pilot/src/overlay.rs`);
   - provisioning paths that follow symlinks inside an image.
 - **Cross-user attacks through shared state.** Symlink, TOCTOU and squatting bugs in
@@ -148,7 +146,7 @@ In scope (roughly in order of interest):
 - **Environment and option handling at the sudo boundary.** Environment or option injection into
   root-run commands from inputs that are not trusted under the model above, e.g. values read
   from metadata files written by another user, or from image content. Examples:
-  - option-looking values (leading `-`) reaching `podman`/`mount`/`tar` argv;
+  - option-looking values (leading `-`) reaching `podman`/`mount`/`rsync` argv;
   - `,`/`:` in overlay mount option strings;
   - unvalidated container IDs read from CID files.
 - **Information disclosure across users**: sandbox writes, overlays, sockets or metadata that
@@ -159,13 +157,12 @@ In scope (roughly in order of interest):
 
 Highest priority:
 
-- `firecracker-pilot/src/` (especially `firecracker.rs`: VM creation, overlay image creation and
-  mounting, include provisioning, vsock/serial channel, terminal handling, metadata files,
-  NFS/network boot arguments).
+- `firecracker-pilot/src/` (especially `firecracker.rs`: VM creation, overlay image creation,
+  vsock/serial channel, terminal handling, metadata files, NFS/network boot arguments).
 - `firecracker-pilot/guestvm-tools/sci/src/main.rs` (vsock listeners, command parsing,
   PTY/raw-channel redirection, child reaping, overlay root setup and `switch_root`, NFS mounts,
   resize handling, dracut initrd code).
-- `podman-pilot/src/podman.rs` (instance lifecycle, CID files, resume/attach, layer and include
+- `podman-pilot/src/podman.rs` (instance lifecycle, CID files, resume/attach, layer
   provisioning, `%VAR` expansion of runtime options, garbage collection).
 - `bubblewrap-pilot/src/bubblewrap.rs`, `overlay.rs` (bwrap argument construction, overlay
   directories and root mounts, PID files).

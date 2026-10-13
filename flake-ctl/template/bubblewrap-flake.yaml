@@ -1,6 +1,3 @@
-include:
-  tar: ~
-  path: ~
 sandbox:
   name: path/to/rootfs/on/host
   target_app_path: path/to/program/in/sandbox

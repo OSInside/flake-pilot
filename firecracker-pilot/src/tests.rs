@@ -38,8 +38,6 @@ fn simple_config() {
             r#"vm:
  name: JoJo
  host_app_path: /myapp
-include:
- tar: ~
 "#,
     );
     assert_eq!(cfg.vm.name, "JoJo");
@@ -51,8 +49,6 @@ fn combine_configs() {
             r#"vm:
  name: JoJo
  host_app_path: /myapp
-include:
- tar: ~
 vm:
  name: Dio
  host_app_path: /other
@@ -87,8 +83,6 @@ fn instance_engine_section() -> crate::config::EngineSection<'static> {
          - "root=/dev/vdb"
      "@none":
        boot_args: ~
-include:
- tar: ~
 "#,
     )));
     config.runtime().firecracker
@@ -263,8 +257,6 @@ fn test_configured_pilot_options() {
    kernel_image_path: /kernel
    boot_args:
      - "init=/usr/sbin/sci"
-include:
- tar: ~
 "#,
     );
     assert_eq!(vec!["%port:2000"], cfg.pilot_options());
@@ -280,8 +272,6 @@ fn test_no_pilot_options_configured() {
             r#"vm:
  name: JoJo
  host_app_path: /myapp
-include:
- tar: ~
 "#,
     );
     assert!(cfg.pilot_options().is_empty());

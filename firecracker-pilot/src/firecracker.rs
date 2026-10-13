@@ -25,9 +25,9 @@
 use std::{thread, time};
 use flakes::io::IO;
 use std::process::Command;
-use flakes::command::{CommandError, handle_output, CommandExtTrait};
+use flakes::command::{handle_output, CommandExtTrait};
 use flakes::error::{FlakeError, OperationError};
-use flakes::user::{User, mkdir, chmod};
+use flakes::user::{User, chmod};
 use flakes::lookup::Lookup;
 use flakes::network::get_tap_name as get_tap_device_name;
 use flakes::network::read_network_config;
@@ -40,7 +40,7 @@ use std::fs;
 use std::fs::DirBuilder;
 use std::os::unix::fs::DirBuilderExt;
 use crate::config::{config, is_usermode, RuntimeSection, EngineSection};
-use tempfile::{NamedTempFile, tempdir};
+use tempfile::NamedTempFile;
 use std::io::{self, Write, SeekFrom, Seek};
 use std::fs::File;
 use std::os::unix::net::{UnixStream, UnixListener};
@@ -178,12 +178,6 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
               boot_args:
                 - "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
 
-      include:
-        tar:
-          - tar-archive-file-name-to-include
-        path:
-          - file-or-directory-to-include
-
     Calling this method returns a vector including a placeholder
     for the later VM process ID and and the name of
     the VM ID file.
@@ -227,11 +221,6 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         resume, firecracker: engine_section, ..
     } = config().runtime();
 
-    // check for includes
-    let tar_includes = config().tars();
-    let path_includes = config().paths();
-    let has_includes = !tar_includes.is_empty() || !path_includes.is_empty();
-
     // Check for an existing instance. The pilot does not delete
     // the meta data of an instance, this is done when the flake
     // gets removed via 'flake-ctl firecracker remove'. The meta
@@ -265,9 +254,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         );
     }
 
-    match run_creation(
-        &vm_id_file_path, program_name, engine_section, has_includes
-    ) {
+    match run_creation(&vm_id_file_path, program_name, engine_section) {
         Ok(result) => {
             if let Some(spinner) = spinner {
                 spinner.success("Launching flake");
@@ -286,8 +273,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
 fn run_creation(
     vm_id_file_path: &str,
     program_name: &String,
-    engine_section: EngineSection,
-    has_includes: bool
+    engine_section: EngineSection
 ) -> Result<(String, String), FlakeError> {
     // Create initial vm_id_file with process ID set to 0
     IO::create_meta_file(vm_id_file_path)?.write_all("0".as_bytes())?;
@@ -322,37 +308,6 @@ fn run_creation(
                     error!("Failed to create overlay: {error:?}");
                     fs::remove_file(&vm_overlay_file)?;
                 }
-            }
-        }
-    }
-
-    // Provision VM
-    if engine_section.overlay_size.is_some() {
-        let vm_image_file = engine_section.rootfs_image_path;
-        let tmp_dir = tempdir()?;
-        if let Some(tmp_dir) = tmp_dir.path().to_str() {
-            if has_includes {
-                // This and following actions requires root privilges
-                // make sure we request them once from sudo
-                let root_user = User::from("root");
-                let mut root = root_user.run(defaults::TRUE_TOOL);
-                root.status()?;
-
-                // Mount and sync...
-                let vm_mount_point = mount_vm(
-                    tmp_dir,
-                    vm_image_file,
-                    &vm_overlay_file,
-                    User::ROOT
-                )?;
-                if Lookup::is_debug() {
-                    debug!("Syncing includes...");
-                }
-                IO::sync_includes(
-                    &vm_mount_point, config().tars(),
-                    config().paths(), User::ROOT
-                )?;
-                umount_vm(tmp_dir, User::ROOT)?;
             }
         }
     }
@@ -1484,108 +1439,6 @@ pub fn delete_file(filename: &String) -> bool {
         }
     }
     true
-}
-
-pub fn mount_vm(
-    sub_dir: &str, rootfs_image_path: &str,
-    overlay_path: &str, user: User
-) -> Result<String, FlakeError> {
-    /*!
-    Mount VM with overlay below given sub_dir
-    !*/
-    // 1. create overlay image mount structure
-    [
-        defaults::IMAGE_ROOT,
-        defaults::IMAGE_OVERLAY
-    ].iter()
-        .map(|p| format!("{sub_dir}/{p}"))
-        .filter(|path| !Path::new(path).exists())
-        .try_for_each(fs::create_dir_all)?;
-
-    // 2. mount VM image
-    let image_mount_point = format!(
-        "{}/{}", sub_dir, defaults::IMAGE_ROOT
-    );
-    let mut mount_image = user.run(defaults::MOUNT_TOOL);
-    mount_image.arg(rootfs_image_path)
-        .arg(&image_mount_point);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", mount_image.get_program(), mount_image.get_args());
-    }
-    mount_image.perform()?;
-    // 3. mount Overlay image
-    let overlay_mount_point = format!(
-        "{}/{}", sub_dir, defaults::IMAGE_OVERLAY
-    );
-    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
-    mount_overlay.arg("-t")
-        .arg("ext4")
-        .arg("-o")
-        .arg("data=ordered")
-        .arg(overlay_path)
-        .arg(&overlay_mount_point);
-    if Lookup::is_debug() {
-        debug!(
-            "{:?} {:?}",
-            mount_overlay.get_program(), mount_overlay.get_args()
-        );
-    }
-    mount_overlay.perform()?;
-    // 4. mount as overlay
-    // The directories are created in the overlay image mounted
-    // above. Its filesystem root belongs to root, and so has the
-    // upper directory, which becomes the root directory of the VM
-    [
-        defaults::OVERLAY_ROOT,
-        defaults::OVERLAY_UPPER,
-        defaults::OVERLAY_WORK
-    ].iter()
-        .map(|p| format!("{sub_dir}/{p}"))
-        .filter(|path| !Path::new(path).exists())
-        .try_for_each(|path| mkdir(&path, "755", User::ROOT))?;
-
-    let root_mount_point = format!("{}/{}", sub_dir, defaults::OVERLAY_ROOT);
-    let mut mount_overlay = user.run(defaults::MOUNT_TOOL);
-    mount_overlay.arg("-t")
-        .arg("overlay")
-        .arg("overlayfs")
-        .arg("-o")
-        .arg(format!("lowerdir={},upperdir={}/{},workdir={}/{}",
-            image_mount_point,
-            sub_dir, defaults::OVERLAY_UPPER,
-            sub_dir, defaults::OVERLAY_WORK
-        ))
-        .arg(&root_mount_point);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}",
-            mount_overlay.get_program(),
-            mount_overlay.get_args()
-        );
-    }
-    mount_overlay.perform()?;
-    Ok(root_mount_point)
-}
-
-pub fn umount_vm(sub_dir: &str, user: User) -> Result<(), CommandError> {
-    /*!
-    Umount VM image
-    !*/
-    let x: Vec<_> = [
-        defaults::OVERLAY_ROOT,
-        defaults::IMAGE_OVERLAY,
-        defaults::IMAGE_ROOT,
-    ].iter().map(|mount_point| {
-        let mut umount = user.run(defaults::UMOUNT_TOOL);
-        umount.stderr(Stdio::null());
-        umount.stdout(Stdio::null());
-        umount.arg(format!("{}/{}", sub_dir, mount_point));
-        if Lookup::is_debug() {
-            debug!("{:?} {:?}", umount.get_program(), umount.get_args());
-        }
-        umount.perform().map(|_| ())
-    }).collect();
-
-    x.into_iter().collect()
 }
 
 pub struct TerminalMode {

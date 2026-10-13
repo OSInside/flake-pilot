@@ -46,9 +46,9 @@ the ones you registered applications for are needed.
 
 .. warning::
 
-   Bubblewrap flakes, firecracker flakes with includes and system wide
-   podman flakes run programs as root through ``sudo``. The ``sudo``
-   rights they need make a user equivalent to root. See
+   Bubblewrap flakes and system wide podman flakes run programs as
+   root through ``sudo``. The ``sudo`` rights they need make a user
+   equivalent to root. See
    :ref:`privileges` for which flakes run without them before granting
    these rights to anyone.
 

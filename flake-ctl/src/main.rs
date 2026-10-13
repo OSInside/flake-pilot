@@ -99,8 +99,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, overlay_size, resume,
-                    force_vsock, include_tar, include_path, pilot_option,
-                    force
+                    force_vsock, pilot_option, force
                 } => {
                     // Sanity check: Registering requires the pilot
                     // of this engine and its registration template
@@ -133,8 +132,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 overlay_size.as_ref(),
                                 *resume,
                                 *force_vsock,
-                                include_tar.as_ref().cloned(),
-                                include_path.as_ref().cloned(),
                                 pilot_option.as_ref().cloned(),
                                 user,
                             );
@@ -372,7 +369,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Podman::Register {
                     container, app, target, base, check_host_dependencies,
-                    layer, include_tar, include_path, resume, attach,
+                    layer, resume, attach,
                     opt, pilot_option, info, force
                 } => {
                     if *info {
@@ -409,8 +406,6 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     base.as_ref(),
                                     *check_host_dependencies,
                                     layer.as_ref().cloned(),
-                                    include_tar.as_ref().cloned(),
-                                    include_path.as_ref().cloned(),
                                     *resume,
                                     *attach,
                                     user,

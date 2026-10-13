@@ -76,10 +76,6 @@ Use Cases
   small delta containers are pulled to the registry, used with a base
   that exists only once.
 
-* Include arbitrary data without harming host integrity, e.g custom
-  binaries, proprietary software not following package guidelines and
-  standards.
-
 * Layering of several containers, e.g deltas on top of a base.
   Building a solution stack, e.g base + python + python-app.
 

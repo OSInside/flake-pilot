@@ -11,7 +11,7 @@
 # flake-pilot does not install a setuid binary. Every action which
 # needs more privileges than the calling user has is passed to sudo.
 # The programs called this way are general purpose tools: podman,
-# mount, tar, rsync, cp, chmod, iptables, ip, systemctl and others.
+# mount, rsync, cp, chmod, iptables, ip, systemctl and others.
 # flake-pilot calls them with arguments which differ from call to
 # call: temporary directories, image files, container names, network
 # addresses. sudoers can therefore not restrict them to the calls
@@ -32,8 +32,8 @@
 # trust with the root account of this host. Delete the groups of the
 # features you do not use. Where possible, prefer flakes which need
 # no root privileges at all: podman flakes registered by the user
-# who runs them. See the chapter "Privileges and Trust" in the
-# flake-pilot user guide.
+# who runs them and firecracker flakes. See the chapter "Privileges
+# and Trust" in the flake-pilot user guide.
 #
 # Not active as shipped
 # ---------------------
@@ -104,42 +104,20 @@ Defaults!FLAKE_PODMAN env_keep += "CONTAINERS_STORAGE_CONF XDG_RUNTIME_DIR"
 # The application runs in a container of the root podman instance,
 # which starts containers with any privilege and any host directory
 # mounted. mkdir and chmod create the storage and metadata
-# directories of that instance. Delta containers, additional layers
-# and include sections are provisioned with test, cp, rsync, tar
-# and sh. sh runs the /systemfiles script shipped in the delta
-# container as root: registering such a container means trusting its
-# author with root, independent of this policy.
+# directories of that instance. Delta containers and additional
+# layers are provisioned with test, cp, rsync and sh. sh runs the
+# /systemfiles script shipped in the delta container as root:
+# registering such a container means trusting its author with root,
+# independent of this policy.
 #
 # A system wide podman flake can only be run by users with this
 # rule, which makes them equivalent to root.
 #
 Cmnd_Alias FLAKE_PODMAN_SYSTEM = FLAKE_PODMAN, \
     /usr/bin/true, /usr/bin/test, /usr/bin/mkdir, /usr/bin/chmod, \
-    /usr/bin/cp, /usr/bin/rsync, /usr/bin/tar, /usr/bin/sh
+    /usr/bin/cp, /usr/bin/rsync, /usr/bin/sh
 
 %flake-pilot ALL = (root) FLAKE_PODMAN_SYSTEM
-
-#
-# firecracker flakes
-# -------------------------------------------------------------------
-# Used by: firecracker-pilot, for system wide flakes as well as for
-#          flakes registered by the calling user
-# Runs as: root
-# GRANTS:  ROOT
-#
-# The VM itself runs as the calling user. Only VMs with an overlay
-# and include sections need root: their image and overlay are
-# mounted with mount and umount, the directories of the overlay are
-# created with mkdir and chmod, and the includes are provisioned
-# with tar and rsync. If no firecracker flake uses include sections,
-# firecracker flakes need no root privileges and this rule can be
-# deleted.
-#
-Cmnd_Alias FLAKE_FIRECRACKER = \
-    /usr/bin/true, /usr/bin/mkdir, /usr/bin/chmod, \
-    /usr/bin/mount, /usr/bin/umount, /usr/bin/tar, /usr/bin/rsync
-
-%flake-pilot ALL = (root) FLAKE_FIRECRACKER
 
 #
 # flake-ctl firecracker pull

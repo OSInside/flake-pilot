@@ -102,8 +102,7 @@ Treat the following as attacker-controlled:
    and sandbox trees are workload content (see 1). The pilot must not let image content cause
    host-side effects beyond running the workload in isolation. Examples:
    - symlinks in an image that make root-run `mkdir`, `cp` or `rsync` write outside the
-     mount during podman provisioning;
-   - crafted filesystem images mounted by root.
+     mount during podman provisioning.
 
 **Trusted** in this model:
 

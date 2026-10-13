@@ -50,6 +50,25 @@ and shows a file structure like in the following example
 An image pulled with `--kis-image` carries an additional
 `source_checksum` file, see UPDATE CHECK below.
 
+IMAGE REQUIREMENTS
+------------------
+
+The pulled images are stored as they are, flake-ctl does not change
+them. The root filesystem image is therefore required to provide
+what the VM needs to run a flake:
+
+* The `sci` program at `/usr/sbin/sci`, which is started as the init
+  process of the VM, see **sci**\(8).
+
+* The `/overlayroot` directory, used by `sci` to set up the overlay
+  of the VM, as well as the `/proc`, `/sys`, `/dev` and `/dev/pts`
+  directories.
+
+Installing the `flake-pilot-firecracker-guestvm-tools` package into
+the root filesystem when building the image provides `sci` and the
+`/overlayroot` directory. The images of the flake-pilot appstore are
+built this way.
+
 UPDATE CHECK
 ------------
 
@@ -112,7 +131,8 @@ OPTIONS
 
 --rootfs <ROOTFS>
 
-  Single rootfs image to pull into local image store
+  Single rootfs image to pull into local image store. The image
+  has to meet the IMAGE REQUIREMENTS
 
 ENVIRONMENT
 -----------
@@ -134,9 +154,9 @@ EXAMPLE
    $ flake-ctl firecracker pull --name myImage --kis-image \
        https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images/firecracker-basesystem.x86_64.tar.xz
 
-   $ flake-ctl firecracker pull --name firecore \
-       --rootfs https://s3.amazonaws.com/spec.ccfc.min/ci-artifacts/disks/x86_64/ubuntu-18.04.ext4 \
-       --kernel https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin
+   $ flake-ctl firecracker pull --name myVM \
+       --rootfs https://example.org/images/myvm-rootfs.ext4 \
+       --kernel https://example.org/images/myvm-vmlinux
 
 AUTHOR
 ------

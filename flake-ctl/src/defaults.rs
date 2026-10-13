@@ -65,8 +65,6 @@ pub const FIRECRACKER_ROOTFS_NAME:&str =
 // registered image is still up to date
 pub const FIRECRACKER_SOURCE_CHECKSUM_NAME:&str =
     "source_checksum";
-pub const FIRECRACKER_SCI:&str =
-    "/usr/lib/flake-pilot/sci";
 // Name of the podman setup directory inside of the flakes
 // directory of the calling user. Used in user mode only
 pub const PODMAN_REGISTRY_NAME:&str =
@@ -180,8 +178,7 @@ pub const KILL_TOOL:&str =
 // this way in the common area
 pub use flakes::defaults::{
     IPTABLES_TOOL, IP_TOOL, SYSCTL_TOOL, NFS_EXPORTFS_TOOL,
-    INSTALL_TOOL, SYSTEMCTL_TOOL, MKDIR_TOOL, MV_TOOL, CP_TOOL,
-    MOUNT_TOOL, UMOUNT_TOOL
+    INSTALL_TOOL, SYSTEMCTL_TOOL, MV_TOOL
 };
 pub const NFS_EXPORTS_FILE:&str =
     "/etc/exports";

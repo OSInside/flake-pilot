@@ -56,15 +56,15 @@ Why the Rules Cannot Be Narrowed
 does not help here, for two reasons:
 
 * The arguments differ on every call. They contain temporary
-  directories, image files, container names, instance names and
+  directories, directory trees, container names, instance names and
   network addresses. A rule which matches all calls Flake Pilot can
   make has to match nearly every call.
 
 * The calls stay powerful even with their arguments fixed in
-  shape. Flake Pilot mounts an image file given by the flake
-  configuration. A rule which allows ``mount IMAGE DIRECTORY`` also
-  allows a user to mount an image of their own which contains a
-  setuid root shell.
+  shape. Flake Pilot mounts an overlay of a directory tree given by
+  the flake configuration. A rule which allows such an overlay mount
+  also allows a user to stack a directory of their own over a system
+  directory, e.g over ``/etc``.
 
 A ``sudo`` rule for one of these programs is therefore a rule to run
 it with any arguments. The table below lists what that means for
@@ -89,7 +89,7 @@ What Each Program Grants
    * - ``rsync``
      - Copy any file over any other file, run commands through
        ``--rsh``.
-   * - ``cp``, ``mv``, ``install``
+   * - ``cp``, ``install``
      - Overwrite any file, e.g ``/etc/shadow``, ``/etc/sudoers`` or a
        program root runs.
    * - ``chmod``
@@ -147,9 +147,9 @@ What Each Feature Needs
      - calling user
      - nothing
    * - ``flake-ctl firecracker pull``
-     - ``mount``, ``umount``, ``mkdir``, ``cp``, ``mv``
-     - root
-     - **root**
+     - none
+     - calling user
+     - nothing
    * - ``flake-ctl firecracker network init``, ``add``, ``remove``
      - ``sysctl``, ``iptables``, ``ip``
      - root

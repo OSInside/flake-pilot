@@ -150,8 +150,9 @@ What Each Feature Needs
      - none
      - calling user
      - nothing
-   * - ``flake-ctl firecracker network init``, ``add``, ``remove``
-     - ``sysctl``, ``iptables``, ``ip``
+   * - ``flake-ctl firecracker network init``, ``add``, ``remove``,
+       ``cleanup``
+     - ``sysctl``, ``iptables``, ``ip``, ``install``
      - root
      - **root**
    * - ``flake-ctl firecracker volume export``, ``release``

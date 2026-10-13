@@ -34,25 +34,26 @@ this setup by:
 1. Selecting the private network between the host and the VMs, see
    NETWORK below
 
-2. Enabling IPv4 forwarding on the host
+2. Enabling IPv4 forwarding on the host, if it is switched off
 
    .. code:: bash
 
       sudo /usr/sbin/sysctl -w net.ipv4.ip_forward=1
 
-3. Setting up Network Address Translation (NAT) on the outgoing
-   interface. This is the given interface or, if none is given, the
-   interface of the IPv4 default route of the host
+   That flake-pilot switched it on is recorded in the network state
+   file, **flake-ctl-firecracker-network-cleanup**\(8) switches it
+   off again. If it was switched on before, it is left alone.
 
-   .. code:: bash
+3. Creating the firewall setup, see FIREWALL below. The traffic of the
+   VMs leaving through the outgoing interface is masqueraded. This is
+   the given interface or, if none is given, the interface of the IPv4
+   default route of the host
 
-      sudo /usr/sbin/iptables -t nat -A POSTROUTING -o <OUTGOING_INTERFACE> -j MASQUERADE
-      sudo /usr/sbin/iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-
-All traffic of the VMs appears as if it would originate from the
-outgoing interface. As the setup changes the network configuration of
-the host, the commands are called through **sudo**. The calling user
-therefore needs the permission to run them as root.
+The traffic of the VMs to the outside world appears as if it would
+originate from the outgoing interface. As the setup changes the
+network configuration of the host, the commands are called through
+**sudo**. The calling user therefore needs the permission to run them
+as root.
 
 The outgoing interface and the selected network are recorded in the
 network configuration file. Connecting an application to the host
@@ -60,10 +61,10 @@ network with **flake-ctl-firecracker-network-add**(8) reads them from
 there, takes the address of the application from the same network and
 routes its traffic to the same interface.
 
-Rules which are already active are not created again. This allows to
-call the command more than once without stacking up duplicates of the
-same rule. The setup is not persistent, it has to be created again
-after a reboot of the host.
+Chains and rules which already exist are not created again. This
+allows to call the command more than once without stacking up
+duplicates of the same rule. The setup is not persistent, it has to be
+created again after a reboot of the host.
 
 **NOTE:** The setup assumes there is no other firewall software
 active on the host and serves as an example setup. If the firewall
@@ -76,6 +77,58 @@ network configuration of the VM itself is part of the flake
 configuration of the application. See **flake-ctl-firecracker-register**(8)
 and the ``Firecracker Networking`` section of the flake-pilot README
 for the complete setup.
+
+FIREWALL
+--------
+
+All rules of the setup live in chains of their own. Each chain is
+entered by one jump rule, inserted at the top of the builtin chain of
+the same purpose. The rules only match the traffic of the private
+network and of the TAP devices of the VMs, all other traffic of the
+host returns to the builtin chains unchanged. The setup looks as
+follows, shown in the notation of ``iptables -S``:
+
+.. code:: bash
+
+   # table nat
+   -A POSTROUTING -j FLAKE_PILOT_NAT
+   -A FLAKE_PILOT_NAT -s <NETWORK> -o <OUTGOING_INTERFACE> -j MASQUERADE
+
+   # table filter
+   -A FORWARD -j FLAKE_PILOT_FORWARD
+   -A FLAKE_PILOT_FORWARD -o tap-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+   -A FLAKE_PILOT_FORWARD -i tap-+ -s <NETWORK> -o <OUTGOING_INTERFACE> -j ACCEPT
+   -A FLAKE_PILOT_FORWARD -i tap-+ -j DROP
+   -A FLAKE_PILOT_FORWARD -o tap-+ -j DROP
+
+   -A INPUT -i tap-+ -j FLAKE_PILOT_INPUT
+   -A FLAKE_PILOT_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+   -A FLAKE_PILOT_INPUT -j DROP
+
+The effect of the setup is:
+
+* Only traffic of the private network of the VMs which leaves through
+  the outgoing interface is masqueraded and forwarded. The answers to
+  it pass back to the VMs.
+
+* Traffic between two VMs, traffic from the outside world to a VM and
+  traffic from a VM to any other interface of the host is dropped.
+
+* Traffic from a VM to the host itself is dropped, except for answers
+  to traffic of the host. **flake-ctl-firecracker-network-add**\(8)
+  allows each VM the DHCP, DNS and NFS service of the host through its
+  gateway, see there.
+
+The chains are deleted as a whole by
+**flake-ctl-firecracker-network-cleanup**\(8).
+
+Former versions of flake-pilot created their rules in the builtin
+chains. Their rules for single TAP devices are deleted by this
+command. A MASQUERADE rule for all traffic of the outgoing interface
+and a FORWARD rule accepting all answers, which former versions
+created as well, cannot be told apart from rules created by other
+means. If one of them is found, it is reported along with the command
+to delete it.
 
 NETWORK
 -------
@@ -128,7 +181,8 @@ FILES
 
 * /proc/sys/net/ipv4/ip_forward
 * /etc/flakes/network.yaml
-* $HOME/.config/flakes/network.yaml
+* $HOME/.config/flakes/firecracker/network.yaml
+* /var/lib/firecracker/network-state.yaml
 
 EXAMPLE
 -------
@@ -142,7 +196,7 @@ EXAMPLE
 SEE ALSO
 --------
 
-flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
+flake-ctl-firecracker-network-add(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-network-cleanup(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
 
 AUTHOR
 ------

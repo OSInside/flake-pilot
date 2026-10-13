@@ -201,6 +201,34 @@ pub const NFS_VOLUME_DELIMITER:char =
 // outgoing interface of the host
 pub const SYSCTL_IP_FORWARD:&str =
     "net.ipv4.ip_forward";
+// Location the kernel reports the state of that switch at
+pub const PROC_IP_FORWARD:&str =
+    "/proc/sys/net/ipv4/ip_forward";
+// Location of the IPv6 setup of a network interface. The setup
+// of the TAP devices is IPv4 only, IPv6 is switched off on them
+// such that a VM cannot reach the host through an IPv6 link
+// local address, which the IPv4 firewall setup does not cover
+pub const PROC_IPV6_CONF:&str =
+    "/proc/sys/net/ipv6/conf";
+// Record of the host wide network state: the addresses handed
+// out to the VM instances of all users and whether flake-pilot
+// has turned on IP forwarding. The file belongs to root and is
+// written through sudo, a user cannot change the addresses of
+// other users or claim one of them
+pub const NETWORK_STATE:&str =
+    "/var/lib/firecracker/network-state.yaml";
+// Services of the host a VM may reach through its gateway: DHCP,
+// DNS and NFS (version 4, which needs no other port) for the
+// volumes exported to it. Any other traffic of a VM to the host
+// is dropped
+pub const NETWORK_DHCP_SERVER_PORT:&str =
+    "67";
+pub const NETWORK_DHCP_CLIENT_PORT:&str =
+    "68";
+pub const NETWORK_DNS_PORT:&str =
+    "53";
+pub const NETWORK_NFS_PORT:&str =
+    "2049";
 // Setup of the private network between the host and the VMs.
 // The addresses only exist between the TAP device of an instance
 // and the VM behind it. The traffic to the outside world is

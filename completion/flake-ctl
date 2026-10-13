@@ -44,10 +44,14 @@ __flake_ctl_firecracker_network() {
         return 0
     fi
     if [ "${COMP_WORDS[3]}" = "add" ] || [ "${COMP_WORDS[3]}" = "remove" ];then
-        __comp_reply_unused "--app --instance --help"
+        __comp_reply_unused "--app --instance --user --help"
         return 0
     fi
-    __comp_reply "help add init remove"
+    if [ "${COMP_WORDS[3]}" = "cleanup" ];then
+        __comp_reply_unused "--help"
+        return 0
+    fi
+    __comp_reply "help add cleanup init remove"
 }
 
 __flake_ctl_firecracker_volume() {

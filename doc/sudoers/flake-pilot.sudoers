@@ -120,22 +120,24 @@ Cmnd_Alias FLAKE_PODMAN_SYSTEM = FLAKE_PODMAN, \
 %flake-pilot ALL = (root) FLAKE_PODMAN_SYSTEM
 
 #
-# flake-ctl firecracker network init, add, remove
+# flake-ctl firecracker network init, add, remove, cleanup
 # -------------------------------------------------------------------
 # Runs as: root
 # GRANTS:  ROOT
 #
-# Enables IP forwarding, creates the NAT and forward rules and the
-# TAP devices and routes of the VMs. sysctl can change any kernel
-# parameter, e.g kernel.core_pattern which names a program the kernel
-# runs as root. ip can run any program as root through
-# 'ip netns exec'.
+# Enables and disables IP forwarding, creates and deletes the
+# firewall chains and the TAP devices and routes of the VMs, and
+# records the address allocations in the network state file with
+# install. sysctl can change any kernel parameter, e.g
+# kernel.core_pattern which names a program the kernel runs as root.
+# ip can run any program as root through 'ip netns exec'. install can
+# overwrite any file.
 #
 # The network setup changes the host, not a single flake. Consider
 # running these commands as root instead of granting this rule.
 #
 Cmnd_Alias FLAKE_NETWORK = \
-    /usr/sbin/sysctl, /usr/sbin/iptables, /usr/sbin/ip
+    /usr/sbin/sysctl, /usr/sbin/iptables, /usr/sbin/ip, /usr/bin/install
 
 %flake-pilot ALL = (root) FLAKE_NETWORK
 

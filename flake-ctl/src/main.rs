@@ -167,14 +167,28 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             }
                         },
                         // add
-                        cli::Network::Add { app, instance } => {
-                            if ! network::add(app, instance.as_ref(), user) {
+                        cli::Network::Add {
+                            app, instance, user: tap_user
+                        } => {
+                            if ! network::add(
+                                app, instance.as_ref(), tap_user.as_ref(), user
+                            ) {
                                 return Ok(ExitCode::FAILURE)
                             }
                         },
                         // remove
-                        cli::Network::Remove { app, instance } => {
-                            if ! network::remove(app, instance.as_ref(), user) {
+                        cli::Network::Remove {
+                            app, instance, user: tap_user
+                        } => {
+                            if ! network::remove(
+                                app, instance.as_ref(), tap_user.as_ref(), user
+                            ) {
+                                return Ok(ExitCode::FAILURE)
+                            }
+                        },
+                        // cleanup
+                        cli::Network::Cleanup => {
+                            if ! network::cleanup() {
                                 return Ok(ExitCode::FAILURE)
                             }
                         }

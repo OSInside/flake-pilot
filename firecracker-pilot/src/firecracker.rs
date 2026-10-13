@@ -30,7 +30,10 @@ use flakes::error::{FlakeError, OperationError};
 use flakes::user::{User, chmod};
 use flakes::lookup::Lookup;
 use flakes::network::get_tap_name as get_tap_device_name;
-use flakes::network::read_network_config;
+use flakes::network::{
+    read_network_config, get_jump_rules, get_masquerade_rule, FirewallRule,
+    NetworkConfig
+};
 use spinoff::{Spinner, spinners, Color};
 use ubyte::ByteUnit;
 use std::path::Path;
@@ -931,22 +934,22 @@ pub fn create_firecracker_config(
             })
         }
         // Sanity check: The traffic of the VM only reaches the
-        // outside world if the netfilter rules of the host setup
-        // are active
-        if let Some(outgoing_interface) = get_outgoing_interface() {
-            if let Some(missing_rule) = get_missing_nat_rule(
-                &outgoing_interface
+        // outside world if the firewall setup of the host is active
+        if let Some(network_config) = get_network_record() {
+            let outgoing_interface = &network_config.outgoing_interface;
+            if let Some(missing_rule) = get_missing_firewall_rule(
+                &network_config
             ) {
                 return Err(FlakeError::IOError {
                     kind: "NetworkSetupMissing".to_string(),
                     message: format!(
                         "The flake is configured to use a network but the \
-                        {missing_rule} rule which lets its traffic pass \
-                        through the outgoing interface \
-                        {outgoing_interface} is not active. The rules are \
-                        part of the host setup and are lost on reboot, \
-                        please call '{}' first",
-                        get_network_init_command(&outgoing_interface)
+                        {missing_rule} rule of the firewall setup which \
+                        lets its traffic pass through the outgoing \
+                        interface {outgoing_interface} is not active. The \
+                        rules are part of the host setup and are lost on \
+                        reboot, please call '{}' first",
+                        get_network_init_command(outgoing_interface)
                     )
                 })
             }
@@ -1091,80 +1094,63 @@ pub fn tap_device_exists(tap: &str) -> bool {
     Path::new(defaults::SYS_CLASS_NET).join(tap).exists()
 }
 
-pub fn get_outgoing_interface() -> Option<String> {
+pub fn get_network_record() -> Option<NetworkConfig> {
     /*!
-    Provide the interface the traffic of the VM is routed to
+    Provide the record of the host network setup the VM uses
 
-    This is the interface the host setup was created for. It is
-    read from the record 'flake-ctl firecracker network init'
-    writes. Without a record there is no configured interface,
-    e.g because the setup was created by hand, and the netfilter
-    rules of the host cannot be checked.
+    This is the setup 'flake-ctl firecracker network init' created
+    and recorded. Without a record there is no known setup, e.g
+    because it was created by hand, and the firewall setup of the
+    host cannot be checked.
 
     The record belonging to the registration is the one to look
     at first. As the system wide setup can be used by a flake of
     a user and the other way round, the record of the other
     setup is taken if there is none
     !*/
-    let outgoing_interface = read_network_config(is_usermode())
-        .or_else(|| read_network_config(! is_usermode()))
-        .map(|network_config| network_config.outgoing_interface);
+    let network_config = read_network_config(is_usermode())
+        .or_else(|| read_network_config(! is_usermode()));
     if Lookup::is_debug() {
-        match &outgoing_interface {
-            Some(interface) => debug!("outgoing interface is {interface}"),
+        match &network_config {
+            Some(network_config) => debug!(
+                "outgoing interface is {}", network_config.outgoing_interface
+            ),
             None => debug!("No network setup record found")
         }
     }
-    outgoing_interface
+    network_config
 }
 
-struct NatRule<'a> {
-    /// Name of the iptables table, None for the default table
-    table: Option<&'a str>,
-    /// Name of the chain the rule belongs to
-    chain: &'a str,
-    /// Match and target of the rule
-    spec: Vec<&'a str>
-}
-
-pub fn get_missing_nat_rule(outgoing_interface: &str) -> Option<String> {
+pub fn get_missing_firewall_rule(
+    network_config: &NetworkConfig
+) -> Option<String> {
     /*!
-    Provide the chain of the first netfilter rule of the host
-    setup which is not active, None if the setup is complete
+    Provide the chain of the first rule of the host firewall setup
+    which is not active, None if the setup is complete
 
     The rules are the ones 'flake-ctl firecracker network init'
-    creates. They are not created by the pilot but are part of
-    the host setup and, as runtime state of the host, are gone
-    after a reboot.
+    creates: the jump rules into the chains of the setup and the
+    rule which masquerades the traffic of the VM network. They
+    are not created by the pilot but are part of the host setup
+    and, as runtime state of the host, are gone after a reboot.
+    A record without a network predates the selection of the
+    network, only the jump rules are checked in this case.
 
     A rule which cannot be read, e.g because the caller is not
     allowed to look at the netfilter rules, is not reported as
     missing. In that case there is nothing to check
     !*/
-    let nat_rules = [
-        // Rewrite the sender of all outgoing traffic to the
-        // address of the outgoing interface
-        NatRule {
-            table: Some("nat"),
-            chain: "POSTROUTING",
-            spec: vec!["-o", outgoing_interface, "-j", "MASQUERADE"]
-        },
-        // Let the answers to that traffic pass back to the VM
-        NatRule {
-            table: None,
-            chain: "FORWARD",
-            spec: vec![
-                "-m", "conntrack",
-                "--ctstate", "RELATED,ESTABLISHED",
-                "-j", "ACCEPT"
-            ]
-        }
-    ];
-    for rule in nat_rules {
-        if nat_rule_exists(&rule) {
+    let mut rules = get_jump_rules();
+    if let Some(network) = &network_config.network {
+        rules.push(
+            get_masquerade_rule(network, &network_config.outgoing_interface)
+        );
+    }
+    for rule in rules {
+        if firewall_rule_exists(&rule) {
             continue
         }
-        if ! nat_chain_readable(&rule) {
+        if ! firewall_chain_readable(&rule) {
             if Lookup::is_debug() {
                 debug!(
                     "Cannot read the {} rules, skipping the check", rule.chain
@@ -1172,19 +1158,21 @@ pub fn get_missing_nat_rule(outgoing_interface: &str) -> Option<String> {
             }
             return None
         }
-        return Some(rule.chain.to_string())
+        return Some(rule.chain)
     }
     None
 }
 
-fn nat_rule_exists(rule: &NatRule) -> bool {
+fn firewall_rule_exists(rule: &FirewallRule) -> bool {
     /*!
     Check if the given rule is active on the host
     !*/
-    iptables_ok(&mut iptables(rule.table, "-C", rule.chain, &rule.spec))
+    let mut call = iptables(rule.table);
+    call.arg("-C").arg(&rule.chain).args(&rule.spec);
+    iptables_ok(&mut call)
 }
 
-fn nat_chain_readable(rule: &NatRule) -> bool {
+fn firewall_chain_readable(rule: &FirewallRule) -> bool {
     /*!
     Check if the rules of the chain of the given rule can be read
 
@@ -1193,28 +1181,24 @@ fn nat_chain_readable(rule: &NatRule) -> bool {
     not be read at all needs this extra look, both of them let
     the search for the rule fail
     !*/
-    iptables_ok(&mut iptables(rule.table, "-S", rule.chain, &[]))
+    let mut call = iptables(rule.table);
+    call.arg("-S").arg(&rule.chain);
+    iptables_ok(&mut call)
 }
 
-fn iptables(
-    table: Option<&str>, command: &str, chain: &str, spec: &[&str]
-) -> Command {
+fn iptables(table: &str) -> Command {
     /*!
-    Create an iptables call applying the given command,
-    e.g '-S' or '-C', to the given chain or rule
+    Create an iptables call for the given table
 
     The netfilter rules are only readable for root. The call is
     nevertheless made with the privileges of the caller and not
     passed to sudo: the rules are only looked at for a sanity
     check, and a sudo rule for iptables would allow to change any
     rule of the host. For a caller who is not root the rules cannot
-    be read and the check is skipped, see get_missing_nat_rule()
+    be read and the check is skipped, see get_missing_firewall_rule()
     !*/
     let mut call = Command::new(defaults::IPTABLES_TOOL);
-    if let Some(table) = table {
-        call.arg("-t").arg(table);
-    }
-    call.arg(command).arg(chain).args(spec);
+    call.arg("-t").arg(table);
     call
 }
 
@@ -1266,6 +1250,14 @@ pub fn get_network_add_command() -> String {
     let instance_name = Lookup::get_instance_name();
     if ! instance_name.is_empty() {
         command.push_str(&format!(" --instance {instance_name}"));
+    }
+    // The TAP device belongs to the user who runs the VM. A system
+    // wide flake is set up by root, who has to name that user
+    if ! is_usermode() {
+        let user = get_current_username()
+            .map(|user| user.to_string_lossy().to_string())
+            .unwrap_or_else(|| get_current_uid().to_string());
+        command.push_str(&format!(" --user {user}"));
     }
     command
 }
@@ -1420,8 +1412,10 @@ pub fn get_meta_name(program_name: &String) -> String {
 pub fn get_tap_name(program_name: &String) -> String {
     /*!
     Construct the name of the TAP device for the given program name
+
+    The device belongs to the calling user, who runs the VM
     !*/
-    get_tap_device_name(&get_meta_name(program_name))
+    get_tap_device_name(get_current_uid(), &get_meta_name(program_name))
 }
 
 pub fn delete_file(filename: &String) -> bool {

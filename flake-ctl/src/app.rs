@@ -478,7 +478,8 @@ pub fn remove_allowed(
                     active_tap.name,
                     network::get_remove_command(
                         &registration.host_app_path,
-                        active_tap.instance.as_deref()
+                        active_tap.instance.as_deref(),
+                        active_tap.uid
                     )
                 );
             }

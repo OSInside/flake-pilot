@@ -73,6 +73,14 @@ pub const PODMAN_ID_EXTENSION: &str = "cid";
 pub const RSYNC_OPTIONS: [&str; 2] = ["-a", "-v"];
 // Prefix of the TAP device a VM instance is connected to
 pub const TAP_DEVICE_PREFIX: &str = "tap-";
+// Chains of the host firewall setup created by 'flake-ctl
+// firecracker network init'. All rules of the setup live in
+// them, each chain is entered by one jump rule from the builtin
+// chain of the same purpose. This keeps the setup apart from
+// the other rules of the host and allows to delete it as a whole
+pub const FIREWALL_NAT_CHAIN: &str = "FLAKE_PILOT_NAT";
+pub const FIREWALL_FORWARD_CHAIN: &str = "FLAKE_PILOT_FORWARD";
+pub const FIREWALL_INPUT_CHAIN: &str = "FLAKE_PILOT_INPUT";
 // Max. size of a network interface name including the
 // terminating zero byte as defined by IFNAMSIZ in linux/if.h
 pub const IFNAMSIZ: usize = 16;

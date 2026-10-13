@@ -17,8 +17,9 @@ tree on the host, so the application sees the libraries and the
 tooling of that tree instead of the ones installed on the host. The
 tree is mounted as the read only layer of an overlay, thus the
 application can write anywhere in its root filesystem without the tree
-on the host being modified. The data written this way is kept in
-memory and is gone when the application terminates.
+on the host being modified. The data written this way is stored on
+disk, separately for every instance of the application, and is still
+there on the next call, see :ref:`sandbox-written-data`.
 
 Unlike the other engines this one has no image registry. There is
 nothing to pull and nothing to delete, the registration refers to the
@@ -64,7 +65,9 @@ the bash shell on the host itself. Everything looks familiar, ``ls``,
 the home directory and the installed tooling are all there, and a
 write anywhere in the tree succeeds but lands in the overlay of the
 sandbox. Installing a package or deleting a file leaves the host as
-it is and is gone when the shell ends.
+it is. The change is kept in the overlay on disk though, and it is
+still in place when ``protected-shell`` is called again, see
+:ref:`sandbox-written-data`.
 
 This is useful to try out a command which is supposed to modify the
 system, or to hand a directory to a program which should read it but
@@ -178,6 +181,47 @@ not modified by the application.
    This differs from the other engines, where ``--opt`` replaces the
    defaults of the template. Sandbox options are mostly mounts which
    add up to a working setup rather than alternatives to it.
+
+.. _sandbox-written-data:
+
+Where Written Data Is Kept
+==========================
+
+The overlay of the tree is created below ``/var/tmp``, in a directory
+named after the ID of the calling user. Everything the application
+writes to its root filesystem ends up in the ``rw`` directory of its
+instance, e.g for the ``leapshell`` app of the user with the ID
+``1000``:
+
+.. code-block:: text
+
+   /var/tmp/bwrap_1000/leapshell_rw
+
+This is a directory on disk. It is neither deleted when the
+application terminates nor when the flake is removed, and the next
+call of the same instance starts with the root filesystem as the
+former call has left it. An application called with an ``@NAME``
+selector, e.g ``leapshell @one``, uses directories of its own, e.g
+``leapshell@one_rw``.
+
+There are two exceptions. Data written below ``/tmp`` with the
+default options is kept in a tmpfs created by ``bwrap`` and is gone
+when the application terminates. Data written to a path which is
+bound writable from the host changes that path on the host.
+
+The directories are created with the permissions ``755``. Other users
+of the host can therefore read the data written inside of the
+sandbox, as far as the permissions of the files themselves allow.
+Keep this in mind before handing secrets to a sandbox app.
+
+Only an age based cleanup of ``/var/tmp``, if the host is configured
+for one, e.g by ``systemd-tmpfiles``, removes the directories. To
+start from the unmodified tree again, delete the ``rw`` and the
+``work`` directory of the instance while it is not running:
+
+.. code-block:: bash
+
+   rm -rf /var/tmp/bwrap_1000/leapshell_rw /var/tmp/bwrap_1000/leapshell_work
 
 Registration Options in Short
 =============================

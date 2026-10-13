@@ -89,9 +89,10 @@ OPTIONS
   together with the pilot. As the root filesystem of the sandbox
   is an overlay of the given tree, this is the place to provide
   the paths on the host the application needs in addition. Data
-  written to the root filesystem is not persistent, it is gone
-  when the application terminates. See the example
-  section for further details. An option which starts with a
+  written to the root filesystem does not change the given tree,
+  it is stored on disk below /var/tmp/bwrap_USERID and is kept
+  across calls of the application, see the **bubblewrap-pilot**
+  manual page. See the example section for further details. An option which starts with a
   dash has to be escaped with a backslash to not be read as an
   option of the register command itself. For details on bwrap
   options please consult the **bwrap** manual page.

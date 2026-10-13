@@ -149,8 +149,10 @@ included, as the read only layer of an overlay:
 
 Inside of ``protected-shell`` the host looks and behaves as usual,
 packages can be installed and files can be added or overwritten, but
-all of it is written to the overlay and is gone when the application
-ends. Paths you do want to keep are bound into the sandbox explicitly.
+all of it is written to the overlay of the sandbox instead of the
+host. The overlay is kept on disk and is still in place on the next
+call of the application. Paths you want to change on the host are
+bound into the sandbox explicitly.
 :ref:`sandbox-apps` describes the tree, the overlay and the options to
 share data with the host.
 

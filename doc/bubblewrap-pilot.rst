@@ -78,9 +78,10 @@ can be set for the sandbox engine:
      # Mandatory registration setup
      # Path of the directory tree on the host which becomes the
      # root filesystem of the sandbox. The tree is the read only
-     # layer of an overlay, everything the application writes to
-     # its root filesystem is kept in memory and is gone when the
-     # application terminates
+     # layer of an overlay and stays untouched. Everything the
+     # application writes to its root filesystem is stored on disk
+     # below /var/tmp/bwrap_USERID and is kept across calls, see
+     # the description of the overlay below
      name: path/to/rootfs/on/host
 
      # Path of the program to call inside of the sandbox (target)
@@ -130,8 +131,9 @@ layer of that overlay, its upper and work directory live in a
 tmpfs which is created for the instance. The directories of the
 setup are created below `/var/tmp`, in a directory which is named
 after the ID of the calling user. Thus two users running the same
-flake do not use the same paths. For an instance named `myapp@one`
-of the user with the ID 1000 the following setup is used:
+flake do not use the same paths. The directories are created with
+the permissions 755. For an instance named `myapp@one` of the user
+with the ID 1000 the following setup is used:
 
 .. code:: bash
 
@@ -165,6 +167,16 @@ example. It can also be referenced in the bwrap runtime arguments
 of the flake to access the root filesystem of the sandbox as it
 exists on the host.
 
+The rw directory of this second overlay is the writable layer of
+the sandbox root. Everything the application writes to its root
+filesystem ends up there, the tmpfs of the first overlay does not
+receive any of it. The rw directory is a directory on disk below
+`/var/tmp`, it is not a tmpfs. Exceptions are paths covered by
+mounts of their own inside of the sandbox: data written below
+`/tmp` with the default options, see below, is kept in a tmpfs
+created by bwrap, and data written to a path which is bound
+writable from the host modifies that path on the host.
+
 A flake can provide further directories for the root of the
 sandbox by configuring **--overlay-src** options of its own. As
 bwrap reads the sources of an overlay before the mount they belong
@@ -192,7 +204,23 @@ the sandbox is created with:
    --unshare-pid
 
 When the application has terminated the overlay mount and the
-tmpfs below it are deleted.
+tmpfs below it are deleted. The rw and the work directory are not
+deleted, neither when the application terminates nor when the flake
+is removed. The data written by the application is therefore
+persistent: the next call of the same instance, the same flake
+called with the same @NAME selectors, starts with the root
+filesystem as the former call has left it. Different instances use
+directories of their own. As the directories are created with the
+permissions 755, other users of the host can read the data written
+in the sandbox as far as the permissions of the files allow. Only
+an age based cleanup of `/var/tmp`, if the host is configured for
+it, e.g by systemd-tmpfiles, removes them. To start an instance
+from the unmodified rootfs again, delete its rw and work directory
+while it is not running:
+
+.. code:: bash
+
+   rm -rf /var/tmp/bwrap_1000/myapp@one_rw /var/tmp/bwrap_1000/myapp@one_work
 
 If no bwrap runtime arguments exists, the following defaults will
 apply:

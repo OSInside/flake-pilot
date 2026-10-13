@@ -294,8 +294,8 @@ fn test_overlay_dir() {
 
 #[test]
 fn test_overlay_mount_options() {
-    // the rootfs is the read only layer of the overlay, the
-    // data written to it is kept in the tmpfs of the instance
+    // the rootfs is the read only layer of the overlay, its
+    // upper and work directory are in the tmpfs of the instance
     let tmpfs_dir = get_dir("myapp", "overlay");
     assert_eq!(
         format!(

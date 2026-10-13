@@ -40,9 +40,13 @@ pub fn mount(
 
     The rootfs of the flake is the lower, read only layer of an
     overlay filesystem. Its upper and work directory live in a
-    tmpfs which is created for the instance. Thus everything
-    written to the root of the sandbox is kept in memory and the
-    rootfs on the host stays untouched.
+    tmpfs which is created for the instance. Thus the rootfs on
+    the host stays untouched. The data the application writes
+    inside of the sandbox does not end up in that tmpfs though:
+    bwrap makes the root writable through an overlay of its own,
+    whose upper directory is the rw directory on disk. The rw and
+    the work directory are kept after the sandbox has ended and
+    are reused by the next sandbox of the same instance.
 
     The setup of an instance named myapp@one, created by the
     user with the ID 1000, looks as follows:
@@ -50,8 +54,8 @@ pub fn mount(
     /var/tmp/bwrap_1000/
        ├── myapp@one_merged   <- overlay mount of the rootfs
        ├── myapp@one_overlay  <- tmpfs with the upper/work dirs
-       ├── myapp@one_rw       <- upper dir of the sandbox root
-       └── myapp@one_work     <- work dir of the sandbox root
+       ├── myapp@one_rw       <- upper dir of the sandbox root (disk)
+       └── myapp@one_work     <- work dir of the sandbox root (disk)
 
     The merged directory is returned. It becomes the root
     filesystem bwrap creates the sandbox from, whereas the rw and
@@ -73,7 +77,8 @@ pub fn mount(
         mkdir(&get_dir(instance, name), defaults::OVERLAY_DIR_MODE, user)?;
     }
 
-    // 2. Mount the tmpfs which keeps the data written to the root
+    // 2. Mount the tmpfs which provides the upper and the work
+    //    directory of the overlay of the rootfs
     let tmpfs_dir = get_dir(instance, defaults::OVERLAY_TMPFS_NAME);
     let mut mount_tmpfs = privileged_call(defaults::MOUNT_TOOL);
     mount_tmpfs.arg("-t").arg(defaults::TMPFS_TYPE)

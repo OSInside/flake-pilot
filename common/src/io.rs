@@ -32,7 +32,7 @@ use uzers::get_current_uid;
 use crate::defaults;
 use crate::flakelog::FlakeLog;
 use crate::error::FlakeError;
-use crate::user::{User, octal_mode};
+use crate::user::{User, get_caller_uid, octal_mode};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct IO {
@@ -53,7 +53,11 @@ impl IO {
         differently set up base directory is an error.
 
         The per user directory below it is created with 0700
-        permissions and is required to be owned by the calling user.
+        permissions and is required to be owned by the user running
+        this process. A pilot which runs as root for a user who
+        called a system wide flake keeps the meta data of that user
+        in a directory of root, see private_dir_name(). The user
+        must not be able to replace the files root works with
         !*/
         if let Some(problem) = Self::meta_dir_problem(base) {
             return Err(FlakeError::IOError {
@@ -61,7 +65,7 @@ impl IO {
                 message: problem
             })
         }
-        let private_dir = format!("{}/{}", base, get_current_uid());
+        let private_dir = format!("{}/{}", base, Self::private_dir_name());
         if let Err(error) = DirBuilder::new().mode(0o700).create(&private_dir) {
             if error.kind() != ErrorKind::AlreadyExists {
                 return Err(FlakeError::IO(error))
@@ -82,6 +86,26 @@ impl IO {
             )?;
         }
         Ok(private_dir)
+    }
+
+    pub fn private_dir_name() -> String {
+        /*!
+        Provide the name of the private meta data directory of the
+        user this process works for
+
+        The directory is named after the user running the process.
+        A pilot which runs as root for another user keeps the meta
+        data of that user in a directory of its own, named after
+        that user and SYSTEM_META_DIR_PREFIX. It is kept apart from
+        the directory the user owns for its own flakes
+        !*/
+        let uid = get_current_uid();
+        let caller = get_caller_uid();
+        if uid == 0 && caller != 0 {
+            format!("{}{caller}", defaults::SYSTEM_META_DIR_PREFIX)
+        } else {
+            uid.to_string()
+        }
     }
 
     pub fn meta_dir_problem(base: &str) -> Option<String> {
@@ -176,7 +200,7 @@ impl IO {
         /*!
         Sync data from source path to target path
         !*/
-        let mut call = user.run(defaults::RSYNC_TOOL);
+        let mut call = user.run(defaults::RSYNC_TOOL)?;
         call.args(defaults::RSYNC_OPTIONS);
         for option in options {
             call.arg(option);

@@ -28,7 +28,7 @@ use std::ffi::OsStr;
 use thiserror::Error;
 
 pub trait CommandExtTrait {
-    /// Execute command via output() using sudo and return:
+    /// Execute command via output() and return:
     /// 
     /// 1. An IO Error if the command could not be run
     /// 2. An ExecutionError if the Command was not successfull
@@ -43,12 +43,13 @@ pub trait CommandExtTrait {
 
 impl CommandExtTrait for Command {
     fn perform(&mut self) -> Result<std::process::Output, CommandError> {
-        handle_output(self.output(), self.get_args())
+        handle_output(self.output(), self.get_program(), self.get_args())
     }
 }
 
 pub fn handle_output(
-    maybe_output: Result<Output, std::io::Error>, args: CommandArgs
+    maybe_output: Result<Output, std::io::Error>, program: &OsStr,
+    args: CommandArgs
 ) -> Result<std::process::Output, CommandError> {
     let out = maybe_output.map_err(ProcessError::IO);
 
@@ -66,6 +67,7 @@ pub fn handle_output(
     Err(
         CommandError {
             base: error,
+            program: program.to_string_lossy().to_string(),
             args: args
                 .flat_map(OsStr::to_str)
                 .map(ToOwned::to_owned)
@@ -94,13 +96,15 @@ impl From<std::process::Output> for ProcessError {
 #[derive(Debug, Error)]
 pub struct CommandError {
     pub base: ProcessError,
+    pub program: String,
     pub args: Vec<String>,
 }
 
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_char('"')?;
-        f.write_str("sudo ")?;
+        f.write_str(&self.program)?;
+        f.write_char(' ')?;
         for arg in self.args.iter() {
             f.write_str(arg)?;
             f.write_char(' ')?;

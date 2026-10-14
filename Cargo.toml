@@ -19,5 +19,6 @@ members = [
     "bubblewrap-pilot",
     "firecracker-pilot",
     "firecracker-pilot/guestvm-tools/sci", 
+    "flake-pilot-helper",
     "common"
 ]

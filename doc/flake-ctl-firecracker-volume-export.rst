@@ -58,8 +58,10 @@ started. If it is already running, the export table is reloaded so the
 new export becomes effective without waiting for a service restart.
 
 The command expects an existing directory path. As it modifies a
-system-wide NFS configuration, the required privileged operations are
-executed through **sudo** when needed.
+system-wide NFS configuration, the export is created by the helper,
+see **flake-pilot-helper**\(8), called through **sudo** for a caller
+who is not root. The helper checks the directory, its owner and the
+address of the VM again.
 
 OPTIONS
 -------

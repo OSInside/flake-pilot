@@ -144,10 +144,13 @@ with the ID 1000 the following setup is used:
        └── myapp@one_work     <- work dir of the sandbox root
 
 Creating and deleting these mounts is not allowed for a standard
-user. A caller which is not root passes the calls to sudo, the
-behavior of sudo can be controlled via the file /etc/sudoers. These rights make the
-user equivalent to root, see the reference policy flake-pilot.sudoers
-shipped with the flake-pilot package.
+user. The pilot creates the directories, the mounts are created and
+deleted by the helper, see **flake-pilot-helper**\(8), called through
+**sudo** for a caller who is not root. The helper derives all paths
+from the caller and the instance name, does not follow a symbolic
+link and mounts the tmpfs and the overlay nosuid and nodev. The
+sudo rule for the helper is described in the reference policy
+flake-pilot.sudoers shipped with the flake-pilot package.
 
 The merged directory of the overlay becomes the root filesystem
 of the sandbox. It is provided to bwrap as the read only source of

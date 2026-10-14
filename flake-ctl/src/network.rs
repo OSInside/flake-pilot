@@ -21,46 +21,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use flakes::defaults::{
-    TAP_DEVICE_PREFIX, FIREWALL_NAT_CHAIN, FIREWALL_FORWARD_CHAIN,
-    FIREWALL_INPUT_CHAIN
-};
+use flakes::helper::helper_call;
 use flakes::network::{
-    get_network_config_file, get_tap_name, read_network_config, NetworkConfig,
-    FirewallRule, get_tap_match, get_jump_rules, get_masquerade_rule
+    get_default_route_interface, get_free_network, get_nameserver,
+    get_network_config_file, get_preferred_network, get_tap_name,
+    lock_network_state, network_collides, read_network_config,
+    read_network_state, tap_exists, HostServices, Ipv4Network, NetworkConfig,
+    NetworkState
 };
 use flakes::registration;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
-use std::fmt;
 use std::fs;
-use std::fs::File;
-use std::io::{self, ErrorKind, Write};
-use std::iter;
 use std::net::Ipv4Addr;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use tempfile::NamedTempFile;
 use uzers::{get_current_uid, get_user_by_name, get_user_by_uid};
 
 use crate::app_config::{
     AppConfig, AppFireCrackerEngine, AppFireCrackerInstance
 };
 use crate::defaults;
-use crate::firecracker::run_as;
-
-// HostServices are the optional services of the host the VMs
-// use through their gateway. A service which is not used stays
-// closed to the VMs, see get_guest_service_rules()
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct HostServices {
-    /// The host runs the DNS resolver of the VMs
-    pub resolver: bool,
-    /// The host runs a DHCP server for the VMs
-    pub dhcp: bool
-}
 
 pub fn init(
     outgoing_interface: Option<&str>, services: HostServices, usermode: bool
@@ -76,38 +57,21 @@ pub fn init(
     outgoing interface the interface of the IPv4 default route of
     the host is used.
 
-    The netfilter rules of the setup live in chains of their own,
-    see setup_firewall(). Only traffic of the private network of
-    the VMs leaving through the outgoing interface is masqueraded
-    and forwarded. Traffic between the VMs, from the outside world
-    to the VMs and from the VMs to the host is dropped, except for
-    the services of the host a VM is allowed to use, see add().
+    The private network of the VMs is selected here, the setup
+    itself is created by the helper, see its network-init command.
+    The helper checks the network and the interface again and
+    records them along with the given services of the host in the
+    network state. The setup of the single flakes, done by add(),
+    uses what is recorded there.
 
-    If IP forwarding was switched off, the state file records that
-    flake-pilot switched it on, cleanup() switches it off again.
+    The setup is also recorded in the network configuration file,
+    which the pilot reads to check the firewall setup.
 
-    The setup changes the network configuration of the host and is
-    therefore performed via sudo. It is not persistent and has to
-    be created again after a reboot of the host.
-
-    The outgoing interface and the private network between the host
-    and the VMs are stored such that the setup of the single flakes,
-    done by add(), uses the same network and knows where to route
-    its traffic to.
-
-    The given services of the host the VMs use are stored as well.
-    With the resolver the host runs a DNS resolver on the gateway
-    address of the private network, add() then hands the gateway to
-    the VMs as their name server and lets them reach the DNS port
-    of the host. Otherwise the VMs use a public name server. With
-    dhcp the host runs a DHCP server for the VMs and add() lets
-    them reach the DHCP port of the host. A service which is not
-    used stays closed, it is not exposed to the VMs.
-
-    Please note, the setup assumes there is no other firewall
-    software active on the host. If the host firewall is managed
-    by another tool, the rules have to be created with that tool
-    instead
+    The setup is not persistent and has to be created again after
+    a reboot of the host. Please note, the setup assumes there is
+    no other firewall software active on the host. If the host
+    firewall is managed by another tool, the rules have to be
+    created with that tool instead
     !*/
     let outgoing_interface = match select_outgoing_interface(
         outgoing_interface
@@ -119,30 +83,18 @@ pub fn init(
         Some(network) => network,
         None => return false
     };
-    let _lock = match lock_network_state(true) {
-        Some(lock) => lock,
-        None => return false
-    };
-    let mut state = match read_network_state() {
-        Some(state) => state,
-        None => return false
-    };
-    match ip_forward_is_enabled() {
-        Some(true) => info!("IP forwarding is already enabled"),
-        _ => {
-            if ! set_ip_forward(true) {
-                return false
-            }
-            state.ip_forward_enabled = true;
-        }
+    let mut call = helper_call("network-init");
+    call.arg("--network").arg(network.to_string())
+        .arg("--outgoing-interface").arg(&outgoing_interface);
+    if services.resolver {
+        call.arg("--host-resolver");
     }
-    if ! write_network_state(&state) {
+    if services.dhcp {
+        call.arg("--host-dhcp");
+    }
+    if ! run_helper(&mut call, "prepare the host network") {
         return false
     }
-    if ! setup_firewall(&network, &outgoing_interface) {
-        return false
-    }
-    delete_legacy_rules(&outgoing_interface);
     if ! write_network_config(
         &outgoing_interface, &network, services, usermode
     ) {
@@ -167,17 +119,12 @@ pub fn add(
     /*!
     Connect the given flake application to the host network
 
-    The flake gets an address of the private network between the
-    host and the VMs written to its configuration. The address is
-    allocated in the host wide state file, which keeps the addresses
-    of all users apart. The TAP device it expects is created for the
-    user who runs the VM, given by user, the calling user if not
-    given, and a host route connects that address with that device.
-    The VM is allowed to use the NFS service of the host through its
-    gateway, and the DNS and DHCP service if the host setup was
-    created for a resolver or a DHCP server on the host. Any other
-    traffic to the host is dropped by the firewall setup created by
-    init().
+    The helper allocates an address of the recorded network for the
+    instance, creates the TAP device for the user who runs the VM,
+    given by user, the calling user if not given, routes the address
+    to it and opens the services of the host the VM may use, see its
+    network-connect command. The address is written to the flake
+    configuration here, along with the gateway and the name server.
 
     Each instance of an application needs its own address and its
     own TAP device. Therefore the command has to be called for
@@ -191,60 +138,57 @@ pub fn add(
         Some(flake) => flake,
         None => return false
     };
-    let outgoing_interface = match get_outgoing_interface(usermode) {
-        Some(outgoing_interface) => outgoing_interface,
-        None => return false
-    };
-    let network = match get_network(usermode) {
-        Some(network) => network,
-        None => return false
-    };
-    let services = get_host_services(usermode);
-    if ! firewall_is_active() {
-        error!("The firewall setup of the host is not active");
-        error!(
-            "Please run 'flake-ctl firecracker network init' first, \
-            e.g after a reboot of the host"
-        );
-        return false
-    }
-    let _lock = match lock_network_state(true) {
-        Some(lock) => lock,
-        None => return false
-    };
-    let mut state = match read_network_state() {
+    let state = match read_locked_network_state() {
         Some(state) => state,
         None => return false
     };
-
-    // 1. the address allocation and the flake configuration
-    let address = match configure_flake(
-        &flake, uid, &network, services, &mut state, usermode
+    let network = match state.get_network() {
+        Some(network) => network,
+        None => {
+            error!("The network setup of the host is not recorded");
+            error!("Please run 'flake-ctl firecracker network init' first");
+            return false
+        }
+    };
+    let services = state.get_services();
+    let mut yaml_config = match read_flake_config(&flake.config_file) {
+        Some(yaml_config) => yaml_config,
+        None => return false
+    };
+    let configured = match get_engine_section(
+        &mut yaml_config, &flake.config_file, "network"
     ) {
+        Some(engine_section) => get_configured_address(
+            engine_section, flake.instance.as_deref()
+        ),
+        None => return false
+    };
+
+    // 1. the address allocation, the TAP device, the route and the
+    //    firewall rules of the instance
+    let mut call = helper_call("network-connect");
+    call.arg("--config-file").arg(&flake.config_file);
+    if let Some(instance) = &flake.instance {
+        call.arg("--instance").arg(instance);
+    }
+    if user.is_some() {
+        call.arg("--uid").arg(uid.to_string());
+    }
+    if let Some(configured) = configured {
+        call.arg("--prefer").arg(configured.to_string());
+    }
+    for address in get_configured_addresses(usermode) {
+        call.arg("--exclude").arg(address.to_string());
+    }
+    let address = match run_helper_output(&mut call, "connect the instance")
+        .and_then(|output| output.trim().parse::<Ipv4Addr>().ok())
+    {
         Some(address) => address,
         None => return false
     };
-    if ! write_network_state(&state) {
-        return false
-    }
 
-    // 2. the TAP device of the instance, owned by its user
-    if ! create_tap(&flake.tap, uid) {
-        return false
-    }
-
-    // 3. the gateway on the TAP device
-    if ! connect_tap(&flake.tap, &network) {
-        return false
-    }
-
-    // 4. the host route to the address of the instance
-    if ! route_address(&address, &flake.tap) {
-        return false
-    }
-
-    // 5. the services of the host the instance may use
-    if ! allow_guest_services(&flake.tap, &address, &network, services) {
+    // 2. the flake configuration
+    if ! configure_flake(&flake, &address, &network, services) {
         return false
     }
 
@@ -252,7 +196,9 @@ pub fn add(
     info!("  address: {address}");
     info!("  gateway: {}", network.gateway());
     info!("  tap device: {} (user ID {uid})", flake.tap);
-    info!("  outgoing interface: {outgoing_interface}");
+    if let Some(outgoing_interface) = &state.outgoing_interface {
+        info!("  outgoing interface: {outgoing_interface}");
+    }
     info!("  name server: {}", get_nameserver(&network, services));
     if let Some(instance) = flake.instance {
         info!("Call the application as: {app} {instance}");
@@ -267,10 +213,11 @@ pub fn remove(
     /*!
     Disconnect the given flake application from the host network
 
-    All of the setup created by add() is deleted. This is the
-    firewall rules of the instance, its TAP device, the network
-    setup in the flake configuration and the address allocation.
-    The address becomes available again for another application.
+    All of the setup created by add() is deleted. The helper deletes
+    the firewall rules of the instance, its TAP device and its
+    address allocation, see its network-disconnect command. The
+    network setup is deleted from the flake configuration here. The
+    address becomes available again for another application.
 
     Called with an instance selector only the setup of that
     instance is deleted. The setup which is shared with the other
@@ -285,36 +232,22 @@ pub fn remove(
         Some(flake) => flake,
         None => return false
     };
-    let _lock = match lock_network_state(true) {
-        Some(lock) => lock,
-        None => return false
-    };
-    let mut state = match read_network_state() {
-        Some(state) => state,
-        None => return false
-    };
 
-    // 1. the services of the host the instance was allowed to use
-    if ! revoke_guest_services(&flake.tap) {
+    // 1. the firewall rules, the TAP device and the address allocation
+    let mut call = helper_call("network-disconnect");
+    call.arg("--config-file").arg(&flake.config_file);
+    if let Some(instance) = &flake.instance {
+        call.arg("--instance").arg(instance);
+    }
+    if user.is_some() {
+        call.arg("--uid").arg(uid.to_string());
+    }
+    if ! run_helper(&mut call, "disconnect the instance") {
         return false
     }
 
-    // 2. the TAP device of the instance
-    if ! delete_tap(&flake.tap) {
-        return false
-    }
-
-    // 3. the flake configuration
+    // 2. the flake configuration
     if ! unconfigure_flake(&flake.config_file, flake.instance.as_deref()) {
-        return false
-    }
-
-    // 4. the address allocation
-    let allocations = state.allocations.len();
-    state.allocations.retain(|allocation| allocation.tap != flake.tap);
-    if state.allocations.len() != allocations
-        && ! write_network_state(&state)
-    {
         return false
     }
 
@@ -326,46 +259,21 @@ pub fn cleanup() -> bool {
     /*!
     Delete the network setup of the host
 
-    This is the counterpart of init(): the firewall setup is deleted
-    as a whole, all TAP devices created by add() are deleted and IP
+    This is the counterpart of init(), performed by the helper, see
+    its network-cleanup command: the firewall setup is deleted as a
+    whole, all TAP devices of the flakes are deleted and IP
     forwarding is switched off again if flake-pilot switched it on.
     The address allocations and the network setup in the flake
     configurations are kept. The host is left in the state it has
     after a reboot, calling init() and add() again connects the
     applications with the addresses they had before
     !*/
-    let _lock = match lock_network_state(true) {
-        Some(lock) => lock,
-        None => return false
-    };
-    let mut state = match read_network_state() {
-        Some(state) => state,
-        None => return false
-    };
-    let mut ok = true;
-    for allocation in &state.allocations {
-        ok &= delete_tap(&allocation.tap);
+    let mut call = helper_call("network-cleanup");
+    if ! run_helper(&mut call, "delete the host network setup") {
+        return false
     }
-    ok &= delete_firewall();
-    for usermode in [false, true] {
-        if let Some(network_config) = read_network_config(usermode) {
-            delete_legacy_rules(&network_config.outgoing_interface);
-        }
-    }
-    if state.ip_forward_enabled {
-        if set_ip_forward(false) {
-            state.ip_forward_enabled = false;
-            ok &= write_network_state(&state);
-        } else {
-            ok = false
-        }
-    } else {
-        info!("Keeping IP forwarding, it was not enabled by flake-pilot");
-    }
-    if ok {
-        info!("Network setup of the host is deleted");
-    }
-    ok
+    info!("Network setup of the host is deleted");
+    true
 }
 
 // ActiveTap is a TAP device of a flake application which is
@@ -396,11 +304,7 @@ pub fn get_active_taps(app: &str, usermode: bool) -> Vec<ActiveTap> {
         None => return Vec::new()
     };
     let config_file = registration::config_file(&app_basename, usermode);
-    let _lock = match lock_network_state(false) {
-        Some(lock) => lock,
-        None => return Vec::new()
-    };
-    let state = match read_network_state() {
+    let state = match read_locked_network_state() {
         Some(state) => state,
         None => return Vec::new()
     };
@@ -569,41 +473,29 @@ pub fn get_instance_name(instance: &str) -> String {
 }
 
 fn configure_flake(
-    flake: &FlakeNetwork, uid: u32, network: &Ipv4Network,
-    services: HostServices, state: &mut NetworkState, usermode: bool
-) -> Option<Ipv4Addr> {
+    flake: &FlakeNetwork, address: &Ipv4Addr, network: &Ipv4Network,
+    services: HostServices
+) -> bool {
     /*!
-    Allocate the address of the given flake instance and write the
-    static network setup to its flake configuration
+    Write the static network setup of the given flake instance to
+    its flake configuration
 
-    The address is taken from the private network between the host
-    and the VMs and is recorded in the address allocations of the
-    given host wide state, along with the TAP device and the user
-    it belongs to. An address which is allocated to another device
-    or used by another flake registration is not handed out twice.
-    An instance which is already connected keeps its address, this
-    allows to call the setup again, e.g after a reboot of the host
+    The address is the one the helper allocated to the instance.
+    The configuration belongs to the caller and is written with the
+    privileges of the caller
     !*/
     let config_file = flake.config_file.as_str();
     let instance = flake.instance.as_deref();
-    let mut yaml_config = read_flake_config(config_file)?;
-    let engine_section = get_engine_section(
+    let mut yaml_config = match read_flake_config(config_file) {
+        Some(yaml_config) => yaml_config,
+        None => return false
+    };
+    let engine_section = match get_engine_section(
         &mut yaml_config, config_file, "network"
-    )?;
-
-    let configured = get_configured_address(engine_section, instance);
-    let address = select_address(
-        flake, configured, network, state,
-        &get_used_addresses(state, &flake.tap, usermode)
-    )?;
-    state.allocations.retain(|allocation| allocation.tap != flake.tap);
-    state.allocations.push(Allocation {
-        address,
-        uid,
-        tap: flake.tap.clone(),
-        config_file: config_file.to_string(),
-        instance: flake.instance.clone()
-    });
+    ) {
+        Some(engine_section) => engine_section,
+        None => return false
+    };
 
     let ip_option = format!(
         "ip={}::{}:{}::{}:off",
@@ -646,10 +538,10 @@ fn configure_flake(
     }
 
     if ! write_flake_config(config_file, &yaml_config) {
-        return None
+        return false
     }
     info!("Updated {config_file}");
-    Some(address)
+    true
 }
 
 pub fn get_instance_key(
@@ -668,61 +560,6 @@ pub fn get_instance_key(
         return plain_name.to_string()
     }
     instance.to_string()
-}
-
-fn select_address(
-    flake: &FlakeNetwork, configured: Option<Ipv4Addr>,
-    network: &Ipv4Network, state: &NetworkState, used: &[Ipv4Addr]
-) -> Option<Ipv4Addr> {
-    /*!
-    Select the address of the given flake instance
-
-    The address allocated to the TAP device of the instance is
-    kept. An address which is configured for the instance is kept
-    as long as it is not allocated to another device, in all other
-    cases a free one is taken, used lists the addresses which are
-    not free. Addresses outside of the network are not kept
-    !*/
-    let allocated = state.allocations.iter()
-        .find(|allocation| allocation.tap == flake.tap)
-        .map(|allocation| allocation.address)
-        .filter(|address| network.contains(address));
-    if let Some(address) = allocated {
-        info!("Keeping allocated address {address}");
-        return Some(address)
-    }
-    if let Some(address) = configured.filter(
-        |address| network.contains(address)
-    ) {
-        match state.allocations.iter().find(
-            |allocation| allocation.address == address
-        ) {
-            Some(allocation) if allocation.config_file == flake.config_file
-                && allocation.instance == flake.instance =>
-            {
-                // The address of an instance is part of its flake
-                // configuration, the instance of a system wide
-                // flake can therefore only be connected for one
-                // user at a time
-                error!(
-                    "The instance is already connected for the user with \
-                    the ID {} through {}", allocation.uid, allocation.tap
-                );
-                error!(
-                    "Please use an @NAME instance of its own for every user"
-                );
-                return None
-            },
-            Some(_) => { },
-            None => {
-                info!("Keeping configured address {address}");
-                return Some(address)
-            }
-        }
-    }
-    let address = get_free_address(network, used)?;
-    info!("Assigning address {address}");
-    Some(address)
 }
 
 fn unconfigure_flake(config_file: &str, instance: Option<&str>) -> bool {
@@ -989,24 +826,18 @@ pub fn get_instance_boot_args<'a>(
     instance_section.boot_args.as_deref()
 }
 
-fn get_used_addresses(
-    state: &NetworkState, tap: &str, usermode: bool
-) -> Vec<Ipv4Addr> {
+fn get_configured_addresses(usermode: bool) -> Vec<Ipv4Addr> {
     /*!
-    Provide the addresses which are in use, except the one of the
-    given TAP device
+    Provide the addresses configured in the flake registrations
+    which can be read
 
-    These are the addresses allocated in the host wide state and,
-    for flakes which were connected before the addresses got
-    allocated there, the addresses configured in the flake
-    registrations which can be read. In user mode this includes
-    the system wide registrations because their instances share
-    the network with the ones of the calling user
+    The helper does not hand them out. They belong to flakes which
+    were connected before the addresses got allocated in the host
+    wide state. In user mode this includes the system wide
+    registrations because their instances share the network with
+    the ones of the calling user
     !*/
-    let mut used: Vec<Ipv4Addr> = state.allocations.iter()
-        .filter(|allocation| allocation.tap != tap)
-        .map(|allocation| allocation.address)
-        .collect();
+    let mut used: Vec<Ipv4Addr> = Vec::new();
     let mut config_files = registration::config_files(usermode);
     if usermode {
         config_files.extend(registration::config_files(false));
@@ -1035,25 +866,9 @@ fn get_used_addresses(
             }
         }
     }
+    used.sort();
+    used.dedup();
     used
-}
-
-fn get_free_address(
-    network: &Ipv4Network, used: &[Ipv4Addr]
-) -> Option<Ipv4Addr> {
-    /*!
-    Provide the lowest address of the private network which is
-    not in use. The network and broadcast address as well as the
-    address of the gateway are never handed out
-    !*/
-    let gateway = network.gateway();
-    for address in network.hosts() {
-        if address != gateway && ! used.contains(&address) {
-            return Some(address)
-        }
-    }
-    error!("No free address left in {network}");
-    None
 }
 
 pub fn set_boot_arg(boot_args: &mut Vec<String>, boot_arg: String) {
@@ -1114,67 +929,6 @@ pub fn write_flake_config(config_file: &str, yaml_config: &AppConfig) -> bool {
     }
 }
 
-fn get_host_services(usermode: bool) -> HostServices {
-    /*!
-    Provide the services of the host the host setup was created for
-
-    A host setup without record, e.g because it was created by
-    hand, uses none of them
-    !*/
-    read_network_config(usermode)
-        .map(|network_config| HostServices {
-            resolver: network_config.host_resolver,
-            dhcp: network_config.host_dhcp
-        })
-        .unwrap_or_default()
-}
-
-fn get_nameserver(network: &Ipv4Network, services: HostServices) -> String {
-    /*!
-    Provide the name server of the VMs, the gateway if the host
-    runs the resolver, the public name server otherwise
-    !*/
-    if services.resolver {
-        network.gateway().to_string()
-    } else {
-        defaults::NETWORK_DNS.to_string()
-    }
-}
-
-fn get_outgoing_interface(usermode: bool) -> Option<String> {
-    /*!
-    Provide the interface the VM traffic is routed to
-
-    This is the interface the host setup was created for. If there
-    is no record of it, e.g because the setup was created manually,
-    the interface of the default route is used
-    !*/
-    match find_outgoing_interface(usermode) {
-        Some(interface) => Some(interface),
-        None => {
-            error!("Failed to detect the outgoing interface");
-            error!(
-                "Please run 'flake-ctl firecracker network init \
-                --outgoing-interface <NAME>' first"
-            );
-            None
-        }
-    }
-}
-
-fn find_outgoing_interface(usermode: bool) -> Option<String> {
-    /*!
-    Look up the interface the VM traffic is routed to
-    !*/
-    if let Some(network_config) = read_network_config(usermode) {
-        return Some(network_config.outgoing_interface)
-    }
-    let interface = get_default_route_interface()?;
-    info!("No network setup record found");
-    info!("Using interface of the default route: {interface}");
-    Some(interface)
-}
-
 fn select_outgoing_interface(outgoing_interface: Option<&str>) -> Option<String> {
     /*!
     Provide the interface the VM traffic gets routed to
@@ -1200,35 +954,6 @@ fn select_outgoing_interface(outgoing_interface: Option<&str>) -> Option<String>
     }
 }
 
-fn get_default_route_interface() -> Option<String> {
-    /*!
-    Provide the interface of the IPv4 default route
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("-4").arg("route").arg("show").arg("default");
-    let output = call.output().ok()?;
-    if ! output.status.success() {
-        return None
-    }
-    get_route_list_default_device(&String::from_utf8_lossy(&output.stdout))
-}
-
-fn get_route_list_default_device(routes: &str) -> Option<String> {
-    /*!
-    Provide the device of the first default route of the given
-    output of "ip route show default"
-
-    The routes are listed in the order of their metric, the first
-    one is therefore the route which is in use. A default route
-    without a device, e.g an unreachable route, is skipped
-    !*/
-    routes.lines().find_map(|route| {
-        let mut fields = route.split_whitespace();
-        fields.find(|field| *field == "dev")?;
-        fields.next().map(ToOwned::to_owned)
-    })
-}
-
 // RecordedNetwork is the network of the host setup record
 enum RecordedNetwork {
     /// The network the record provides
@@ -1241,8 +966,17 @@ enum RecordedNetwork {
 
 fn read_recorded_network(usermode: bool) -> RecordedNetwork {
     /*!
-    Read the private network from the host setup record
+    Read the private network of the recorded host setup
+
+    The network is recorded in the network state by the helper. A
+    setup created by a former version is only recorded in the
+    network configuration file
     !*/
+    if let Some(network) = read_locked_network_state()
+        .and_then(|state| state.get_network())
+    {
+        return RecordedNetwork::Network(network)
+    }
     let network_config = match read_network_config(usermode) {
         Some(network_config) => network_config,
         None => return RecordedNetwork::Missing
@@ -1301,460 +1035,6 @@ fn select_network(usermode: bool) -> Option<Ipv4Network> {
     }
 }
 
-fn get_network(usermode: bool) -> Option<Ipv4Network> {
-    /*!
-    Provide the private network between the host and the VMs
-
-    This is the network the host setup was created for. If there
-    is no record of it, e.g because the setup was created
-    manually, a network which does not collide with the networks
-    of the host is used
-    !*/
-    match read_recorded_network(usermode) {
-        RecordedNetwork::Network(network) => Some(network),
-        RecordedNetwork::Missing => {
-            let network = get_free_network()?;
-            info!("No network setup record found");
-            info!("Using free network: {network}");
-            Some(network)
-        },
-        RecordedNetwork::Invalid => None
-    }
-}
-
-pub fn get_guest_address(
-    app: &str, instance: Option<&String>, usermode: bool
-) -> Option<Ipv4Addr> {
-    /*!
-    Provide the address of the VM the given flake instance runs in
-
-    The address is the one allocated to the instance in the host
-    wide network state by 'flake-ctl firecracker network add'. It
-    is used to allow exactly this VM as a client, e.g in the NFS
-    exports of the host. The ip= option in the flake configuration
-    is not used for this. A flake configuration of the user belongs
-    to the user, it could name the address of the VM of another
-    user. The state belongs to root and records which address is
-    connected to which TAP device. Only an address of the private
-    network between the host and the VMs is accepted
-    !*/
-    let config_file = get_flake_config_file(app, usermode)?;
-    let instance = instance.map(|instance| get_instance_name(instance));
-    let state = read_network_state()?;
-    let allocation = match get_flake_allocations(
-        &state, &config_file, instance.as_deref()
-    )[..] {
-        [allocation] => allocation,
-        [] => {
-            error!(
-                "No address is allocated to {config_file}{} in {}",
-                instance.as_deref()
-                    .map(|instance| format!(" instance {instance}"))
-                    .unwrap_or_default(),
-                defaults::NETWORK_STATE
-            );
-            error!("{}", get_add_command_hint(app, instance.as_deref()));
-            return None
-        },
-        ref allocations => {
-            error!(
-                "More than one address is allocated to {config_file}{} \
-                in {}:",
-                instance.as_deref()
-                    .map(|instance| format!(" instance {instance}"))
-                    .unwrap_or_default(),
-                defaults::NETWORK_STATE
-            );
-            for allocation in allocations {
-                error!(
-                    "  {} on {} of user ID {}",
-                    allocation.address, allocation.tap, allocation.uid
-                );
-            }
-            error!("Please connect the instance again");
-            return None
-        }
-    };
-    let address = allocation.address;
-    let network = get_network(usermode)?;
-    if ! is_vm_address(&network, &address) {
-        error!(
-            "Guest address {address} allocated to {config_file} is \
-            not a VM address of the private network {network}"
-        );
-        return None
-    }
-    info!(
-        "Guest address {address} of {} (user ID {})",
-        allocation.tap, allocation.uid
-    );
-    Some(address)
-}
-
-fn get_flake_allocations<'a>(
-    state: &'a NetworkState, config_file: &str, instance: Option<&str>
-) -> Vec<&'a Allocation> {
-    /*!
-    Provide the address allocations of the given state for the
-    given instance of the flake of the given configuration file.
-    An instance is connected for one user at a time, a consistent
-    state therefore provides at most one
-    !*/
-    state.allocations.iter()
-        .filter(|allocation| allocation.config_file == config_file
-            && allocation.instance.as_deref() == instance
-        )
-        .collect()
-}
-
-fn is_vm_address(network: &Ipv4Network, address: &Ipv4Addr) -> bool {
-    /*!
-    Check if the given address can be the address of a VM in the
-    given network. The network address, the gateway, which is the
-    host side, and the broadcast address are not
-    !*/
-    network.contains(address)
-        && *address != network.address
-        && *address != network.gateway()
-        && u32::from(*address) != network.broadcast()
-}
-
-fn get_add_command_hint(app: &str, instance: Option<&str>) -> String {
-    /*!
-    Provide the command which connects the given flake instance
-    to the private network
-    !*/
-    match instance {
-        Some(instance) => format!(
-            "Please run 'flake-ctl firecracker network add --app {app} \
-            --instance {instance}' first"
-        ),
-        None => format!(
-            "Please run 'flake-ctl firecracker network add --app {app}' first"
-        )
-    }
-}
-
-fn get_free_network() -> Option<Ipv4Network> {
-    /*!
-    Provide a private network which does not collide with the
-    networks the host is connected to
-
-    The preferred network is taken if the host does not use it,
-    in all other cases the fallback ranges are searched for a
-    free network
-    !*/
-    select_free_network(&get_host_networks()?)
-}
-
-fn select_free_network(host_networks: &[Ipv4Network]) -> Option<Ipv4Network> {
-    /*!
-    Provide the first of the private networks to select from
-    which does not overlap with one of the given networks
-    !*/
-    for candidate in get_network_candidates() {
-        if ! host_networks.iter().any(
-            |host_network| host_network.overlaps(&candidate)
-        ) {
-            return Some(candidate)
-        }
-    }
-    error!("No free private network left on this host");
-    None
-}
-
-fn network_collides(network: &Ipv4Network) -> bool {
-    /*!
-    Check if the given network overlaps with one of the networks
-    the host is connected to. A host setup which cannot be read
-    is not reported as a collision
-    !*/
-    match get_host_networks() {
-        Some(host_networks) => host_networks.iter().any(
-            |host_network| host_network.overlaps(network)
-        ),
-        None => false
-    }
-}
-
-fn get_network_candidates() -> impl Iterator<Item = Ipv4Network> {
-    /*!
-    Provide the private networks to select from, in the order of
-    their preference. The preferred network comes first, followed
-    by the networks of the fallback ranges
-    !*/
-    let preferred = get_preferred_network();
-    let step = 1 << (32 - defaults::NETWORK_PREFIX_LEN as u32);
-    let fallback = defaults::NETWORK_RANGES.iter().flat_map(
-        move |(first_network, count)| {
-            let first = u32::from(get_default_network(first_network).address);
-            (0..*count).map(
-                move |index| Ipv4Network::new(
-                    Ipv4Addr::from(first + index * step),
-                    defaults::NETWORK_PREFIX_LEN
-                )
-            )
-        }
-    );
-    iter::once(preferred).chain(
-        fallback.filter(move |network| *network != preferred)
-    )
-}
-
-fn get_preferred_network() -> Ipv4Network {
-    /*!
-    Provide the network which is used if the host allows it
-    !*/
-    get_default_network(defaults::NETWORK_PREFERRED)
-}
-
-fn get_default_network(address: &str) -> Ipv4Network {
-    /*!
-    Provide the network of one of the compiled in addresses
-    !*/
-    match address.parse() {
-        Ok(address) => Ipv4Network::new(
-            address, defaults::NETWORK_PREFIX_LEN
-        ),
-        Err(_) => panic!("Invalid network default: {}", address)
-    }
-}
-
-fn get_host_networks() -> Option<Vec<Ipv4Network>> {
-    /*!
-    Provide the IPv4 networks the host is connected to
-
-    The networks are read from the addresses of the interfaces
-    of the host and from its routing table. The TAP devices of
-    the flakes are left out, they are part of the setup this
-    information is collected for
-    !*/
-    let mut networks = get_interface_networks()?;
-    networks.extend(get_route_networks()?);
-    Some(networks)
-}
-
-fn get_interface_networks() -> Option<Vec<Ipv4Network>> {
-    /*!
-    Provide the networks of the addresses of the host interfaces
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("-4").arg("-oneline").arg("addr").arg("show");
-    Some(get_address_list_networks(&run_output(&mut call)?))
-}
-
-fn get_address_list_networks(addresses: &str) -> Vec<Ipv4Network> {
-    /*!
-    Read the networks from the output of 'ip -4 -oneline addr show'
-
-    The expected format of a line is:
-    'INDEX: DEVICE inet ADDRESS/PREFIX_LEN ...'
-    !*/
-    let mut networks = Vec::new();
-    for line in addresses.lines() {
-        let device = line.split_whitespace().nth(1).unwrap_or_default();
-        if is_flake_tap_device(device) {
-            continue
-        }
-        networks.extend(
-            get_field_value(line, "inet").and_then(Ipv4Network::parse)
-        );
-    }
-    networks
-}
-
-fn get_route_networks() -> Option<Vec<Ipv4Network>> {
-    /*!
-    Provide the networks the host has a route for
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("-4").arg("-oneline").arg("route").arg("show");
-    Some(get_route_list_networks(&run_output(&mut call)?))
-}
-
-fn get_route_list_networks(routes: &str) -> Vec<Ipv4Network> {
-    /*!
-    Read the networks from the output of 'ip -4 -oneline route show'
-
-    The expected format of a line is:
-    'DESTINATION [via GATEWAY] dev DEVICE ...'. The destination of
-    the default route is reported as 'default', it describes no
-    network and is therefore skipped
-    !*/
-    let mut networks = Vec::new();
-    for line in routes.lines() {
-        let device = get_field_value(line, "dev").unwrap_or_default();
-        if is_flake_tap_device(device) {
-            continue
-        }
-        networks.extend(
-            line.split_whitespace().next().and_then(Ipv4Network::parse)
-        );
-    }
-    networks
-}
-
-fn is_flake_tap_device(device: &str) -> bool {
-    /*!
-    Check if the given device is a TAP device of a flake
-
-    Devices attached to a parent device are reported in the
-    'NAME@PARENT' notation, in the address list the name of the
-    device is followed by a colon
-    !*/
-    device
-        .split('@').next().unwrap_or_default()
-        .trim_end_matches(':')
-        .starts_with(TAP_DEVICE_PREFIX)
-}
-
-fn get_field_value<'a>(line: &'a str, name: &str) -> Option<&'a str> {
-    /*!
-    Provide the value following the given field name in a line
-    of the iproute2 output
-    !*/
-    let mut fields = line.split_whitespace();
-    while let Some(field) = fields.next() {
-        if field == name {
-            return fields.next()
-        }
-    }
-    None
-}
-
-fn run_output(call: &mut Command) -> Option<String> {
-    /*!
-    Run the given call and provide its standard output
-    !*/
-    match call.output() {
-        Ok(output) => {
-            if ! output.status.success() {
-                error!(
-                    "Failed to execute {:?}: {}", call, output.status
-                );
-                return None
-            }
-            Some(String::from_utf8_lossy(&output.stdout).to_string())
-        },
-        Err(error) => {
-            error!("Failed to execute {call:?}: {error:?}");
-            None
-        }
-    }
-}
-
-// Ipv4Network is an IPv4 network in its ADDRESS/PREFIX_LEN notation
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Ipv4Network {
-    /// Address of the network itself, e.g 172.16.0.0
-    address: Ipv4Addr,
-    /// Number of leading bits which form the network part
-    prefix_len: u8
-}
-
-impl Ipv4Network {
-    fn new(address: Ipv4Addr, prefix_len: u8) -> Ipv4Network {
-        /*!
-        Provide the network of the given prefix length the given
-        address belongs to
-        !*/
-        let prefix_len = prefix_len.min(32);
-        Ipv4Network {
-            address: Ipv4Addr::from(
-                u32::from(address) & Ipv4Network::netmask_bits(prefix_len)
-            ),
-            prefix_len
-        }
-    }
-
-    fn parse(network: &str) -> Option<Ipv4Network> {
-        /*!
-        Read a network from its ADDRESS/PREFIX_LEN notation. An
-        address given without a prefix length is a single host
-        !*/
-        let (address, prefix_len) = match network.split_once('/') {
-            Some((address, prefix_len)) => (address, prefix_len.parse().ok()?),
-            None => (network, 32)
-        };
-        if prefix_len > 32 {
-            return None
-        }
-        Some(Ipv4Network::new(address.parse().ok()?, prefix_len))
-    }
-
-    fn netmask_bits(prefix_len: u8) -> u32 {
-        /*!
-        Provide the netmask of the given prefix length
-        !*/
-        match prefix_len {
-            0 => 0,
-            prefix_len => u32::MAX << (32 - prefix_len as u32)
-        }
-    }
-
-    fn netmask(&self) -> Ipv4Addr {
-        /*!
-        Provide the netmask of the network, e.g 255.255.255.0
-        !*/
-        Ipv4Addr::from(Ipv4Network::netmask_bits(self.prefix_len))
-    }
-
-    fn gateway(&self) -> Ipv4Addr {
-        /*!
-        Provide the address of the host side of the network. It
-        is the first address of the network and is configured on
-        the TAP device of every instance
-        !*/
-        Ipv4Addr::from(u32::from(self.address) + 1)
-    }
-
-    fn gateway_route(&self) -> String {
-        /*!
-        Provide the route to the gateway as the guest expects it
-        in its rd.route= option, e.g 172.16.0.1/24
-        !*/
-        format!("{}/{}", self.gateway(), self.prefix_len)
-    }
-
-    fn broadcast(&self) -> u32 {
-        /*!
-        Provide the last address of the network
-        !*/
-        u32::from(self.address) | ! Ipv4Network::netmask_bits(self.prefix_len)
-    }
-
-    fn hosts(&self) -> impl Iterator<Item = Ipv4Addr> {
-        /*!
-        Provide the addresses of the network which can be handed
-        out. The network and the broadcast address are not part
-        of them
-        !*/
-        (u32::from(self.address) + 1..self.broadcast()).map(Ipv4Addr::from)
-    }
-
-    fn contains(&self, address: &Ipv4Addr) -> bool {
-        /*!
-        Check if the given address belongs to the network
-        !*/
-        u32::from(*address) & Ipv4Network::netmask_bits(self.prefix_len)
-            == u32::from(self.address)
-    }
-
-    fn overlaps(&self, other: &Ipv4Network) -> bool {
-        /*!
-        Check if the given network shares addresses with this one
-        !*/
-        u32::from(self.address) <= other.broadcast()
-            && u32::from(other.address) <= self.broadcast()
-    }
-}
-
-impl fmt::Display for Ipv4Network {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}/{}", self.address, self.prefix_len)
-    }
-}
-
 fn write_network_config(
     outgoing_interface: &str, network: &Ipv4Network, services: HostServices,
     usermode: bool
@@ -1799,882 +1079,49 @@ fn write_network_config(
     }
 }
 
-// NetworkState is the host wide record of the network setup,
-// see defaults::NETWORK_STATE
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
-struct NetworkState {
-    /// IP forwarding was switched off and has been switched on by
-    /// init(), cleanup() switches it off again
-    #[serde(default)]
-    ip_forward_enabled: bool,
-    /// The addresses handed out to the VM instances of all users
-    #[serde(default)]
-    allocations: Vec<Allocation>
-}
-
-// Allocation is an address of the private network handed out to
-// the instance of a flake application run by one user
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-struct Allocation {
-    /// Address of the VM instance
-    address: Ipv4Addr,
-    /// ID of the user who runs the instance and owns its TAP device
-    uid: u32,
-    /// Name of the TAP device the instance is connected to
-    tap: String,
-    /// Path of the flake configuration of the application
-    config_file: String,
-    /// The '@NAME' instance selector, None for the application itself
-    #[serde(default)]
-    instance: Option<String>
-}
-
-// NetworkStateLock holds the lock of the network state, see
-// lock_network_state(). The lock is released when it is dropped
-struct NetworkStateLock {
-    _lock_file: Option<File>
-}
-
-fn lock_network_state(exclusive: bool) -> Option<NetworkStateLock> {
+fn read_locked_network_state() -> Option<NetworkState> {
     /*!
-    Lock the host wide network state
-
-    A call which changes the network setup reads the state,
-    changes it and writes it again. Calls of different users can
-    run at the same time and would otherwise lose the changes of
-    each other, e.g hand out the same address twice. Such a call
-    therefore holds an exclusive lock while it runs. A call which
-    only reads the state holds a shared lock, the state is written
-    in place and must not be read while it is written.
-
-    The lock is a flock(2) on a lock file of its own. The state
-    file is not suitable, it does not exist before the first
-    network setup. The lock file belongs to root like the state
-    file and is created through sudo by the first call which
-    changes the state. A call which only reads the state does not
-    create it and reads the state without lock if there is no
-    lock file yet
+    Read the host wide network state under a shared lock, it must
+    not be read while the helper writes it
     !*/
-    let lock_file = defaults::NETWORK_STATE_LOCK;
-    let mut locked = lock_file_of(lock_file, exclusive, 0);
-    if exclusive {
-        if let Err(error) = &locked {
-            if error.kind() == ErrorKind::NotFound {
-                if ! create_network_state_lock() {
-                    return None
-                }
-                locked = lock_file_of(lock_file, exclusive, 0);
-            }
-        }
-    }
-    match locked {
-        Ok(file) => Some(NetworkStateLock { _lock_file: Some(file) }),
-        Err(error) if error.kind() == ErrorKind::NotFound && ! exclusive => {
-            Some(NetworkStateLock { _lock_file: None })
-        },
-        Err(error) => {
-            error!("Failed to lock {lock_file}: {error}");
-            None
-        }
-    }
+    let _lock = lock_network_state(false)?;
+    read_network_state()
 }
 
-fn create_network_state_lock() -> bool {
+fn run_helper(call: &mut Command, action: &str) -> bool {
     /*!
-    Create the lock file of the network state as root
-    !*/
-    let lock_file = defaults::NETWORK_STATE_LOCK;
-    let mut call = run_as(defaults::INSTALL_TOOL, "root");
-    call.arg("-D").arg("-m").arg("644")
-        .arg("-o").arg("root").arg("-g").arg("root")
-        .arg("/dev/null").arg(lock_file);
-    run_ok(&mut call, &format!("create {lock_file}"))
-}
-
-fn lock_file_of(lock_file: &str, exclusive: bool, owner: u32) -> io::Result<File> {
-    /*!
-    Lock the given lock file, which has to belong to owner
-
-    The call waits until the lock is available. A lock file which
-    does not exist is reported as NotFound. A lock file which got
-    replaced while waiting for its lock does not protect anything,
-    the replacement is locked instead
-    !*/
-    let operation = if exclusive { libc::LOCK_EX } else { libc::LOCK_SH };
-    for _ in 0..defaults::LOCK_ATTEMPTS {
-        // the lock file is only opened for reading, flock does
-        // not need more and the file belongs to root
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(lock_file)?;
-        match flock(&file, operation | libc::LOCK_NB) {
-            Ok(_) => { },
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                info!("Waiting for {lock_file}, held by another call...");
-                flock(&file, operation)?
-            },
-            Err(error) => return Err(error)
-        }
-        let locked = file.metadata()?;
-        if ! locked.is_file() || locked.uid() != owner {
-            return Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                format!(
-                    "{lock_file} is not a regular file owned by user ID \
-                    {owner}, refusing to use it"
-                )
-            ))
-        }
-        match fs::symlink_metadata(lock_file) {
-            Ok(current) if current.dev() == locked.dev()
-                && current.ino() == locked.ino() => return Ok(file),
-            Ok(_) => { },
-            Err(error) if error.kind() == ErrorKind::NotFound => { },
-            Err(error) => return Err(error)
-        }
-        debug!("{lock_file} was replaced while waiting for it, locking again");
-    }
-    Err(io::Error::other(format!(
-        "{lock_file} kept being replaced, gave up after {} attempts",
-        defaults::LOCK_ATTEMPTS
-    )))
-}
-
-fn flock(file: &File, operation: libc::c_int) -> io::Result<()> {
-    /*!
-    Apply the given flock(2) operation to the given file
-    !*/
-    loop {
-        if unsafe { libc::flock(file.as_raw_fd(), operation) } == 0 {
-            return Ok(())
-        }
-        let error = io::Error::last_os_error();
-        if error.kind() != ErrorKind::Interrupted {
-            return Err(error)
-        }
-    }
-}
-
-fn read_network_state() -> Option<NetworkState> {
-    /*!
-    Read the host wide network state
-
-    There is no state before the first network setup, which is
-    read as an empty one. The state is only trusted if it belongs
-    to root, everybody else could hand out addresses with it
-    !*/
-    let state_file = defaults::NETWORK_STATE;
-    match fs::symlink_metadata(state_file) {
-        Ok(metadata) => {
-            if ! metadata.is_file() || metadata.uid() != 0 {
-                error!(
-                    "{state_file} is not a regular file owned by root, \
-                    refusing to use it"
-                );
-                return None
-            }
-        },
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Some(NetworkState::default())
-        },
-        Err(error) => {
-            error!("Failed to read {state_file}: {error}");
-            return None
-        }
-    }
-    let yaml_data = match fs::read_to_string(state_file) {
-        Ok(yaml_data) => yaml_data,
-        Err(error) => {
-            error!("Failed to read {state_file}: {error}");
-            return None
-        }
-    };
-    match serde_yaml::from_str(&yaml_data) {
-        Ok(state) => Some(state),
-        Err(error) => {
-            error!("Failed to parse {state_file}: {error}");
-            None
-        }
-    }
-}
-
-fn write_network_state(state: &NetworkState) -> bool {
-    /*!
-    Write the host wide network state
-
-    The state is written through a temporary copy which is
-    installed as root, the state file belongs to root
-    !*/
-    let state_file = defaults::NETWORK_STATE;
-    let yaml_data = match serde_yaml::to_string(state) {
-        Ok(yaml_data) => yaml_data,
-        Err(error) => {
-            error!("Failed to serialize the network state: {error}");
-            return false
-        }
-    };
-    let mut temp = match NamedTempFile::new_in(defaults::TEMP_DIR) {
-        Ok(temp) => temp,
-        Err(error) => {
-            error!(
-                "Failed to create temp file in {}: {error}",
-                defaults::TEMP_DIR
-            );
-            return false
-        }
-    };
-    if let Err(error) = temp.write_all(yaml_data.as_bytes())
-        .and_then(|_| temp.flush())
-    {
-        error!("Failed to write temp network state: {error}");
-        return false
-    }
-    let mut call = run_as(defaults::INSTALL_TOOL, "root");
-    call.arg("-D").arg("-m").arg("644")
-        .arg("-o").arg("root").arg("-g").arg("root")
-        .arg(temp.path()).arg(state_file);
-    run_ok(&mut call, &format!("install {state_file}"))
-}
-
-fn ip_forward_is_enabled() -> Option<bool> {
-    /*!
-    Check if IPv4 forwarding is switched on, None if unknown
-    !*/
-    fs::read_to_string(defaults::PROC_IP_FORWARD).ok()
-        .map(|value| value.trim() == "1")
-}
-
-fn set_ip_forward(enable: bool) -> bool {
-    /*!
-    Switch IPv4 forwarding on the host on or off
-    !*/
-    let ip_forward = format!(
-        "{}={}", defaults::SYSCTL_IP_FORWARD, if enable { 1 } else { 0 }
-    );
-    info!(
-        "{} IP forwarding...", if enable { "Enabling" } else { "Disabling" }
-    );
-    let mut call = run_as(defaults::SYSCTL_TOOL, "root");
-    call.arg("-w").arg(&ip_forward);
-    run_ok(&mut call, &format!("run sysctl -w {ip_forward}"))
-}
-
-// Position a rule is created at in its chain. Accepting rules are
-// inserted at the top, dropping rules are appended. This keeps
-// every accepting rule in front of the drop rules, no matter in
-// which order the rules are created
-enum RulePosition {
-    Top,
-    Bottom
-}
-
-fn get_firewall_chains() -> [(&'static str, &'static str); 3] {
-    /*!
-    Provide the table and the name of the chains of the host
-    firewall setup
-    !*/
-    [
-        ("nat", FIREWALL_NAT_CHAIN),
-        ("filter", FIREWALL_FORWARD_CHAIN),
-        ("filter", FIREWALL_INPUT_CHAIN)
-    ]
-}
-
-fn get_firewall_rules(
-    network: &str, outgoing_interface: &str
-) -> Vec<(FirewallRule, RulePosition)> {
-    /*!
-    Provide the rules of the host firewall setup and the position
-    they are created at
-
-    The traffic of the private network of the VMs is masqueraded
-    and forwarded if it leaves through the outgoing interface. The
-    answers to it may pass back. All other traffic which comes from
-    or goes to a TAP device is dropped: traffic between two VMs,
-    traffic from the outside world to a VM and traffic from a VM to
-    another interface of the host. Traffic from a VM to the host
-    itself is dropped as well, except for answers to traffic of the
-    host and the services add() allows for each instance
-    !*/
-    let tap_match = get_tap_match();
-    vec![
-        (get_masquerade_rule(network, outgoing_interface), RulePosition::Bottom),
-        (
-            FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
-                "-i", &tap_match, "-s", network, "-o", outgoing_interface,
-                "-j", "ACCEPT"
-            ]),
-            RulePosition::Top
-        ),
-        (
-            FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
-                "-o", &tap_match, "-m", "conntrack",
-                "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"
-            ]),
-            RulePosition::Top
-        ),
-        (
-            FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
-                "-i", &tap_match, "-j", "DROP"
-            ]),
-            RulePosition::Bottom
-        ),
-        (
-            FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
-                "-o", &tap_match, "-j", "DROP"
-            ]),
-            RulePosition::Bottom
-        ),
-        (
-            FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &[
-                "-m", "conntrack",
-                "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"
-            ]),
-            RulePosition::Top
-        ),
-        (
-            FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &["-j", "DROP"]),
-            RulePosition::Bottom
-        )
-    ]
-}
-
-fn get_guest_service_rules(
-    tap: &str, address: &Ipv4Addr, network: &Ipv4Network,
-    services: HostServices
-) -> Vec<FirewallRule> {
-    /*!
-    Provide the rules which let the VM behind the given TAP device
-    use the services of the host
-
-    The VM may reach the NFS service of the host through its
-    gateway. The DNS and the DHCP service only if the host runs
-    them for the VMs, otherwise the VMs do not use them and the
-    services of the host stay closed to them. Apart from DHCP,
-    which is used before the VM has an address, the traffic has to
-    come from the address of the VM and from its own TAP device. A
-    VM can therefore not use the services, e.g the NFS exports, of
-    another VM
-    !*/
-    let address = address.to_string();
-    let gateway = network.gateway().to_string();
-    let mut rules = Vec::new();
-    if services.dhcp {
-        rules.push(
-            FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &[
-                "-i", tap, "-p", "udp",
-                "--sport", defaults::NETWORK_DHCP_CLIENT_PORT,
-                "--dport", defaults::NETWORK_DHCP_SERVER_PORT,
-                "-j", "ACCEPT"
-            ])
-        )
-    }
-    let mut ports = Vec::new();
-    if services.resolver {
-        ports.push(("udp", defaults::NETWORK_DNS_PORT));
-        ports.push(("tcp", defaults::NETWORK_DNS_PORT));
-    }
-    ports.push(("tcp", defaults::NETWORK_NFS_PORT));
-    for (protocol, port) in ports {
-        rules.push(
-            FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &[
-                "-i", tap, "-s", &address, "-d", &gateway,
-                "-p", protocol, "--dport", port, "-j", "ACCEPT"
-            ])
-        )
-    }
-    rules
-}
-
-fn setup_firewall(network: &Ipv4Network, outgoing_interface: &str) -> bool {
-    /*!
-    Create the chains and rules of the host firewall setup
-
-    The chains are created first and are entered from the builtin
-    chains last, traffic is therefore only passed to them once they
-    are complete. Chains and rules which already exist are kept,
-    this allows to call the setup more than once
-    !*/
-    for (table, chain) in get_firewall_chains() {
-        if ! create_chain(table, chain) {
-            return false
-        }
-    }
-    for (rule, position) in get_firewall_rules(
-        &network.to_string(), outgoing_interface
-    ) {
-        if ! add_rule(&rule, position) {
-            return false
-        }
-    }
-    for rule in get_jump_rules() {
-        if ! add_rule(&rule, RulePosition::Top) {
-            return false
-        }
-    }
-    true
-}
-
-fn delete_firewall() -> bool {
-    /*!
-    Delete the chains and rules of the host firewall setup
-
-    The jump rules into the chains are deleted first, the chains
-    and the rules in them afterwards
-    !*/
-    let mut ok = true;
-    for rule in get_jump_rules() {
-        ok &= delete_rule(&rule);
-    }
-    for (table, chain) in get_firewall_chains() {
-        ok &= delete_chain(table, chain);
-    }
-    ok
-}
-
-fn firewall_is_active() -> bool {
-    /*!
-    Check if the host firewall setup is complete, the chains are
-    present and are entered from the builtin chains
-    !*/
-    get_firewall_chains().iter().all(
-        |(table, chain)| chain_exists(table, chain)
-    ) && get_jump_rules().iter().all(rule_exists)
-}
-
-fn allow_guest_services(
-    tap: &str, address: &Ipv4Addr, network: &Ipv4Network,
-    services: HostServices
-) -> bool {
-    /*!
-    Let the VM behind the given TAP device use the services of the
-    host, see get_guest_service_rules()
-    !*/
-    get_guest_service_rules(tap, address, network, services).iter().all(
-        |rule| add_rule(rule, RulePosition::Top)
-    )
-}
-
-fn revoke_guest_services(tap: &str) -> bool {
-    /*!
-    Delete the rules which let the VM behind the given TAP device
-    use the services of the host
-
-    All rules of the input chain which match the device are
-    deleted, no matter which address they were created for
-    !*/
-    if ! chain_exists("filter", FIREWALL_INPUT_CHAIN) {
-        info!("No {FIREWALL_INPUT_CHAIN} chain, no rules of {tap} to delete");
-        return true
-    }
-    delete_listed_rules("filter", FIREWALL_INPUT_CHAIN, |spec| {
-        spec.windows(2).any(|pair| pair[0] == "-i" && pair[1] == tap)
-    })
-}
-
-fn delete_legacy_rules(outgoing_interface: &str) {
-    /*!
-    Delete the rules former versions of flake-pilot created
-
-    Former versions created their rules in the builtin chains: a
-    FORWARD rule per TAP device, which is recognized by the name of
-    the device and is deleted, as well as a MASQUERADE rule for all
-    traffic of the outgoing interface and a FORWARD rule for all
-    answers. The latter two cannot be told apart from rules created
-    by other means and are therefore only reported
-    !*/
-    delete_listed_rules("filter", "FORWARD", |spec| {
-        spec.len() == 6
-            && spec[0] == "-i" && spec[1].starts_with(TAP_DEVICE_PREFIX)
-            && spec[2] == "-o" && spec[4] == "-j" && spec[5] == "ACCEPT"
-    });
-    for rule in [
-        FirewallRule::new(
-            "nat", "POSTROUTING",
-            &["-o", outgoing_interface, "-j", "MASQUERADE"]
-        ),
-        FirewallRule::new(
-            "filter", "FORWARD", &[
-                "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED",
-                "-j", "ACCEPT"
-            ]
-        )
-    ] {
-        if rule_exists(&rule) {
-            warn!(
-                "Found a {} rule which former versions of flake-pilot \
-                created for all traffic:", rule.chain
-            );
-            warn!(
-                "  iptables -t {} -A {} {}",
-                rule.table, rule.chain, rule.spec.join(" ")
-            );
-            warn!(
-                "If it was not created by other means, delete it with: \
-                iptables -t {} -D {} {}",
-                rule.table, rule.chain, rule.spec.join(" ")
-            );
-        }
-    }
-}
-
-fn iptables(table: &str) -> Command {
-    /*!
-    Create an iptables call for the given table
-    !*/
-    let mut call = run_as(defaults::IPTABLES_TOOL, "root");
-    call.arg("-t").arg(table);
-    call
-}
-
-fn iptables_ok(call: &mut Command) -> bool {
-    /*!
-    Run the given iptables call quietly and tell whether it
-    succeeded. A missing rule or chain is reported on stderr,
-    which is not an error in this context
-    !*/
-    call.stdout(Stdio::null()).stderr(Stdio::null());
-    match call.status() {
-        Ok(status) => status.success(),
-        Err(_) => false
-    }
-}
-
-fn chain_exists(table: &str, chain: &str) -> bool {
-    /*!
-    Check if the given chain exists
-    !*/
-    let mut call = iptables(table);
-    call.arg("-S").arg(chain);
-    iptables_ok(&mut call)
-}
-
-fn create_chain(table: &str, chain: &str) -> bool {
-    /*!
-    Create the given chain if it does not exist
-    !*/
-    if chain_exists(table, chain) {
-        info!("Keeping existing {chain} chain");
-        return true
-    }
-    info!("Creating {chain} chain...");
-    let mut call = iptables(table);
-    call.arg("-N").arg(chain);
-    run_ok(&mut call, &format!("create {chain} chain"))
-}
-
-fn delete_chain(table: &str, chain: &str) -> bool {
-    /*!
-    Delete the given chain along with its rules if it exists
-    !*/
-    if ! chain_exists(table, chain) {
-        info!("No {chain} chain to delete");
-        return true
-    }
-    info!("Deleting {chain} chain...");
-    let mut flush = iptables(table);
-    flush.arg("-F").arg(chain);
-    let mut delete = iptables(table);
-    delete.arg("-X").arg(chain);
-    run_ok(&mut flush, &format!("flush {chain} chain"))
-        && run_ok(&mut delete, &format!("delete {chain} chain"))
-}
-
-fn rule_exists(rule: &FirewallRule) -> bool {
-    /*!
-    Check if the given rule is active
-    !*/
-    let mut call = iptables(rule.table);
-    call.arg("-C").arg(&rule.chain).args(&rule.spec);
-    iptables_ok(&mut call)
-}
-
-fn add_rule(rule: &FirewallRule, position: RulePosition) -> bool {
-    /*!
-    Create the given rule at the given position of its chain
-
-    A rule which is already active is not created again. This
-    allows to call the setup more than once without stacking up
-    duplicates of the same rule
-    !*/
-    if rule_exists(rule) {
-        return true
-    }
-    let mut call = iptables(rule.table);
-    match position {
-        RulePosition::Top => call.arg("-I").arg(&rule.chain).arg("1"),
-        RulePosition::Bottom => call.arg("-A").arg(&rule.chain)
-    };
-    call.args(&rule.spec);
-    run_ok(
-        &mut call,
-        &format!("add {} rule {}", rule.chain, rule.spec.join(" "))
-    )
-}
-
-fn delete_rule(rule: &FirewallRule) -> bool {
-    /*!
-    Delete the given rule if it is active
-    !*/
-    if ! rule_exists(rule) {
-        return true
-    }
-    let mut call = iptables(rule.table);
-    call.arg("-D").arg(&rule.chain).args(&rule.spec);
-    run_ok(
-        &mut call,
-        &format!("delete {} rule {}", rule.chain, rule.spec.join(" "))
-    )
-}
-
-fn delete_listed_rules(
-    table: &str, chain: &str, matches: impl Fn(&[String]) -> bool
-) -> bool {
-    /*!
-    Delete the rules of the given chain which match
-
-    The rules are read in the notation iptables lists them with,
-    each rule is matched by its specification without the leading
-    '-A CHAIN'
-    !*/
-    let mut call = iptables(table);
-    call.arg("-S").arg(chain).stderr(Stdio::null());
-    let rules = match call.output() {
-        Ok(output) if output.status.success() => {
-            get_listed_rules(&String::from_utf8_lossy(&output.stdout), chain)
-        },
-        _ => {
-            warn!("Failed to read the rules of the {chain} chain");
-            return false
-        }
-    };
-    let mut ok = true;
-    for spec in rules.iter().filter(|spec| matches(spec)) {
-        info!("Deleting {chain} rule {}...", spec.join(" "));
-        let mut call = iptables(table);
-        call.arg("-D").arg(chain).args(spec);
-        ok &= run_ok(&mut call, &format!("delete {chain} rule"));
-    }
-    ok
-}
-
-fn get_listed_rules(rule_list: &str, chain: &str) -> Vec<Vec<String>> {
-    /*!
-    Read the rules of the given chain from the output of
-    'iptables -S CHAIN'
-
-    Each rule is listed as '-A CHAIN SPEC', the policy of a builtin
-    chain and the creation of a custom chain are listed as '-P' and
-    '-N' and are not rules
-    !*/
-    rule_list.lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            if fields.next() != Some("-A") || fields.next() != Some(chain) {
-                return None
-            }
-            Some(fields.map(ToOwned::to_owned).collect())
-        })
-        .collect()
-}
-
-fn create_tap(tap: &str, uid: u32) -> bool {
-    /*!
-    Create the TAP device of a VM instance
-
-    The device is the host local endpoint of the VM. Its name is
-    the one the pilot passes to firecracker when it starts the
-    instance of the application. firecracker runs as the calling
-    user, the device is therefore created for the user with the
-    given ID, who is the only one allowed to connect a VM to it.
-    IPv6 is switched off on the device, the setup and its firewall
-    rules are IPv4 only
-    !*/
-    if tap_exists(tap) {
-        info!("Keeping existing TAP device {tap}");
-    } else {
-        info!("Creating TAP device {tap} for the user ID {uid}...");
-        let mut call = run_as(defaults::IP_TOOL, "root");
-        call.arg("tuntap").arg("add").arg(tap).arg("mode").arg("tap")
-            .arg("user").arg(uid.to_string());
-        if ! run_ok(&mut call, &format!("create TAP device {tap}")) {
-            return false
-        }
-    }
-    disable_ipv6(tap)
-}
-
-fn disable_ipv6(device: &str) -> bool {
-    /*!
-    Switch IPv6 off on the given network device
-
-    Without IPv6 support in the kernel there is nothing to do
-    !*/
-    if ! Path::new(defaults::PROC_IPV6_CONF).join(device).exists() {
-        return true
-    }
-    let disable_ipv6 = format!("net.ipv6.conf.{device}.disable_ipv6=1");
-    let mut call = run_as(defaults::SYSCTL_TOOL, "root");
-    call.arg("-w").arg(&disable_ipv6).stdout(Stdio::null());
-    run_ok(&mut call, &format!("run sysctl -w {disable_ipv6}"))
-}
-
-fn delete_tap(tap: &str) -> bool {
-    /*!
-    Delete the TAP device of a VM instance
-
-    The address of the device, its link state and the host route
-    to the instance behind it are deleted along with it
-    !*/
-    if ! tap_exists(tap) {
-        info!("No TAP device {tap} to delete");
-        return true
-    }
-    info!("Deleting TAP device {tap}...");
-    let mut call = run_as(defaults::IP_TOOL, "root");
-    call.arg("tuntap").arg("del").arg(tap).arg("mode").arg("tap");
-    run_ok(&mut call, &format!("delete TAP device {tap}"))
-}
-
-fn tap_exists(tap: &str) -> bool {
-    /*!
-    Check if the given TAP device is already present
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("tuntap").arg("list");
-    match call.output() {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).lines().any(
-            |line| get_tuntap_device_name(line) == tap
-        ),
-        Err(error) => {
-            error!("Failed to execute {}: {error:?}", defaults::IP_TOOL);
-            false
-        }
-    }
-}
-
-fn get_tuntap_device_name(tuntap_list_line: &str) -> &str {
-    /*!
-    Read the device name from a line of the 'ip tuntap list' output
-
-    The expected format of a line is: 'NAME: tun|tap FLAGS...'.
-    For devices attached to a parent device the name is reported
-    in the 'NAME@PARENT' notation
-    !*/
-    tuntap_list_line
-        .split(':').next().unwrap_or_default()
-        .split('@').next().unwrap_or_default()
-        .trim()
-}
-
-fn connect_tap(tap: &str, network: &Ipv4Network) -> bool {
-    /*!
-    Make the given TAP device the gateway of the VM behind it
-
-    The traffic of the device to the outgoing interface and the
-    way back are covered by the firewall setup created by init()
-    !*/
-    let gateway = network.gateway_route();
-    if address_exists(tap, &gateway) {
-        info!("Keeping existing address {gateway} on {tap}");
-    } else {
-        info!("Adding address {gateway} to {tap}...");
-        let mut call = run_as(defaults::IP_TOOL, "root");
-        call.arg("addr").arg("add").arg(&gateway).arg("dev").arg(tap);
-        if ! run_ok(&mut call, &format!("add address {gateway} to {tap}")) {
-            return false
-        }
-    }
-    info!("Bringing up {tap}...");
-    let mut call = run_as(defaults::IP_TOOL, "root");
-    call.arg("link").arg("set").arg(tap).arg("up");
-    run_ok(&mut call, &format!("bring up {tap}"))
-}
-
-fn route_address(address: &Ipv4Addr, tap: &str) -> bool {
-    /*!
-    Route the address of a VM instance to its TAP device
-
-    Every TAP device provides the same gateway address of the
-    private network. The route to that network which comes with
-    it therefore points to one of the devices only and the
-    traffic to all other instances would be sent to the wrong
-    device. A host route for the address of the instance makes
-    sure it is reached through the device it is connected to
-    !*/
-    let route = format!("{address}/{}", defaults::NETWORK_HOST_PREFIX_LEN);
-    if route_exists(address, tap) {
-        info!("Keeping existing route {route} dev {tap}");
-        return true
-    }
-    info!("Adding route {route} dev {tap}...");
-    let mut call = run_as(defaults::IP_TOOL, "root");
-    call.arg("route").arg("add").arg(&route).arg("dev").arg(tap);
-    run_ok(&mut call, &format!("add route {route} dev {tap}"))
-}
-
-fn route_exists(address: &Ipv4Addr, tap: &str) -> bool {
-    /*!
-    Check if the given device already routes the given address
-
-    A host route is reported by iproute2 with the plain address,
-    the prefix length of a single host is not shown
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("-4").arg("-oneline").arg("route").arg("show").arg("dev")
-        .arg(tap);
-    let host_address = address.to_string();
-    let host_route = format!(
-        "{host_address}/{}", defaults::NETWORK_HOST_PREFIX_LEN
-    );
-    match call.output() {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).lines().any(
-            |line| {
-                let destination = line.split_whitespace().next()
-                    .unwrap_or_default();
-                destination == host_address || destination == host_route
-            }
-        ),
-        Err(error) => {
-            error!("Failed to execute {}: {error:?}", defaults::IP_TOOL);
-            false
-        }
-    }
-}
-
-fn address_exists(device: &str, address: &str) -> bool {
-    /*!
-    Check if the given device already provides the given address
-    !*/
-    let mut call = Command::new(defaults::IP_TOOL);
-    call.arg("-4").arg("-oneline").arg("addr").arg("show").arg("dev")
-        .arg(device);
-    match call.output() {
-        Ok(output) => String::from_utf8_lossy(&output.stdout)
-            .split_whitespace().any(|field| field == address),
-        Err(error) => {
-            error!("Failed to execute {}: {error:?}", defaults::IP_TOOL);
-            false
-        }
-    }
-}
-
-fn run_ok(call: &mut Command, action: &str) -> bool {
-    /*!
-    Run the given call and tell whether it succeeded
+    Run the given helper call, its messages are passed through
     !*/
     match call.status() {
+        Ok(status) if status.success() => true,
         Ok(status) => {
-            if ! status.success() {
-                error!("Failed to {action}: {status}");
-                return false
-            }
-            true
+            error!("Failed to {action}: {status}");
+            false
         },
         Err(error) => {
             error!("Failed to {action}: {error:?}");
             false
+        }
+    }
+}
+
+fn run_helper_output(call: &mut Command, action: &str) -> Option<String> {
+    /*!
+    Run the given helper call and provide its result, the standard
+    output. Its messages are passed through
+    !*/
+    call.stderr(Stdio::inherit());
+    match call.output() {
+        Ok(output) if output.status.success() => {
+            Some(String::from_utf8_lossy(&output.stdout).to_string())
+        },
+        Ok(output) => {
+            error!("Failed to {action}: {}", output.status);
+            None
+        },
+        Err(error) => {
+            error!("Failed to {action}: {error:?}");
+            None
         }
     }
 }
@@ -2689,21 +1136,12 @@ mod tests {
     use flakes::network::get_tap_name;
     use uzers::get_current_uid;
 
-    use super::{
-        get_address_list_networks, get_effective_boot_args, get_flake_taps,
-        get_firewall_rules, get_flake_allocations, get_free_address,
-        get_guest_service_rules, get_nameserver, HostServices,
-        get_listed_rules, get_network_candidates, get_network_info,
-        get_preferred_network, get_remove_command,
-        get_route_list_default_device, get_route_list_networks,
-        is_vm_address, lock_file_of, select_address, select_free_network,
-        select_outgoing_interface, Allocation, FlakeNetwork, Ipv4Network,
-        NetworkConfig, NetworkState, RulePosition
-    };
+    use flakes::network::{Allocation, NetworkState};
 
-    fn network(network: &str) -> Ipv4Network {
-        Ipv4Network::parse(network).unwrap()
-    }
+    use super::{
+        get_effective_boot_args, get_flake_taps, get_network_info,
+        get_remove_command, select_outgoing_interface, NetworkConfig
+    };
 
     fn address(address: &str) -> Ipv4Addr {
         address.parse().unwrap()
@@ -2756,44 +1194,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_flake_allocations() {
-        let user_flake = "/home/tux/.config/flakes/myapp.yaml";
-        let state = NetworkState {
-            ip_forward_enabled: false,
-            allocations: vec![
-                allocation(
-                    "172.16.0.2", 1000, "tap-1000_myapp", user_flake, None
-                ),
-                allocation(
-                    "172.16.0.3", 1000, "tap-1000_myapp_one",
-                    user_flake, Some("@one")
-                ),
-                allocation(
-                    "172.16.0.4", 0, "tap-0_myapp",
-                    "/usr/share/flakes/myapp.yaml", None
-                )
-            ]
-        };
-        let addresses = |instance| get_flake_allocations(
-            &state, user_flake, instance
-        ).iter().map(|allocation| allocation.address).collect::<Vec<_>>();
-
-        // the instance selects the allocation, another flake of the
-        // same name is not taken into account
-        assert_eq!(vec![address("172.16.0.2")], addresses(None));
-        assert_eq!(vec![address("172.16.0.3")], addresses(Some("@one")));
-        // an instance which is not connected has none
-        assert!(addresses(Some("@two")).is_empty());
-        assert!(get_flake_allocations(
-            &state, "/home/tux/.config/flakes/other.yaml", None
-        ).is_empty());
-    }
 
     #[test]
     fn test_get_flake_taps() {
         let state = NetworkState {
-            ip_forward_enabled: false,
             allocations: vec![
                 allocation(
                     "172.16.0.2", 1000, "tap-1000_myapp",
@@ -2807,7 +1211,8 @@ mod tests {
                     "172.16.0.4", 0, "tap-0_myapp",
                     "/usr/share/flakes/myapp.yaml", None
                 )
-            ]
+            ],
+            ..Default::default()
         };
         // the devices of the flake of the given configuration,
         // another flake of the same name is not taken into account
@@ -2830,292 +1235,12 @@ mod tests {
         assert!(get_flake_taps(&state, "/other.yaml").is_empty());
     }
 
-    #[test]
-    fn test_lock_file_of() {
-        use std::fs;
-        use std::io::ErrorKind;
-        use std::os::unix::fs::{symlink, MetadataExt};
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::Arc;
-        use std::{thread, time};
 
-        let uid = get_current_uid();
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let lock = tmp_dir.path().join("lock");
-        let lock_file = lock.to_str().unwrap().to_string();
 
-        // a missing lock file is reported as such
-        assert_eq!(
-            lock_file_of(&lock_file, true, uid).unwrap_err().kind(),
-            ErrorKind::NotFound
-        );
-        fs::write(&lock, "").unwrap();
 
-        // shared locks are held at the same time
-        let shared = lock_file_of(&lock_file, false, uid).unwrap();
-        let other_shared = lock_file_of(&lock_file, false, uid).unwrap();
-        drop((shared, other_shared));
 
-        // an exclusive lock waits until the holder releases it
-        let held = lock_file_of(&lock_file, true, uid).unwrap();
-        let released = Arc::new(AtomicBool::new(false));
-        let waiter = {
-            let lock_file = lock_file.clone();
-            let released = Arc::clone(&released);
-            thread::spawn(move || {
-                let _lock = lock_file_of(&lock_file, true, uid).unwrap();
-                assert!(released.load(Ordering::SeqCst));
-            })
-        };
-        thread::sleep(time::Duration::from_millis(200));
-        released.store(true, Ordering::SeqCst);
-        drop(held);
-        waiter.join().unwrap();
 
-        // a lock file replaced while waiting for it is not used,
-        // the replacement is locked instead
-        let held = lock_file_of(&lock_file, true, uid).unwrap();
-        let waiter = {
-            let lock_file = lock_file.clone();
-            thread::spawn(move || lock_file_of(&lock_file, true, uid).unwrap())
-        };
-        thread::sleep(time::Duration::from_millis(200));
-        let replacement = tmp_dir.path().join("replacement");
-        fs::write(&replacement, "").unwrap();
-        fs::rename(&replacement, &lock).unwrap();
-        drop(held);
-        let locked = waiter.join().unwrap();
-        assert_eq!(
-            locked.metadata().unwrap().ino(),
-            fs::metadata(&lock).unwrap().ino()
-        );
-        drop(locked);
 
-        // a lock file of another owner is refused
-        assert_eq!(
-            lock_file_of(&lock_file, true, uid + 1).unwrap_err().kind(),
-            ErrorKind::PermissionDenied
-        );
-
-        // a symlink is refused
-        let link = tmp_dir.path().join("link");
-        symlink(&lock, &link).unwrap();
-        assert!(lock_file_of(link.to_str().unwrap(), false, uid).is_err());
-    }
-
-    #[test]
-    fn test_network_state() {
-        // a state file without the optional entries is read as empty
-        let state: NetworkState = serde_yaml::from_str("{}").unwrap();
-        assert_eq!(NetworkState::default(), state);
-        let state = NetworkState {
-            ip_forward_enabled: true,
-            allocations: vec![
-                allocation(
-                    "172.16.0.2", 1000, "tap-1000_myapp",
-                    "/home/tux/.config/flakes/myapp.yaml", Some("@one")
-                )
-            ]
-        };
-        let yaml_data = serde_yaml::to_string(&state).unwrap();
-        assert!(yaml_data.contains("address: 172.16.0.2"));
-        assert_eq!(
-            state, serde_yaml::from_str::<NetworkState>(&yaml_data).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_select_address() {
-        let private = network("172.16.0.0/24");
-        let flake = FlakeNetwork {
-            config_file: "/usr/share/flakes/myapp.yaml".to_string(),
-            instance: None,
-            tap: "tap-1000_myapp".to_string()
-        };
-        let mut state = NetworkState::default();
-        // no allocation and no configured address: the lowest free one
-        assert_eq!(
-            Some(address("172.16.0.3")),
-            select_address(
-                &flake, None, &private, &state, &[address("172.16.0.2")]
-            )
-        );
-        // a configured address which is not allocated is kept
-        assert_eq!(
-            Some(address("172.16.0.9")),
-            select_address(
-                &flake, Some(address("172.16.0.9")), &private, &state, &[]
-            )
-        );
-        // a configured address outside of the network is not kept
-        assert_eq!(
-            Some(address("172.16.0.2")),
-            select_address(
-                &flake, Some(address("10.0.0.2")), &private, &state, &[]
-            )
-        );
-        // a configured address allocated to another flake is not
-        // handed out twice
-        state.allocations.push(allocation(
-            "172.16.0.9", 1000, "tap-1000_other", "/other.yaml", None
-        ));
-        assert_eq!(
-            Some(address("172.16.0.2")),
-            select_address(
-                &flake, Some(address("172.16.0.9")), &private, &state,
-                &[address("172.16.0.9")]
-            )
-        );
-        // the same instance connected for another user is refused,
-        // its address is shared through the flake configuration
-        state.allocations.push(allocation(
-            "172.16.0.5", 1001, "tap-1001_myapp",
-            "/usr/share/flakes/myapp.yaml", None
-        ));
-        assert_eq!(
-            None,
-            select_address(
-                &flake, Some(address("172.16.0.5")), &private, &state, &[]
-            )
-        );
-        // the address allocated to the device of the instance is kept
-        state.allocations.push(allocation(
-            "172.16.0.7", 1000, "tap-1000_myapp",
-            "/usr/share/flakes/myapp.yaml", None
-        ));
-        assert_eq!(
-            Some(address("172.16.0.7")),
-            select_address(
-                &flake, Some(address("172.16.0.5")), &private, &state, &[]
-            )
-        );
-    }
-
-    #[test]
-    fn test_firewall_rules() {
-        let rules = get_firewall_rules("172.16.0.0/24", "eth0");
-        let rule_args = |chain: &str| -> Vec<(String, bool)> {
-            rules.iter()
-                .filter(|(rule, _)| rule.chain == chain)
-                .map(|(rule, position)| (
-                    rule.spec.join(" "),
-                    matches!(position, RulePosition::Top)
-                ))
-                .collect()
-        };
-        // only the traffic of the VM network leaving through the
-        // outgoing interface is masqueraded
-        assert_eq!(
-            vec![(
-                "-s 172.16.0.0/24 -o eth0 -j MASQUERADE".to_string(), false
-            )],
-            rule_args("FLAKE_PILOT_NAT")
-        );
-        // accepting rules are created at the top, the drop rules
-        // for everything else to and from a VM at the bottom
-        assert_eq!(
-            vec![
-                (
-                    "-i tap-+ -s 172.16.0.0/24 -o eth0 -j ACCEPT".to_string(),
-                    true
-                ),
-                (
-                    "-o tap-+ -m conntrack --ctstate RELATED,ESTABLISHED \
-                    -j ACCEPT".to_string(),
-                    true
-                ),
-                ("-i tap-+ -j DROP".to_string(), false),
-                ("-o tap-+ -j DROP".to_string(), false)
-            ],
-            rule_args("FLAKE_PILOT_FORWARD")
-        );
-        assert_eq!(
-            vec![
-                (
-                    "-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
-                        .to_string(),
-                    true
-                ),
-                ("-j DROP".to_string(), false)
-            ],
-            rule_args("FLAKE_PILOT_INPUT")
-        );
-    }
-
-    #[test]
-    fn test_guest_service_rules() {
-        let rules = |services| get_guest_service_rules(
-            "tap-1000_myapp", &address("172.16.0.2"),
-            &network("172.16.0.0/24"), services
-        );
-        let specs = |services| rules(services).iter()
-            .map(|rule| rule.spec.join(" ")).collect::<Vec<_>>();
-        let dhcp = "-i tap-1000_myapp -p udp --sport 68 --dport 67 -j ACCEPT";
-        let dns_udp = "-i tap-1000_myapp -s 172.16.0.2 -d 172.16.0.1 -p udp \
-            --dport 53 -j ACCEPT";
-        let dns_tcp = "-i tap-1000_myapp -s 172.16.0.2 -d 172.16.0.1 -p tcp \
-            --dport 53 -j ACCEPT";
-        let nfs = "-i tap-1000_myapp -s 172.16.0.2 -d 172.16.0.1 -p tcp \
-            --dport 2049 -j ACCEPT";
-
-        // without services on the host only NFS is open
-        assert_eq!(vec![nfs], specs(HostServices::default()));
-
-        // each service of the host is opened on its own
-        assert_eq!(
-            vec![dns_udp, dns_tcp, nfs],
-            specs(HostServices { resolver: true, dhcp: false })
-        );
-        assert_eq!(
-            vec![dhcp, nfs],
-            specs(HostServices { resolver: false, dhcp: true })
-        );
-        let all = HostServices { resolver: true, dhcp: true };
-        assert_eq!(vec![dhcp, dns_udp, dns_tcp, nfs], specs(all));
-        assert!(
-            rules(all).iter().all(|rule| rule.chain == "FLAKE_PILOT_INPUT")
-        );
-    }
-
-    #[test]
-    fn test_get_nameserver() {
-        let resolver = HostServices { resolver: true, dhcp: false };
-        let dhcp = HostServices { resolver: false, dhcp: true };
-        assert_eq!(
-            "8.8.8.8",
-            get_nameserver(&network("172.16.0.0/24"), HostServices::default())
-        );
-        // a DHCP server on the host does not change the name server
-        assert_eq!("8.8.8.8", get_nameserver(&network("172.16.0.0/24"), dhcp));
-        assert_eq!(
-            "172.16.0.1", get_nameserver(&network("172.16.0.0/24"), resolver)
-        );
-        assert_eq!(
-            "192.168.3.1", get_nameserver(&network("192.168.3.0/24"), resolver)
-        );
-    }
-
-    #[test]
-    fn test_get_listed_rules() {
-        let rule_list = "-N FLAKE_PILOT_INPUT\n\
-            -A FLAKE_PILOT_INPUT -s 172.16.0.2/32 -d 172.16.0.1/32 \
-            -i tap-1000_myapp -p tcp -m tcp --dport 2049 -j ACCEPT\n\
-            -A FLAKE_PILOT_INPUT -j DROP\n\
-            -A FORWARD -j DROP\n";
-        assert_eq!(
-            vec![
-                vec![
-                    "-s", "172.16.0.2/32", "-d", "172.16.0.1/32",
-                    "-i", "tap-1000_myapp", "-p", "tcp", "-m", "tcp",
-                    "--dport", "2049", "-j", "ACCEPT"
-                ],
-                vec!["-j", "DROP"]
-            ],
-            get_listed_rules(rule_list, "FLAKE_PILOT_INPUT")
-        );
-        // the policy of a builtin chain is not a rule
-        assert!(get_listed_rules("-P FORWARD ACCEPT\n", "FORWARD").is_empty());
-    }
 
     #[test]
     fn test_network_config_record() {
@@ -3155,148 +1280,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_network() {
-        let private = network("172.16.0.0/24");
-        assert_eq!("172.16.0.0/24", private.to_string());
-        assert_eq!(address("255.255.255.0"), private.netmask());
-        assert_eq!(address("172.16.0.1"), private.gateway());
-        assert_eq!("172.16.0.1/24", private.gateway_route());
-        // the address is reduced to the network it belongs to
-        assert_eq!(private, network("172.16.0.42/24"));
-        // an address without a prefix length is a single host
-        assert_eq!("10.0.0.1/32", network("10.0.0.1").to_string());
-        assert_eq!(None, Ipv4Network::parse("172.16.0.0/33"));
-        assert_eq!(None, Ipv4Network::parse("172.16.0.0/foo"));
-        assert_eq!(None, Ipv4Network::parse("default"));
-    }
 
-    #[test]
-    fn test_network_contains_and_overlaps() {
-        let private = network("172.16.0.0/24");
-        assert!(private.contains(&address("172.16.0.1")));
-        assert!(! private.contains(&address("172.16.1.1")));
-        // a network which is part of another one overlaps with it
-        assert!(private.overlaps(&network("172.16.0.0/16")));
-        assert!(network("172.16.0.0/16").overlaps(&private));
-        assert!(private.overlaps(&network("172.16.0.5")));
-        assert!(! private.overlaps(&network("172.16.1.0/24")));
-        assert!(! private.overlaps(&network("192.168.0.0/16")));
-    }
 
-    #[test]
-    fn test_network_hosts() {
-        let hosts: Vec<Ipv4Addr> = network("172.16.0.0/24").hosts().collect();
-        // the network and the broadcast address are not handed out
-        assert_eq!(254, hosts.len());
-        assert_eq!(address("172.16.0.1"), hosts[0]);
-        assert_eq!(address("172.16.0.254"), hosts[253]);
-    }
 
-    #[test]
-    fn test_get_free_address() {
-        let private = network("10.1.2.0/24");
-        // the gateway address is never handed out
-        assert_eq!(
-            Some(address("10.1.2.2")), get_free_address(&private, &[])
-        );
-        assert_eq!(
-            Some(address("10.1.2.4")),
-            get_free_address(&private, &[
-                address("10.1.2.2"), address("10.1.2.3")
-            ])
-        );
-        // addresses of another network do not take part
-        assert_eq!(
-            Some(address("10.1.2.2")),
-            get_free_address(&private, &[address("172.16.0.2")])
-        );
-        let used: Vec<Ipv4Addr> = private.hosts().collect();
-        assert_eq!(None, get_free_address(&private, &used));
-    }
 
-    #[test]
-    fn test_get_network_candidates() {
-        let candidates: Vec<Ipv4Network> = get_network_candidates()
-            .take(3).collect();
-        assert_eq!(
-            vec![
-                network("172.16.0.0/24"),
-                network("172.16.1.0/24"),
-                network("172.16.2.0/24")
-            ],
-            candidates
-        );
-        // the preferred network is only offered once
-        assert_eq!(
-            1, get_network_candidates()
-                .filter(|network| *network == get_preferred_network()).count()
-        );
-    }
 
-    #[test]
-    fn test_select_free_network() {
-        // the preferred network is taken if the host allows it
-        assert_eq!(
-            Some(network("172.16.0.0/24")),
-            select_free_network(&[network("192.168.0.0/24")])
-        );
-        // a network of the host is not handed out
-        assert_eq!(
-            Some(network("172.16.1.0/24")),
-            select_free_network(&[network("172.16.0.0/24")])
-        );
-        // this includes networks which only overlap with it. A
-        // host which uses the entire first range gets a network
-        // of the next one
-        assert_eq!(
-            Some(network("192.168.0.0/24")),
-            select_free_network(&[network("172.16.0.0/12")])
-        );
-    }
 
-    #[test]
-    fn test_get_address_list_networks() {
-        let addresses = "\
-1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever
-2: eth0    inet 172.16.0.5/24 brd 172.16.0.255 scope global eth0\\       valid_lft forever
-3: tap-app    inet 172.16.0.1/24 scope global tap-app\\       valid_lft forever
-";
-        assert_eq!(
-            vec![network("127.0.0.0/8"), network("172.16.0.0/24")],
-            get_address_list_networks(addresses)
-        );
-    }
 
-    #[test]
-    fn test_get_route_list_networks() {
-        let routes = "\
-default via 192.168.1.1 dev eth0 proto dhcp metric 100
-192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.23
-172.16.0.2 dev tap-app scope link
-";
-        assert_eq!(
-            vec![network("192.168.1.0/24")], get_route_list_networks(routes)
-        );
-    }
 
-    #[test]
-    fn test_get_route_list_default_device() {
-        let routes = "\
-unreachable default metric 50
-default via 192.168.1.1 dev eth0 proto dhcp metric 100
-default via 10.0.0.1 dev wlan0 proto dhcp metric 600
-";
-        // the first default route with a device is in use
-        assert_eq!(
-            Some("eth0".to_string()), get_route_list_default_device(routes)
-        );
-        // without a default route there is no device
-        assert_eq!(None, get_route_list_default_device(""));
-        assert_eq!(
-            None, get_route_list_default_device("unreachable default\n")
-        );
-    }
 
     #[test]
     fn test_select_outgoing_interface() {
@@ -3399,16 +1390,4 @@ default via 10.0.0.1 dev wlan0 proto dhcp metric 600
         assert_eq!("tap-1000_myapp", network_info.tap);
     }
 
-    #[test]
-    fn test_is_vm_address() {
-        let network = Ipv4Network::parse("172.16.0.0/24").unwrap();
-        assert!(is_vm_address(&network, &"172.16.0.2".parse().unwrap()));
-        assert!(is_vm_address(&network, &"172.16.0.254".parse().unwrap()));
-        // network, gateway and broadcast address
-        assert!(! is_vm_address(&network, &"172.16.0.0".parse().unwrap()));
-        assert!(! is_vm_address(&network, &"172.16.0.1".parse().unwrap()));
-        assert!(! is_vm_address(&network, &"172.16.0.255".parse().unwrap()));
-        // outside of the private network
-        assert!(! is_vm_address(&network, &"192.168.1.2".parse().unwrap()));
-    }
 }

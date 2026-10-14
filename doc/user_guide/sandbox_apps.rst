@@ -108,7 +108,8 @@ This registers an app named ``leapshell`` to the system. Once called,
 and drops you into the bash shell of that tree. ``bwrap`` itself
 creates the sandbox through user namespaces and needs no privileges,
 the overlay of the tree is mounted on the host prior to the call and
-does need them. A caller which is not ``root`` is asked for its
+does need them. The overlay is mounted by the helper, see
+:ref:`privileges`. A caller which is not ``root`` is asked for its
 ``sudo`` password at that point.
 
 Nothing on the host is visible inside except for the pseudo

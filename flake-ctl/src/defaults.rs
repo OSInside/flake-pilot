@@ -173,22 +173,16 @@ pub const TAR_TOOL:&str =
 // part of the container, like the sleep program it kills
 pub const KILL_TOOL:&str =
     "kill";
-// Programs called through sudo. They are given by their absolute
-// path and are maintained along with the other programs called
-// this way in the common area
+// Programs given by their absolute path, maintained in the
+// common area along with the other programs flake-pilot calls
+pub use flakes::defaults::{IP_TOOL, MV_TOOL};
+// Setup of the host network and the NFS exports. It is created by
+// the helper, flake-ctl reads it and is maintained along with the
+// helper in the common area
 pub use flakes::defaults::{
-    IPTABLES_TOOL, IP_TOOL, SYSCTL_TOOL, NFS_EXPORTFS_TOOL,
-    INSTALL_TOOL, SYSTEMCTL_TOOL, MV_TOOL
+    NETWORK_STATE, NETWORK_PREFIX_LEN, NETWORK_DNS, NETWORK_RANGES,
+    NETWORK_PREFERRED
 };
-pub const NFS_EXPORTS_FILE:&str =
-    "/etc/exports";
-pub const NFS_SERVER_SERVICE:&str =
-    "nfs-server";
-// Every access of a VM is mapped to the owner of the exported
-// path, the anonuid and anongid options naming that owner are
-// added per export
-pub const NFS_EXPORT_OPTIONS:&str =
-    "rw,sync,no_subtree_check,all_squash";
 // Kernel commandline option sci reads the NFS volumes of a VM
 // from. The option provides all volumes of an instance as a
 // list of NAME_OR_IP:HOST_PATH:GUEST_PATH elements
@@ -196,84 +190,6 @@ pub const NFS_VOLUME_BOOT_ARG:&str =
     "nfs";
 pub const NFS_VOLUME_DELIMITER:char =
     ',';
-// Kernel switch to turn the host into a router. Required to
-// forward the traffic of a VM from its TUN/TAP device to the
-// outgoing interface of the host
-pub const SYSCTL_IP_FORWARD:&str =
-    "net.ipv4.ip_forward";
-// Location the kernel reports the state of that switch at
-pub const PROC_IP_FORWARD:&str =
-    "/proc/sys/net/ipv4/ip_forward";
-// Location of the IPv6 setup of a network interface. The setup
-// of the TAP devices is IPv4 only, IPv6 is switched off on them
-// such that a VM cannot reach the host through an IPv6 link
-// local address, which the IPv4 firewall setup does not cover
-pub const PROC_IPV6_CONF:&str =
-    "/proc/sys/net/ipv6/conf";
-// Record of the host wide network state: the addresses handed
-// out to the VM instances of all users and whether flake-pilot
-// has turned on IP forwarding. The file belongs to root and is
-// written through sudo, a user cannot change the addresses of
-// other users or claim one of them
-pub const NETWORK_STATE:&str =
-    "/var/lib/firecracker/network-state.yaml";
-// Lock file which serializes the changes of the network state
-// between concurrent calls. It belongs to root like the state
-pub const NETWORK_STATE_LOCK:&str =
-    "/var/lib/firecracker/network-state.lock";
-// Number of attempts to lock a lock file which got replaced
-// while waiting for its lock
-pub const LOCK_ATTEMPTS: u32 = 10;
-// Services of the host a VM may reach through its gateway: NFS
-// (version 4, which needs no other port) for the volumes exported
-// to it, DNS and DHCP if the host setup was created for a resolver
-// or a DHCP server on the host. Any other traffic of a VM to the
-// host is dropped
-pub const NETWORK_DHCP_SERVER_PORT:&str =
-    "67";
-pub const NETWORK_DHCP_CLIENT_PORT:&str =
-    "68";
-pub const NETWORK_DNS_PORT:&str =
-    "53";
-pub const NETWORK_NFS_PORT:&str =
-    "2049";
-// Setup of the private network between the host and the VMs.
-// The addresses only exist between the TAP device of an instance
-// and the VM behind it. The traffic to the outside world is
-// masqueraded and therefore leaves the host with the address of
-// the outgoing interface.
-//
-// The network to use is selected when the host setup is created
-// and is recorded along with it. The preferred network is taken
-// if the host is not connected to it already, in all other cases
-// a free network from the ranges below is taken
-pub const NETWORK_PREFERRED:&str =
-    "172.16.0.0";
-// Ranges of private networks a free network is searched in if
-// the preferred network conflicts with a network of the host.
-// Each entry provides the first network of the range and the
-// number of networks in it. The networks of a range follow each
-// other in steps of NETWORK_PREFIX_LEN, e.g 172.16.0.0 is
-// followed by 172.16.1.0. The ranges are searched in the order
-// they are listed here
-pub const NETWORK_RANGES:&[(&str, u32)] = &[
-    // 172.16.0.0 ... 172.31.255.0
-    ("172.16.0.0", 4096),
-    // 192.168.0.0 ... 192.168.255.0
-    ("192.168.0.0", 256),
-    // 10.0.0.0 ... 10.255.255.0
-    ("10.0.0.0", 65536)
-];
-pub const NETWORK_PREFIX_LEN:u8 =
-    24;
-// Prefix length of the host route which connects the address of
-// a single VM instance with the TAP device of that instance
-pub const NETWORK_HOST_PREFIX_LEN:u8 =
-    32;
-// Name server of the VMs unless the host setup was created for
-// a resolver on the host, which the VMs use through their gateway
-pub const NETWORK_DNS:&str =
-    "8.8.8.8";
 // Name of the network interface inside of the VM. Firecracker
 // provides exactly one interface to the guest
 pub const NETWORK_GUEST_INTERFACE:&str =

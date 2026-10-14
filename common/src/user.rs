@@ -22,13 +22,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use std::fs;
+use std::env;
 use std::path::Path;
 use std::{process::Command, ffi::OsStr};
 use serde::{Serialize, Deserialize};
-use crate::command::CommandExtTrait;
-use uzers::{get_current_uid, get_current_username};
-use crate::lookup::{Lookup};
+use uzers::{get_current_uid, get_current_username, get_user_by_uid};
 use crate::error::FlakeError;
 use crate::openat;
 use crate::defaults;
@@ -51,14 +49,14 @@ impl User<'_> {
         /*!
         Check if this user is the one running this process
 
-        Work for another user has to be handed to sudo, but work
-        for the caller can be done by the process itself. This
-        allows to do it in a way which cannot be tricked into
-        following a symbolic link
+        flake-pilot changes the privileges of a process only through
+        its helper. Work can therefore only be done for the user who
+        runs this process, which also covers root working for a user
+        through the helper. The work is done by the process itself
+        in a way which cannot be tricked into following a symbolic
+        link
         !*/
         match self.name {
-            // Without a name sudo is called without the --user
-            // option, which runs the command as root
             None | Some("root") => get_current_uid() == 0,
             Some(name) => get_current_username()
                 .map(|caller| caller == *name)
@@ -74,71 +72,75 @@ impl User<'_> {
         user
     }
 
-    pub fn run<S: AsRef<OsStr>>(&self, command: S) -> Command {
+    pub fn run<S: AsRef<OsStr>>(&self, command: S) -> Result<Command, FlakeError> {
         /*!
-        Call command via sudo
+        Create a call of command with the privileges of this user
 
-        The environment of the caller is not passed along. Handing
-        the environment of an unprivileged caller to a program
-        running as root allows to influence that program in ways
-        the sudo rule for it never intended
-        !*/
-        self.run_with_env(command, &[])
-    }
-
-    pub fn run_with_env<S: AsRef<OsStr>>(
-        &self, command: S, keep_env: &[&str]
-    ) -> Command {
-        /*!
-        Call command via sudo, preserving the given environment
-        variables. Only variables the called program really needs
-        should be listed here
-
-        The command has to be given by its absolute path, see
-        the tool definitions in defaults
+        Only the user running this process can be served, see
+        is_calling_user(). The command has to be given by its
+        absolute path, see the tool definitions in defaults
         !*/
         debug_assert!(
             Path::new(command.as_ref()).is_absolute(),
-            "sudo target {:?} is not an absolute path", command.as_ref()
+            "{:?} is not an absolute path", command.as_ref()
         );
-        let mut c = Command::new("sudo");
-        if ! keep_env.is_empty() {
-            c.arg(format!("--preserve-env={}", keep_env.join(",")));
-        }
-        if let Some(name) = self.name {
-            c.arg("--user").arg(name);
-        }
-        c.arg(command);
-        c
+        self.check_calling_user()?;
+        Ok(Command::new(command))
     }
+
+    fn check_calling_user(&self) -> Result<(), FlakeError> {
+        /*!
+        Refuse work for another user than the one running this
+        process, see is_calling_user()
+        !*/
+        if ! self.is_calling_user() {
+            return Err(FlakeError::IOError {
+                kind: "Privileges required".to_string(),
+                message: format!(
+                    "Cannot act as user {:?}, flake-pilot changes \
+                    privileges only through its helper", self.get_name()
+                )
+            })
+        }
+        Ok(())
+    }
+}
+
+pub fn get_caller_uid() -> u32 {
+    /*!
+    Provide the ID of the user this process works for
+
+    This is the user running the process, except for a pilot which
+    runs as root for a user who called a system wide flake. Such a
+    pilot is started by the helper, which hands over the ID of that
+    user in defaults::CALLER_UID_VAR. The variable is only read by
+    a process running as root, a user cannot set it for one
+    !*/
+    let uid = get_current_uid();
+    if uid != 0 {
+        return uid
+    }
+    env::var(defaults::CALLER_UID_VAR).ok()
+        .and_then(|caller| caller.parse().ok())
+        .unwrap_or(uid)
+}
+
+pub fn get_caller_name() -> String {
+    /*!
+    Provide the login name of the user this process works for, see
+    get_caller_uid()
+    !*/
+    get_user_by_uid(get_caller_uid())
+        .map(|user| user.name().to_string_lossy().to_string())
+        .unwrap_or_else(|| get_caller_uid().to_string())
 }
 
 pub fn exists(filename: &str, user: User) -> Result<bool, FlakeError> {
     /*!
-    check file exists via sudo
+    Check if the given file exists for the given user
     !*/
-    let mut call = user.run(defaults::TEST_TOOL);
-    call.arg("-e").arg(filename);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", call.get_program(), call.get_args());
-    }
-    let output = match call.output() {
-        Ok(output) => {
-            output
-        }
-        Err(error) => {
-            return Err(
-                FlakeError::IOError {
-                    kind: "call failed".to_string(),
-                    message: format!("{error:?}")
-                }
-            );
-        }
-    };
-    if output.status.success() {
-        return Ok(true)
-    }
-    Ok(false)
+    user.check_calling_user()?;
+    Ok(Path::new(filename).exists())
 }
 
 pub fn cp(source: &str, target: &str, user: User) -> Result<(), FlakeError> {
@@ -150,25 +152,13 @@ pub fn cp(source: &str, target: &str, user: User) -> Result<(), FlakeError> {
     one overwrites a file of the caller's choice. Therefore no
     link is followed, see mkdir() for the details
     !*/
-    if user.is_calling_user() {
-        return openat::copy(source, target).map_err(
-            |error| FlakeError::IOError {
-                kind: "Copy failed".to_string(),
-                message: format!(
-                    "Failed to copy {source} to {target}: {error}"
-                )
-            }
-        )
-    }
-    no_symlink_in_path(source)?;
-    no_symlink_in_path(target)?;
-    let mut call = user.run(defaults::CP_TOOL);
-    call.arg(source).arg(target);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", call.get_program(), call.get_args());
-    }
-    call.perform()?;
-    Ok(())
+    user.check_calling_user()?;
+    openat::copy(source, target).map_err(
+        |error| FlakeError::IOError {
+            kind: "Copy failed".to_string(),
+            message: format!("Failed to copy {source} to {target}: {error}")
+        }
+    )
 }
 
 pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), FlakeError> {
@@ -180,77 +170,38 @@ pub fn chmod(filename: &str, mode: &str, user: User) -> Result<(), FlakeError> {
     the caller picked. Therefore no link is followed, see mkdir()
     for the details
     !*/
-    if user.is_calling_user() {
-        return openat::set_mode(filename, octal_mode(mode)?).map_err(
-            |error| FlakeError::IOError {
-                kind: "Chmod failed".to_string(),
-                message: format!("Failed to set mode of {filename}: {error}")
-            }
-        )
-    }
-    no_symlink_in_path(filename)?;
-    let mut call = user.run(defaults::CHMOD_TOOL);
-    call.arg(mode).arg(filename);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", call.get_program(), call.get_args());
-    }
-    call.perform()?;
-    Ok(())
+    user.check_calling_user()?;
+    openat::set_mode(filename, octal_mode(mode)?).map_err(
+        |error| FlakeError::IOError {
+            kind: "Chmod failed".to_string(),
+            message: format!("Failed to set mode of {filename}: {error}")
+        }
+    )
 }
 
 pub fn mkdir(dirname: &str, mode: &str, user: User) -> Result<(), FlakeError> {
     /*!
     Make directory
 
-    A directory created with the privileges of another user,
-    usually root, must not be created through a symbolic link. A
-    link placed in the path by the caller would let the privileged
-    call create a directory, and set its permissions, at a
-    location that caller picked, e.g a system directory
+    A directory created with the privileges of root must not be
+    created through a symbolic link. A link placed in the path by
+    a user would let the call create a directory, and set its
+    permissions, at a location that user picked, e.g a system
+    directory
 
-    If the directory belongs to the user running this process, it
-    is created by the process itself. Every component of the path
-    is resolved with openat2(RESOLVE_NO_SYMLINKS) and the mode is
-    set on the descriptor of the new directory. Thus there is not
-    only no link followed, there is also no moment in which the
-    path could be replaced by one
-
-    For another user the work has to be done by sudo, which
-    resolves the path on its own. In this case the path is checked
-    to be free of links before and after the call. This closes the
-    known attack but not the window between check and call
+    Every component of the path is resolved with
+    openat2(RESOLVE_NO_SYMLINKS) and the mode is set on the
+    descriptor of the new directory. Thus there is not only no link
+    followed, there is also no moment in which the path could be
+    replaced by one
     !*/
-    if user.is_calling_user() {
-        return openat::create_dir_all(dirname, octal_mode(mode)?).map_err(
-            |error| FlakeError::IOError {
-                kind: "Mkdir failed".to_string(),
-                message: format!("Failed to create {dirname}: {error}")
-            }
-        )
-    }
-    no_symlink_in_path(dirname)?;
-    if Path::new(dirname).exists() {
-        return Ok(())
-    }
-    let mut mkdir_call = user.run(defaults::MKDIR_TOOL);
-    mkdir_call.arg("-p").arg("-m").arg(mode).arg(dirname);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", mkdir_call.get_program(), mkdir_call.get_args());
-    }
-    mkdir_call.perform()?;
-    // The mode is applied again because 'mkdir -p' only sets it on
-    // the last component of the path and not on a directory which
-    // exists already. As chmod resolves a link, the path is
-    // checked again. The directory could have been replaced by a
-    // link in the time between its creation and this call
-    no_symlink_in_path(dirname)?;
-    let mut chmod_call = user.run(defaults::CHMOD_TOOL);
-    chmod_call.arg(mode).arg(dirname);
-    if Lookup::is_debug() {
-        debug!("{:?} {:?}", chmod_call.get_program(), chmod_call.get_args());
-    }
-    chmod_call.perform()?;
-    Ok(())
+    user.check_calling_user()?;
+    openat::create_dir_all(dirname, octal_mode(mode)?).map_err(
+        |error| FlakeError::IOError {
+            kind: "Mkdir failed".to_string(),
+            message: format!("Failed to create {dirname}: {error}")
+        }
+    )
 }
 
 pub fn octal_mode(mode: &str) -> Result<u32, FlakeError> {
@@ -266,35 +217,9 @@ pub fn octal_mode(mode: &str) -> Result<u32, FlakeError> {
     )
 }
 
-pub fn no_symlink_in_path(filename: &str) -> Result<(), FlakeError> {
-    /*!
-    Make sure no component of the given path is a symbolic link
-
-    A component which does not exist is no link and a component
-    which cannot be looked up is left to the privileged call. Only
-    a component which is proven to be a link is rejected
-    !*/
-    for component in Path::new(filename).ancestors() {
-        let attributes = match fs::symlink_metadata(component) {
-            Ok(attributes) => attributes,
-            Err(_) => continue
-        };
-        if attributes.file_type().is_symlink() {
-            return Err(FlakeError::IOError {
-                kind: "Insecure path".to_string(),
-                message: format!(
-                    "{} is a symbolic link, refusing to use {} through it",
-                    component.display(), filename
-                )
-            })
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{User, chmod, cp, mkdir, no_symlink_in_path, octal_mode};
+    use super::{User, chmod, cp, get_caller_uid, mkdir, octal_mode};
     use std::fs;
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::os::unix::net::UnixListener;
@@ -303,38 +228,8 @@ mod tests {
     use uzers::get_current_username;
 
     fn calling_user() -> String {
-        // Work done for this user is done by the process itself
-        // and not handed over to sudo
+        // Work can only be done for the user running the process
         get_current_username().unwrap().into_string().unwrap()
-    }
-
-    #[test]
-    fn test_path_without_symlink_is_accepted() {
-        let workdir = tempdir().unwrap();
-        let base = workdir.path().to_str().unwrap();
-        fs::create_dir(format!("{base}/dir")).unwrap();
-        assert!(no_symlink_in_path(&format!("{base}/dir")).is_ok());
-        // a component which does not exist yet is created by the
-        // call and is therefore no link
-        assert!(no_symlink_in_path(&format!("{base}/dir/new/sub")).is_ok());
-    }
-
-    #[test]
-    fn test_symlink_as_last_component_is_rejected() {
-        let workdir = tempdir().unwrap();
-        let base = workdir.path().to_str().unwrap();
-        fs::create_dir(format!("{base}/target")).unwrap();
-        symlink(format!("{base}/target"), format!("{base}/link")).unwrap();
-        assert!(no_symlink_in_path(&format!("{base}/link")).is_err());
-    }
-
-    #[test]
-    fn test_symlink_in_path_is_rejected() {
-        let workdir = tempdir().unwrap();
-        let base = workdir.path().to_str().unwrap();
-        fs::create_dir(format!("{base}/target")).unwrap();
-        symlink(format!("{base}/target"), format!("{base}/link")).unwrap();
-        assert!(no_symlink_in_path(&format!("{base}/link/sub")).is_err());
     }
 
     #[test]
@@ -347,8 +242,9 @@ mod tests {
         fs::create_dir(format!("{base}/target")).unwrap();
         symlink(format!("{base}/target"), format!("{base}/link")).unwrap();
         let dirname = format!("{base}/link/sub");
-        // the call is rejected before any privileged command runs
         assert!(mkdir(&dirname, "755", User::ROOT).is_err());
+        let user = calling_user();
+        assert!(mkdir(&dirname, "755", User::from(user.as_str())).is_err());
         assert!(! Path::new(&format!("{base}/target/sub")).exists());
     }
 
@@ -433,12 +329,31 @@ mod tests {
     }
 
     #[test]
-    fn test_work_for_another_user_is_left_to_sudo() {
-        assert!(! User::from("a_user_which_does_not_exist").is_calling_user());
+    fn test_work_for_another_user_is_refused() {
+        let other = User::from("a_user_which_does_not_exist");
+        assert!(! other.is_calling_user());
         assert!(User::from(calling_user().as_str()).is_calling_user());
         assert_eq!(
             uzers::get_current_uid() == 0, User::ROOT.is_calling_user()
         );
+        // there is no way to act as another user
+        let workdir = tempdir().unwrap();
+        let dirname = format!("{}/dir", workdir.path().to_str().unwrap());
+        assert!(mkdir(&dirname, "755", other).is_err());
+        assert!(other.run("/usr/bin/true").is_err());
+        assert!(! Path::new(&dirname).exists());
+    }
+
+    #[test]
+    fn test_get_caller_uid() {
+        // a process which does not run as root works for its user,
+        // no matter what the environment says
+        if uzers::get_current_uid() != 0 {
+            std::env::set_var(crate::defaults::CALLER_UID_VAR, "0");
+            assert_eq!(uzers::get_current_uid(), get_caller_uid());
+            std::env::remove_var(crate::defaults::CALLER_UID_VAR);
+        }
+        assert_eq!(uzers::get_current_uid(), get_caller_uid());
     }
 
     #[test]

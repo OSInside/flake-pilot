@@ -32,9 +32,11 @@ given instance of it, is removed from the entry. The entry itself is
 removed once no VM is left.
 
 Only entries previously managed by flake-pilot for the given path are
-removed. As the command changes a system-wide NFS configuration, the
-required privileged operations are executed through **sudo** when
-needed.
+removed. An entry maps every access to the owner of the path, only
+that user and root can release it. As the command changes a
+system-wide NFS configuration, the entry is removed by the helper,
+see **flake-pilot-helper**\(8), called through **sudo** for a caller
+who is not root.
 
 OPTIONS
 -------

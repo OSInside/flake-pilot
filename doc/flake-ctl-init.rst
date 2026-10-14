@@ -61,8 +61,9 @@ The pilots do not create a meta data directory and refuse to run
 if it does not exist or is set up differently. The flake-pilot
 package lets systemd-tmpfiles create the default meta data
 directory /tmp/flakes at boot. A meta data directory which does
-not exist is created by the command as root, through sudo for a
-caller other than root. Called as the root user, the command only
+not exist is created by the command as root, through the helper for
+a caller other than root, see **flake-pilot-helper**\(8). Called as
+the root user, the command only
 checks and creates the meta data directories. This is the way to
 provide them on a host without systemd, or for a meta data
 directory other than /tmp/flakes.

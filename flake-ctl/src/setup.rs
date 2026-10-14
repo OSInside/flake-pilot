@@ -28,6 +28,7 @@ use flakes::config::{
     get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_podman_ids_dir
 };
 use flakes::defaults::{FLAKES_CONFIG_USER, FLAKES_DIR_USER, META_DIR_MODE};
+use flakes::helper::helper_call;
 use flakes::io::IO;
 use flakes::user::{User, mkdir};
 use uzers::{get_current_uid, get_user_by_uid};
@@ -105,10 +106,10 @@ fn init_meta_dirs() -> bool {
     user keeps a private directory below them. The flake-pilot
     package lets systemd-tmpfiles create them at boot. A directory
     which does not exist, e.g on a host without systemd, is created
-    here as root, through sudo for a caller who is not root. The
-    pilots do not create it and refuse to run without it. An
-    existing directory has to be set up the way
-    IO::meta_dir_problem() expects
+    here by root, or by the helper for a caller who is not root,
+    see its meta-dirs-init command. The pilots do not create it and
+    refuse to run without it. An existing directory has to be set
+    up the way IO::meta_dir_problem() expects
     !*/
     let mut ids_dirs = vec![
         get_podman_ids_dir(false),
@@ -117,6 +118,18 @@ fn init_meta_dirs() -> bool {
     ];
     ids_dirs.sort();
     ids_dirs.dedup();
+    if get_current_uid() != 0 && ids_dirs.iter().any(
+        |ids_dir| fs::symlink_metadata(ids_dir).is_err()
+    ) {
+        info!("Creating meta data directories through the helper");
+        return match helper_call("meta-dirs-init").status() {
+            Ok(status) => status.success(),
+            Err(error) => {
+                error!("Failed to run the helper: {error}");
+                false
+            }
+        }
+    }
     let mut result = true;
     for ids_dir in ids_dirs {
         if fs::symlink_metadata(&ids_dir).is_err() {

@@ -28,12 +28,17 @@ extern crate log;
 #[cfg(test)]
 pub mod tests;
 
+use std::env;
+use std::os::unix::process::CommandExt;
 use std::process::{ExitCode, Termination};
 
-use config::config;
+use config::{config, is_usermode};
 use env_logger::Env;
 use flakes::error::FlakeError;
+use flakes::helper::helper_call;
 use flakes::registration;
+use flakes::user::get_caller_uid;
+use uzers::get_current_uid;
 
 pub mod podman;
 pub mod defaults;
@@ -41,6 +46,19 @@ pub mod config;
 
 fn main() -> ExitCode {
     setup_logger();
+    // A system wide flake runs in the podman setup of root. A user
+    // who calls it hands the call over to the helper, which starts
+    // this pilot as root for that user
+    if ! is_usermode() && get_current_uid() != 0 {
+        return run_through_helper()
+    }
+    // A pilot started as root for a user only runs system wide
+    // flakes. The registration of a flake of a user, and the setup
+    // it references, belongs to that user and is never used by root
+    if is_usermode() && get_current_uid() == 0 && get_caller_uid() != 0 {
+        error!("A flake registered by a user is not run as root");
+        return ExitCode::FAILURE
+    }
     // load config now so we can terminate early if the config is invalid
     config();
     // past here there should be no more panics
@@ -64,6 +82,27 @@ fn run() -> Result<(), FlakeError> {
     podman::start(
         &program_name, cid
     )
+}
+
+fn run_through_helper() -> ExitCode {
+    /*!
+    Replace this pilot by the helper, which runs the system wide
+    flake for the calling user, see its podman-pilot command
+
+    The helper starts the pilot with a fresh environment. The
+    terminal type and the debug mode, see helper_call(), are handed
+    over as arguments, the arguments of the application are passed
+    along unchanged
+    !*/
+    let mut call = helper_call("podman-pilot");
+    call.arg("--app").arg(registration::program_abs_path());
+    if let Ok(term) = env::var("TERM") {
+        call.arg("--term").arg(term);
+    }
+    call.arg("--").args(env::args().skip(1));
+    let error = call.exec();
+    error!("Failed to run the flake through the helper: {error}");
+    ExitCode::FAILURE
 }
 
 fn setup_logger() {

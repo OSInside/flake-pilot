@@ -77,6 +77,8 @@ Group:          System/Management
 Requires:       podman
 Requires:       rsync
 Requires:       sudo
+# the helper runs system wide flakes for the calling user
+Requires:       flake-pilot = %{version}-%{release}
 
 %description -n flake-pilot-podman
 Launcher for OCI containers based applications through podman
@@ -86,6 +88,8 @@ Summary:        Bubblewrap pilot
 Group:          System/Management
 Requires:       bubblewrap
 Requires:       sudo
+# the helper mounts the root filesystem of the sandboxes
+Requires:       flake-pilot = %{version}-%{release}
 
 %description -n flake-pilot-bubblewrap
 Launcher for applications running in a bubblewrap sandbox
@@ -285,8 +289,14 @@ fi
 %config /etc/flakes.yml
 %{_tmpfilesdir}/flake-pilot.conf
 %{_bindir}/flake-ctl
+# The helper performs every privileged action of flake-pilot. It is
+# called through sudo and must only be writable by root. Its path
+# is compiled into the tools calling it
+%dir /usr/libexec/flake-pilot
+%attr(0755,root,root) /usr/libexec/flake-pilot/flake-pilot-helper
 %{_datadir}/bash-completion/completions/flake-ctl
 %doc doc/sudoers/flake-pilot.sudoers
+%doc %{_mandir}/man8/flake-pilot-helper.8.gz
 %doc %{_mandir}/man8/flake-pilot.8.gz
 %doc %{_mandir}/man8/flake-ctl.8.gz
 %doc %{_mandir}/man8/flake-ctl-init.8.gz

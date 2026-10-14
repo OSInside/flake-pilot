@@ -24,7 +24,7 @@
 use crate::bubblewrap::get_instance_name;
 use crate::bubblewrap::get_sandbox_options;
 use crate::config::config_from_str;
-use crate::overlay::{get_dir, get_mount_options, get_user_dir};
+use crate::overlay::{get_dir, get_user_dir};
 
 use uzers::get_current_uid;
 
@@ -289,20 +289,5 @@ fn test_overlay_dir() {
     assert_eq!(
         format!("{}/myapp@one_merged", get_user_dir()),
         get_dir("myapp@one", "merged")
-    );
-}
-
-#[test]
-fn test_overlay_mount_options() {
-    // the rootfs is the read only layer of the overlay, its
-    // upper and work directory are in the tmpfs of the instance
-    let tmpfs_dir = get_dir("myapp", "overlay");
-    assert_eq!(
-        format!(
-            "lowerdir=/var/lib/flakes/leap,\
-            upperdir={tmpfs_dir}/upper,\
-            workdir={tmpfs_dir}/work"
-        ),
-        get_mount_options("myapp", "/var/lib/flakes/leap")
     );
 }

@@ -43,24 +43,32 @@ pub const META_DIR_TMPFILES_CONF: &str =
     "/usr/lib/tmpfiles.d/flake-pilot.conf";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
-// Programs called through sudo. A program given by its name is
-// looked up by sudo in its secure_path or in the PATH of the
-// caller, depending on the sudo configuration, and a sudoers
-// rule only matches the absolute path of a program. Therefore
-// every program called through sudo is given by its absolute
-// path. The locations are the ones of a merged /usr as it is
-// used by all distributions flake-pilot is packaged for
-pub const TRUE_TOOL: &str = "/usr/bin/true";
-pub const TEST_TOOL: &str = "/usr/bin/test";
+// The helper performs every action of flake-pilot which needs
+// root privileges. It belongs to root, provides a fixed set of
+// commands and validates their arguments. A caller who is not
+// root runs it through sudo, which is the only program flake-pilot
+// calls through sudo. See the flake-pilot-helper crate
+pub const HELPER: &str = "/usr/libexec/flake-pilot/flake-pilot-helper";
+pub const SUDO_TOOL: &str = "/usr/bin/sudo";
+// The pilots of the engines, called by the helper on behalf of
+// a user, see the podman-pilot command of the helper
+pub const PODMAN_PILOT: &str = "/usr/bin/podman-pilot";
+// Environment variable the helper hands the user ID of its caller
+// to a pilot it runs as root on behalf of that user. It is only
+// read by a process which runs as root
+pub const CALLER_UID_VAR: &str = "FLAKE_PILOT_CALLER_UID";
+// Prefix of the private meta data directory a pilot running as
+// root keeps the instances a user started of system wide flakes
+// in, e.g /tmp/flakes/system_1000. It belongs to root
+pub const SYSTEM_META_DIR_PREFIX: &str = "system_";
+// Programs called by root, by the helper or by a pilot the helper
+// started. They are given by their absolute path, a program looked
+// up in a search path could be replaced. The locations are the ones
+// of a merged /usr as it is used by all distributions flake-pilot
+// is packaged for
 pub const SH_TOOL: &str = "/usr/bin/sh";
-pub const CP_TOOL: &str = "/usr/bin/cp";
 pub const MV_TOOL: &str = "/usr/bin/mv";
-pub const CHMOD_TOOL: &str = "/usr/bin/chmod";
-pub const MKDIR_TOOL: &str = "/usr/bin/mkdir";
-pub const INSTALL_TOOL: &str = "/usr/bin/install";
 pub const RSYNC_TOOL: &str = "/usr/bin/rsync";
-pub const MOUNT_TOOL: &str = "/usr/bin/mount";
-pub const UMOUNT_TOOL: &str = "/usr/bin/umount";
 pub const SYSTEMCTL_TOOL: &str = "/usr/bin/systemctl";
 pub const IPTABLES_TOOL: &str = "/usr/sbin/iptables";
 pub const IP_TOOL: &str = "/usr/sbin/ip";
@@ -115,3 +123,113 @@ pub const FIRECRACKER_STORAGE_EXTENSION: &str = "ext4";
 // the sockets of the commands called in it PREFIXNAME.sock_PORT.
 // flake-ctl deletes them along with the flake they belong to
 pub const FIRECRACKER_VSOCK_PREFIX: &str = "sci_cmd_";
+pub const NFS_EXPORTS_FILE: &str =
+    "/etc/exports";
+pub const NFS_SERVER_SERVICE: &str =
+    "nfs-server";
+// Every access of a VM is mapped to the owner of the exported
+// path, the anonuid and anongid options naming that owner are
+// added per export
+pub const NFS_EXPORT_OPTIONS: &str =
+    "rw,sync,no_subtree_check,all_squash";
+// Kernel switch to turn the host into a router. Required to
+// forward the traffic of a VM from its TUN/TAP device to the
+// outgoing interface of the host
+pub const SYSCTL_IP_FORWARD: &str =
+    "net.ipv4.ip_forward";
+// Location the kernel reports the state of that switch at
+pub const PROC_IP_FORWARD: &str =
+    "/proc/sys/net/ipv4/ip_forward";
+// Location of the IPv6 setup of a network interface. The setup
+// of the TAP devices is IPv4 only, IPv6 is switched off on them
+// such that a VM cannot reach the host through an IPv6 link
+// local address, which the IPv4 firewall setup does not cover
+pub const PROC_IPV6_CONF: &str =
+    "/proc/sys/net/ipv6/conf";
+// Record of the host wide network state: the network setup of
+// the host, the addresses handed out to the VM instances of all
+// users and whether flake-pilot has turned on IP forwarding. The
+// file belongs to root and is only written by the helper, a user
+// cannot change the setup or the addresses of other users
+pub const NETWORK_STATE: &str =
+    "/var/lib/firecracker/network-state.yaml";
+// Lock file which serializes the changes of the network state
+// between concurrent calls. It belongs to root like the state
+pub const NETWORK_STATE_LOCK: &str =
+    "/var/lib/firecracker/network-state.lock";
+// Number of attempts to lock a lock file which got replaced
+// while waiting for its lock
+pub const LOCK_ATTEMPTS: u32 = 10;
+// Services of the host a VM may reach through its gateway: NFS
+// (version 4, which needs no other port) for the volumes exported
+// to it, DNS and DHCP if the host setup was created for a resolver
+// or a DHCP server on the host. Any other traffic of a VM to the
+// host is dropped
+pub const NETWORK_DHCP_SERVER_PORT: &str =
+    "67";
+pub const NETWORK_DHCP_CLIENT_PORT: &str =
+    "68";
+pub const NETWORK_DNS_PORT: &str =
+    "53";
+pub const NETWORK_NFS_PORT: &str =
+    "2049";
+// Setup of the private network between the host and the VMs.
+// The addresses only exist between the TAP device of an instance
+// and the VM behind it. The traffic to the outside world is
+// masqueraded and therefore leaves the host with the address of
+// the outgoing interface.
+//
+// The network to use is selected when the host setup is created
+// and is recorded along with it. The preferred network is taken
+// if the host is not connected to it already, in all other cases
+// a free network from the ranges below is taken
+pub const NETWORK_PREFERRED: &str =
+    "172.16.0.0";
+// Ranges of private networks a free network is searched in if
+// the preferred network conflicts with a network of the host.
+// Each entry provides the first network of the range and the
+// number of networks in it. The networks of a range follow each
+// other in steps of NETWORK_PREFIX_LEN, e.g 172.16.0.0 is
+// followed by 172.16.1.0. The ranges are searched in the order
+// they are listed here
+pub const NETWORK_RANGES:&[(&str, u32)] = &[
+    // 172.16.0.0 ... 172.31.255.0
+    ("172.16.0.0", 4096),
+    // 192.168.0.0 ... 192.168.255.0
+    ("192.168.0.0", 256),
+    // 10.0.0.0 ... 10.255.255.0
+    ("10.0.0.0", 65536)
+];
+pub const NETWORK_PREFIX_LEN: u8 =
+    24;
+// Prefix length of the host route which connects the address of
+// a single VM instance with the TAP device of that instance
+pub const NETWORK_HOST_PREFIX_LEN: u8 =
+    32;
+// Name server of the VMs unless the host setup was created for
+// a resolver on the host, which the VMs use through their gateway
+pub const NETWORK_DNS: &str =
+    "8.8.8.8";
+// Directory the overlay setups of the bubblewrap sandboxes are
+// created in. The directories are created by bubblewrap-pilot and
+// mounted by the helper. It is shared
+// between all users of the system, the setup of an instance
+// therefore lives in a directory of its own below it, see
+// OVERLAY_USER_DIR_NAME
+pub const OVERLAY_BASE_DIR: &str = "/var/tmp";
+// Name of the directory which keeps the overlay setups of one
+// user. It is suffixed with the ID of that user, which makes
+// the path of a setup unique also if two users run the same
+// flake, e.g /var/tmp/bwrap_1000
+pub const OVERLAY_USER_DIR_NAME: &str = "bwrap";
+// Names of the directories of the overlay setup. Each of them
+// is prefixed with the name of the instance it belongs to, e.g
+// /var/tmp/bwrap_1000/myapp@one_merged
+pub const OVERLAY_MERGED_NAME: &str = "merged";
+pub const OVERLAY_TMPFS_NAME: &str = "overlay";
+pub const OVERLAY_RW_NAME: &str = "rw";
+pub const OVERLAY_WORK_NAME: &str = "work";
+// Name of the upper directory of the rootfs overlay. It is
+// created in the tmpfs of the instance, next to the work
+// directory of that overlay
+pub const OVERLAY_UPPER_NAME: &str = "upper";

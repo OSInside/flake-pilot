@@ -30,8 +30,9 @@ Firecracker connects a VM to the host through a TUN/TAP device. Such
 a device is a host local endpoint and provides no connection beyond
 the host by itself. Routing its traffic further requires the host to
 act as a router and to translate the sender address of the VM traffic
-to an address which is reachable from the outside. The command creates
-this setup by:
+to an address which is reachable from the outside. The command
+selects the private network and the outgoing interface. The setup
+itself is created by the helper, see **flake-pilot-helper**\(8):
 
 1. Selecting the private network between the host and the VMs, see
    NETWORK below
@@ -40,7 +41,7 @@ this setup by:
 
    .. code:: bash
 
-      sudo /usr/sbin/sysctl -w net.ipv4.ip_forward=1
+      /usr/sbin/sysctl -w net.ipv4.ip_forward=1
 
    That flake-pilot switched it on is recorded in the network state
    file, **flake-ctl-firecracker-network-cleanup**\(8) switches it
@@ -52,16 +53,22 @@ this setup by:
    default route of the host
 
 The traffic of the VMs to the outside world appears as if it would
-originate from the outgoing interface. As the setup changes the
-network configuration of the host, the commands are called through
-**sudo**. The calling user therefore needs the permission to run them
-as root.
+originate from the outgoing interface. The helper is called through
+**sudo**, see the chapter "Privileges and Trust" of the flake-pilot
+user guide for the rule it needs.
 
-The outgoing interface and the selected network are recorded in the
-network configuration file. Connecting an application to the host
-network with **flake-ctl-firecracker-network-add**(8) reads them from
-there, takes the address of the application from the same network and
-routes its traffic to the same interface.
+The helper checks the selected network and the outgoing interface
+again: the network has to be one of the private networks the command
+selects from, see NETWORK below, and must not collide with a network
+of the host, the interface has to exist. Both are recorded in the
+network state file along with the services of the host given by
+``--host-resolver`` and ``--host-dhcp``. Connecting an application to
+the host network with **flake-ctl-firecracker-network-add**(8) takes
+them from there: the address of the application, the route to it and
+its firewall rules are only ever created within the recorded network.
+
+The setup is also recorded in the network configuration file, which
+firecracker-pilot reads to check the firewall setup of the host.
 
 Chains and rules which already exist are not created again. This
 allows to call the command more than once without stacking up

@@ -400,7 +400,10 @@ pub fn call_instance(
         // the command talks to the console of the instance,
         // follow the window size of the caller's terminal for it
         watch_terminal_size(&vsock_uds_path, defaults::TERM_CONSOLE_PORT);
-        handle_output(child.wait_with_output(), firecracker.get_args())?;
+        handle_output(
+            child.wait_with_output(), firecracker.get_program(),
+            firecracker.get_args()
+        )?;
     }
     Ok(())
 }

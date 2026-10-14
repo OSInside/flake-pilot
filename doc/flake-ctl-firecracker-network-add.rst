@@ -30,36 +30,19 @@ setup. The TAP device the application expects is created for the
 user who runs the VM and is connected to the firewall setup of the
 host created by **flake-ctl-firecracker-network-init**\(8).
 
-The command performs the following steps:
+The host side of the setup is created by the helper, see
+**flake-pilot-helper**\(8), which performs the following steps:
 
-1. Write the network setup to the flake configuration
-
-   The kernel commandline of the VM is extended by the options
-   which configure its network:
-
-   .. code:: yaml
-
-      boot_args:
-        - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
-        - rd.route=172.16.0.1/24::eth0
-        - nameserver=8.8.8.8
-
-   Gateway and netmask describe the private network between the
-   host and the VMs. That network is the one selected with
-   **flake-ctl-firecracker-network-init**(8), the example above
-   shows the preferred network ``172.16.0.0/24``. The name server
-   is the public name server ``8.8.8.8``, compiled into the command.
-   If the host setup was created with ``--host-resolver`` it is the
-   gateway, e.g ``nameserver=172.16.0.1``. The address is allocated
-   in the network state file, see ADDRESSES below
+1. Allocate the address of the application in the network state
+   file, see ADDRESSES below
 
 2. Create the TAP device of the application for the user with the
    ID UID who runs the VM, see USERS below, and switch IPv6 off on it
 
    .. code:: bash
 
-      sudo /usr/sbin/ip tuntap add tap-<UID>_<APP> mode tap user <UID>
-      sudo /usr/sbin/sysctl -w net.ipv6.conf.tap-<UID>_<APP>.disable_ipv6=1
+      /usr/sbin/ip tuntap add tap-<UID>_<APP> mode tap user <UID>
+      /usr/sbin/sysctl -w net.ipv6.conf.tap-<UID>_<APP>.disable_ipv6=1
 
    firecracker runs as the user who calls the application. Only the
    user the device belongs to can connect a VM to it. The firewall
@@ -70,14 +53,14 @@ The command performs the following steps:
 
    .. code:: bash
 
-      sudo /usr/sbin/ip addr add 172.16.0.1/24 dev tap-<UID>_<APP>
-      sudo /usr/sbin/ip link set tap-<UID>_<APP> up
+      /usr/sbin/ip addr add 172.16.0.1/24 dev tap-<UID>_<APP>
+      /usr/sbin/ip link set tap-<UID>_<APP> up
 
 4. Route the address of the application to its TAP device
 
    .. code:: bash
 
-      sudo /usr/sbin/ip route add 172.16.0.2/32 dev tap-<UID>_<APP>
+      /usr/sbin/ip route add 172.16.0.2/32 dev tap-<UID>_<APP>
 
    Every TAP device provides the same gateway address and thus
    the same route to the private network. Without a host route
@@ -89,7 +72,7 @@ The command performs the following steps:
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 2049 -j ACCEPT
+      /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 2049 -j ACCEPT
 
    If the host setup was created with ``--host-resolver``, see
    **flake-ctl-firecracker-network-init**\(8), the VM is allowed
@@ -97,15 +80,15 @@ The command performs the following steps:
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p udp --dport 53 -j ACCEPT
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 53 -j ACCEPT
+      /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p udp --dport 53 -j ACCEPT
+      /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 53 -j ACCEPT
 
    If the host setup was created with ``--host-dhcp``, the VM is
    allowed the DHCP service of the host:
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -p udp --sport 68 --dport 67 -j ACCEPT
+      /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -p udp --sport 68 --dport 67 -j ACCEPT
 
    Any other traffic of the VM to the host is dropped by the firewall
    setup. NFS is allowed in version 4, which needs no other port,
@@ -116,15 +99,33 @@ The command performs the following steps:
    therefore not use the services of the host in the name of another
    VM
 
-As the setup changes the network configuration of the host, the
-commands are called through **sudo**. The calling user therefore
-needs the permission to run them as root.
+The command then writes the network setup to the flake
+configuration, with the privileges of the calling user. The kernel
+commandline of the VM is extended by the options which configure its
+network:
 
-Private network and outgoing interface are the ones the host setup
-was created for with **flake-ctl-firecracker-network-init**(8). If
-there is no record of them, e.g because the host setup was created
-manually, the interface of the default route and a free private
-network are used.
+.. code:: yaml
+
+   boot_args:
+     - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+     - rd.route=172.16.0.1/24::eth0
+     - nameserver=8.8.8.8
+
+Gateway and netmask describe the private network between the host
+and the VMs. That network is the one recorded by
+**flake-ctl-firecracker-network-init**\(8), the example above shows the
+preferred network ``172.16.0.0/24``. The name server is the public
+name server ``8.8.8.8``, compiled into the command. If the host setup
+was created with ``--host-resolver`` it is the gateway, e.g
+``nameserver=172.16.0.1``.
+
+The helper is called through **sudo**, see the chapter "Privileges
+and Trust" of the flake-pilot user guide for the rule it needs.
+
+The private network, the outgoing interface and the services of the
+host are the ones recorded in the network state file by
+**flake-ctl-firecracker-network-init**\(8). Without a recorded setup
+the command refuses to run.
 
 The command requires the firewall setup of the host to be active
 and refuses to run otherwise. Please run
@@ -167,14 +168,15 @@ USERS
 -----
 
 The TAP device of an instance belongs to the user who runs the VM,
-which is the calling user unless ``--user`` names another one. A
-flake registered by a user is only run by that user, ``--user`` can
-therefore only name another user for a system wide flake. Such a
-flake is set up by root, who names the user who is going to run it:
+which is the calling user unless ``--user`` names another one. Only
+root can name another user. A flake registered by a user is only run
+by that user, ``--user`` can therefore only name another user for a
+system wide flake. Such a flake is set up by root, who names the user
+who is going to run it:
 
 .. code:: bash
 
-   $ sudo flake-ctl firecracker network add --app /usr/bin/claude --user tux
+   # flake-ctl firecracker network add --app /usr/bin/claude --user tux
 
 The address of an instance is part of the flake configuration. The
 same instance of a system wide flake can therefore only be connected
@@ -184,8 +186,8 @@ instead:
 
 .. code:: bash
 
-   $ sudo flake-ctl firecracker network add --app /usr/bin/claude --instance @tux --user tux
-   $ sudo flake-ctl firecracker network add --app /usr/bin/claude --instance @wilber --user wilber
+   # flake-ctl firecracker network add --app /usr/bin/claude --instance @tux --user tux
+   # flake-ctl firecracker network add --app /usr/bin/claude --instance @wilber --user wilber
 
 ADDRESSES
 ---------
@@ -193,15 +195,15 @@ ADDRESSES
 The addresses are allocated in the network state file
 ``/var/lib/firecracker/network-state.yaml``, which records the
 address, the TAP device, the user and the flake of every connected
-instance of all users. The file belongs to root and is written
-through **sudo**, a user cannot hand out or take over the address of
-another user. A state file which does not belong to root is refused.
-Calls which change the network setup can run at the same time, e.g
-for different users. Each of them holds an exclusive lock on
-``/var/lib/firecracker/network-state.lock`` while it runs, such that
-the same address is never handed out twice. A call waits for the lock
-if another call holds it. The lock file belongs to root as well and is
-created through **sudo** by the first call which needs it.
+instance of all users, along with the recorded host setup. The file
+belongs to root and is only written by the helper, a user cannot hand
+out or take over the address of another user. A state file which does
+not belong to root is refused. Calls which change the network setup
+can run at the same time, e.g for different users. Each of them holds
+an exclusive lock on ``/var/lib/firecracker/network-state.lock`` while
+it runs, such that the same address is never handed out twice. A call
+waits for the lock if another call holds it. The lock file belongs to
+root as well and is created by the helper.
 
 The address handed out to an instance is the lowest free address of
 the private network of the host setup, which is ``172.16.0.0/24``
@@ -232,8 +234,8 @@ OPTIONS
 --user <USER>
 
   Name of the user who runs the VM and owns its TAP device. Defaults
-  to the calling user. Another user can only be named for a system
-  wide flake, see USERS
+  to the calling user. Only root can name another user, and only for
+  a system wide flake, see USERS
 
 FILES
 -----
@@ -257,7 +259,7 @@ EXAMPLE
 SEE ALSO
 --------
 
-flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-network-cleanup(8), flake-ctl-firecracker-register(8), firecracker-pilot(8)
+flake-ctl-firecracker-network-init(8), flake-ctl-firecracker-network-remove(8), flake-ctl-firecracker-network-cleanup(8), flake-ctl-firecracker-register(8), firecracker-pilot(8), flake-pilot-helper(8)
 
 AUTHOR
 ------

@@ -222,3 +222,29 @@ The option can be given more than once and is stored in the
 
 Registered options are read on every call. An option of the same
 name given at call time takes precedence over the registered one.
+
+Updating the Container Image
+============================
+
+A flake uses the container image which is in the local registry as
+it is. Only an image which is missing is pulled when an instance is
+created. A newer version of the image, e.g a new ``latest``, is
+fetched on request:
+
+.. code-block:: bash
+
+   flake-ctl podman pull --uri public.ecr.aws/b9k1j9y6/ai/claude:latest
+
+A flake which should check for a newer image each time an instance
+is created gets the ``%pull_newer`` pilot option. Images which are no
+longer used by any container are kept as well, unless the flake has
+the ``%prune_images`` option. It deletes the unused images of the
+whole podman setup the flake runs in, not only the ones of the flake:
+
+.. code-block:: yaml
+
+   container:
+     runtime:
+       pilot_options:
+         - "%pull_newer"
+         - "%prune_images"

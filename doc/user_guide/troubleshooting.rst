@@ -26,7 +26,17 @@ with. This is the first thing to look at whenever an application does
 not behave as expected. For a sandbox flake the constructed ``bwrap``
 call also shows the complete list of mounts the application is given,
 which is usually what a missing file inside the sandbox comes down
-to.
+   to.
+
+The styling of the log output is controlled by the following
+environment variable:
+
+.. code-block:: bash
+
+   FLAKE_LOG_STYLE=always myapp
+
+Accepted values are ``always`` (default), ``never`` and ``auto``.
+An unrecognized value falls back to ``auto``.
 
 Known Issues
 ============

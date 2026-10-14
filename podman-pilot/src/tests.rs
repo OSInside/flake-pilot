@@ -110,3 +110,35 @@ r#"container:
         ).is_empty()
     );
 }
+
+#[test]
+fn test_systemfiles_call() {
+    use crate::podman::systemfiles_call;
+    use std::fs;
+    use uzers::get_current_uid;
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let script = tmp_dir.path().join("systemfiles");
+    fs::write(
+        &script,
+        "echo /etc/hosts\nid -u\necho \"env:$BASH_ENV:$FLAKETESTVARIABLE\"\n"
+    ).unwrap();
+    // the caller environment does not reach the script
+    std::env::set_var("BASH_ENV", "/nonexistent/startup");
+    std::env::set_var("FLAKETESTVARIABLE", "leaked");
+    let mut call = systemfiles_call(&script);
+    let args: Vec<String> = call.get_args()
+        .map(|arg| arg.to_string_lossy().to_string()).collect();
+    assert_eq!(
+        vec!["--noprofile", "--norc", script.to_str().unwrap()], args
+    );
+    let output = call.output().unwrap();
+    std::env::remove_var("BASH_ENV");
+    std::env::remove_var("FLAKETESTVARIABLE");
+    assert!(output.status.success());
+    // the script runs with the privileges of the calling user
+    assert_eq!(
+        format!("/etc/hosts\n{}\nenv::\n", get_current_uid()),
+        String::from_utf8_lossy(&output.stdout)
+    );
+}

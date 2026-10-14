@@ -154,11 +154,15 @@ A system wide podman flake is granted to every user with the rule.
   can do through it. Register a podman flake system wide only if all
   of these users may use it this way.
 
-The content of a system wide flake is trusted with root.
-  A delta container may ship a ``/systemfiles`` script which
-  ``podman-pilot`` runs as root on the host to collect the files to
-  provision from the host. Register only containers and images whose
-  authors you trust with root.
+The content of a system wide flake is trusted as well.
+  A delta container may ship a ``/systemfiles`` script which collects
+  the files to provision from the host. ``podman-pilot`` runs it on
+  the host in a bash process of the user who calls the flake, with
+  the privileges of that user only, the files it lists are copied
+  into the container as root. The script runs with the privileges of
+  every user who calls the flake and decides which host files end up
+  in a container of root. Register only containers and images whose
+  authors you trust with that.
 
 The network setup is host wide.
   A user with the rule for it picks the private network of the VMs,

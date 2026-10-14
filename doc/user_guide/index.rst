@@ -220,8 +220,9 @@ not trust, check what it can reach:
 The trust you place in Flake Pilot itself is a separate question.
 Some features need a ``sudo`` rule for the Flake Pilot helper, which
 runs system wide podman flakes as root for every user with the rule,
-and the ``/systemfiles`` script of a delta container runs as root
-while it is provisioned. :ref:`privileges` lists these features.
+and the ``/systemfiles`` script of a delta container runs on the host,
+as the user who calls the flake, while it is provisioned.
+:ref:`privileges` lists these features.
 
 .. toctree::
    :hidden:

@@ -26,3 +26,8 @@ pub const GC_THRESHOLD: i32 = 1;
 pub const VAR_EXPANSION_LIMIT: i32 = 10;
 pub const HOST_DEPENDENCIES: &str = "removed";
 pub const SYSTEM_HOST_DEPENDENCIES: &str = "systemfiles";
+// Shell which runs the systemfiles script of a container, with
+// the privileges of the calling user
+pub const BASH: &str = "/usr/bin/bash";
+// Search path of the systemfiles script
+pub const SYSTEMFILES_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";

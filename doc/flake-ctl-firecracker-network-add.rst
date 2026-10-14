@@ -182,6 +182,12 @@ address, the TAP device, the user and the flake of every connected
 instance of all users. The file belongs to root and is written
 through **sudo**, a user cannot hand out or take over the address of
 another user. A state file which does not belong to root is refused.
+Calls which change the network setup can run at the same time, e.g
+for different users. Each of them holds an exclusive lock on
+``/var/lib/firecracker/network-state.lock`` while it runs, such that
+the same address is never handed out twice. A call waits for the lock
+if another call holds it. The lock file belongs to root as well and is
+created through **sudo** by the first call which needs it.
 
 The address handed out to an instance is the lowest free address of
 the private network of the host setup, which is ``172.16.0.0/24``
@@ -223,6 +229,7 @@ FILES
 * /etc/flakes/network.yaml
 * $HOME/.config/flakes/firecracker/network.yaml
 * /var/lib/firecracker/network-state.yaml
+* /var/lib/firecracker/network-state.lock
 
 EXAMPLE
 -------

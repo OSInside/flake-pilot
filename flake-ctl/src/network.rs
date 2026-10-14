@@ -34,10 +34,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::io::{ErrorKind, Write};
+use std::fs::File;
+use std::io::{self, ErrorKind, Write};
 use std::iter;
 use std::net::Ipv4Addr;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
@@ -93,6 +95,10 @@ pub fn init(outgoing_interface: Option<&str>, usermode: bool) -> bool {
     };
     let network = match select_network(usermode) {
         Some(network) => network,
+        None => return false
+    };
+    let _lock = match lock_network_state(true) {
+        Some(lock) => lock,
         None => return false
     };
     let mut state = match read_network_state() {
@@ -170,6 +176,10 @@ pub fn add(
         );
         return false
     }
+    let _lock = match lock_network_state(true) {
+        Some(lock) => lock,
+        None => return false
+    };
     let mut state = match read_network_state() {
         Some(state) => state,
         None => return false
@@ -242,6 +252,10 @@ pub fn remove(
         Some(flake) => flake,
         None => return false
     };
+    let _lock = match lock_network_state(true) {
+        Some(lock) => lock,
+        None => return false
+    };
     let mut state = match read_network_state() {
         Some(state) => state,
         None => return false
@@ -287,6 +301,10 @@ pub fn cleanup() -> bool {
     after a reboot, calling init() and add() again connects the
     applications with the addresses they had before
     !*/
+    let _lock = match lock_network_state(true) {
+        Some(lock) => lock,
+        None => return false
+    };
     let mut state = match read_network_state() {
         Some(state) => state,
         None => return false
@@ -345,6 +363,10 @@ pub fn get_active_taps(app: &str, usermode: bool) -> Vec<ActiveTap> {
         None => return Vec::new()
     };
     let config_file = registration::config_file(&app_basename, usermode);
+    let _lock = match lock_network_state(false) {
+        Some(lock) => lock,
+        None => return Vec::new()
+    };
     let state = match read_network_state() {
         Some(state) => state,
         None => return Vec::new()
@@ -1697,6 +1719,133 @@ struct Allocation {
     instance: Option<String>
 }
 
+// NetworkStateLock holds the lock of the network state, see
+// lock_network_state(). The lock is released when it is dropped
+struct NetworkStateLock {
+    _lock_file: Option<File>
+}
+
+fn lock_network_state(exclusive: bool) -> Option<NetworkStateLock> {
+    /*!
+    Lock the host wide network state
+
+    A call which changes the network setup reads the state,
+    changes it and writes it again. Calls of different users can
+    run at the same time and would otherwise lose the changes of
+    each other, e.g hand out the same address twice. Such a call
+    therefore holds an exclusive lock while it runs. A call which
+    only reads the state holds a shared lock, the state is written
+    in place and must not be read while it is written.
+
+    The lock is a flock(2) on a lock file of its own. The state
+    file is not suitable, it does not exist before the first
+    network setup. The lock file belongs to root like the state
+    file and is created through sudo by the first call which
+    changes the state. A call which only reads the state does not
+    create it and reads the state without lock if there is no
+    lock file yet
+    !*/
+    let lock_file = defaults::NETWORK_STATE_LOCK;
+    let mut locked = lock_file_of(lock_file, exclusive, 0);
+    if exclusive {
+        if let Err(error) = &locked {
+            if error.kind() == ErrorKind::NotFound {
+                if ! create_network_state_lock() {
+                    return None
+                }
+                locked = lock_file_of(lock_file, exclusive, 0);
+            }
+        }
+    }
+    match locked {
+        Ok(file) => Some(NetworkStateLock { _lock_file: Some(file) }),
+        Err(error) if error.kind() == ErrorKind::NotFound && ! exclusive => {
+            Some(NetworkStateLock { _lock_file: None })
+        },
+        Err(error) => {
+            error!("Failed to lock {lock_file}: {error}");
+            None
+        }
+    }
+}
+
+fn create_network_state_lock() -> bool {
+    /*!
+    Create the lock file of the network state as root
+    !*/
+    let lock_file = defaults::NETWORK_STATE_LOCK;
+    let mut call = run_as(defaults::INSTALL_TOOL, "root");
+    call.arg("-D").arg("-m").arg("644")
+        .arg("-o").arg("root").arg("-g").arg("root")
+        .arg("/dev/null").arg(lock_file);
+    run_ok(&mut call, &format!("create {lock_file}"))
+}
+
+fn lock_file_of(lock_file: &str, exclusive: bool, owner: u32) -> io::Result<File> {
+    /*!
+    Lock the given lock file, which has to belong to owner
+
+    The call waits until the lock is available. A lock file which
+    does not exist is reported as NotFound. A lock file which got
+    replaced while waiting for its lock does not protect anything,
+    the replacement is locked instead
+    !*/
+    let operation = if exclusive { libc::LOCK_EX } else { libc::LOCK_SH };
+    for _ in 0..defaults::LOCK_ATTEMPTS {
+        // the lock file is only opened for reading, flock does
+        // not need more and the file belongs to root
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(lock_file)?;
+        match flock(&file, operation | libc::LOCK_NB) {
+            Ok(_) => { },
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                info!("Waiting for {lock_file}, held by another call...");
+                flock(&file, operation)?
+            },
+            Err(error) => return Err(error)
+        }
+        let locked = file.metadata()?;
+        if ! locked.is_file() || locked.uid() != owner {
+            return Err(io::Error::new(
+                ErrorKind::PermissionDenied,
+                format!(
+                    "{lock_file} is not a regular file owned by user ID \
+                    {owner}, refusing to use it"
+                )
+            ))
+        }
+        match fs::symlink_metadata(lock_file) {
+            Ok(current) if current.dev() == locked.dev()
+                && current.ino() == locked.ino() => return Ok(file),
+            Ok(_) => { },
+            Err(error) if error.kind() == ErrorKind::NotFound => { },
+            Err(error) => return Err(error)
+        }
+        debug!("{lock_file} was replaced while waiting for it, locking again");
+    }
+    Err(io::Error::other(format!(
+        "{lock_file} kept being replaced, gave up after {} attempts",
+        defaults::LOCK_ATTEMPTS
+    )))
+}
+
+fn flock(file: &File, operation: libc::c_int) -> io::Result<()> {
+    /*!
+    Apply the given flock(2) operation to the given file
+    !*/
+    loop {
+        if unsafe { libc::flock(file.as_raw_fd(), operation) } == 0 {
+            return Ok(())
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != ErrorKind::Interrupted {
+            return Err(error)
+        }
+    }
+}
+
 fn read_network_state() -> Option<NetworkState> {
     /*!
     Read the host wide network state
@@ -2426,7 +2575,7 @@ mod tests {
         get_listed_rules, get_network_candidates, get_network_info,
         get_preferred_network, get_remove_command,
         get_route_list_default_device, get_route_list_networks,
-        is_vm_address, select_address, select_free_network,
+        is_vm_address, lock_file_of, select_address, select_free_network,
         select_outgoing_interface, Allocation, FlakeNetwork, Ipv4Network,
         NetworkConfig, NetworkState, RulePosition
     };
@@ -2524,6 +2673,79 @@ mod tests {
         );
         assert!(flake_taps.iter().all(|active_tap| active_tap.uid == 1000));
         assert!(get_flake_taps(&state, "/other.yaml").is_empty());
+    }
+
+    #[test]
+    fn test_lock_file_of() {
+        use std::fs;
+        use std::io::ErrorKind;
+        use std::os::unix::fs::{symlink, MetadataExt};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::{thread, time};
+
+        let uid = get_current_uid();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let lock = tmp_dir.path().join("lock");
+        let lock_file = lock.to_str().unwrap().to_string();
+
+        // a missing lock file is reported as such
+        assert_eq!(
+            lock_file_of(&lock_file, true, uid).unwrap_err().kind(),
+            ErrorKind::NotFound
+        );
+        fs::write(&lock, "").unwrap();
+
+        // shared locks are held at the same time
+        let shared = lock_file_of(&lock_file, false, uid).unwrap();
+        let other_shared = lock_file_of(&lock_file, false, uid).unwrap();
+        drop((shared, other_shared));
+
+        // an exclusive lock waits until the holder releases it
+        let held = lock_file_of(&lock_file, true, uid).unwrap();
+        let released = Arc::new(AtomicBool::new(false));
+        let waiter = {
+            let lock_file = lock_file.clone();
+            let released = Arc::clone(&released);
+            thread::spawn(move || {
+                let _lock = lock_file_of(&lock_file, true, uid).unwrap();
+                assert!(released.load(Ordering::SeqCst));
+            })
+        };
+        thread::sleep(time::Duration::from_millis(200));
+        released.store(true, Ordering::SeqCst);
+        drop(held);
+        waiter.join().unwrap();
+
+        // a lock file replaced while waiting for it is not used,
+        // the replacement is locked instead
+        let held = lock_file_of(&lock_file, true, uid).unwrap();
+        let waiter = {
+            let lock_file = lock_file.clone();
+            thread::spawn(move || lock_file_of(&lock_file, true, uid).unwrap())
+        };
+        thread::sleep(time::Duration::from_millis(200));
+        let replacement = tmp_dir.path().join("replacement");
+        fs::write(&replacement, "").unwrap();
+        fs::rename(&replacement, &lock).unwrap();
+        drop(held);
+        let locked = waiter.join().unwrap();
+        assert_eq!(
+            locked.metadata().unwrap().ino(),
+            fs::metadata(&lock).unwrap().ino()
+        );
+        drop(locked);
+
+        // a lock file of another owner is refused
+        assert_eq!(
+            lock_file_of(&lock_file, true, uid + 1).unwrap_err().kind(),
+            ErrorKind::PermissionDenied
+        );
+
+        // a symlink is refused
+        let link = tmp_dir.path().join("link");
+        symlink(&lock, &link).unwrap();
+        assert!(lock_file_of(link.to_str().unwrap(), false, uid).is_err());
     }
 
     #[test]

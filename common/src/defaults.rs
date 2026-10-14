@@ -66,7 +66,6 @@ pub const SYSTEM_META_DIR_PREFIX: &str = "system_";
 // up in a search path could be replaced. The locations are the ones
 // of a merged /usr as it is used by all distributions flake-pilot
 // is packaged for
-pub const SH_TOOL: &str = "/usr/bin/sh";
 pub const MV_TOOL: &str = "/usr/bin/mv";
 pub const RSYNC_TOOL: &str = "/usr/bin/rsync";
 pub const SYSTEMCTL_TOOL: &str = "/usr/bin/systemctl";

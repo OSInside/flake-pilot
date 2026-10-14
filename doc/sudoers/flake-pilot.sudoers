@@ -46,9 +46,12 @@
 #     Whatever such a flake can do on the host, e.g through the host
 #     directories mounted into its container, every user with this
 #     rule can do through it. A delta container runs its
-#     /systemfiles script as root on the host. Registering a flake
-#     system wide therefore means granting it to every user with
-#     this rule, and trusting the author of its container with root.
+#     /systemfiles script on the host, as the user who calls the
+#     flake, and the host files the script lists are copied into the
+#     container as root. Registering a flake system wide therefore
+#     means granting it to every user with this rule, and trusting
+#     the author of its container with the accounts of these users
+#     and with the host files the script lists.
 #
 #   * Create the meta data directories of the pilots configured in
 #     /etc/flakes.yml.

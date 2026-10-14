@@ -29,7 +29,7 @@ use atty::Stream;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
-use flakes::user::{User, mkdir, cp, exists, get_caller_name};
+use flakes::user::{User, mkdir, cp, exists, get_caller_name, get_caller_uid};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
@@ -44,6 +44,8 @@ use std::env;
 use std::fs;
 use std::io::{Write, Read};
 use std::fs::File;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::io::Seek;
 use std::io::SeekFrom;
 
@@ -51,6 +53,8 @@ use spinoff::{Spinner, spinners, Color};
 use tempfile::tempfile;
 use tempfile::NamedTempFile;
 use regex::Regex;
+
+use uzers::{get_current_uid, get_user_by_uid};
 
 
 pub fn create(
@@ -422,7 +426,7 @@ fn run_podman_creation(
         let system_files = tempfile()?;
         match build_system_dependencies(
             &instance_mount_point, defaults::SYSTEM_HOST_DEPENDENCIES,
-            &system_files, user
+            &system_files
         ) {
             Ok(_) => {
                 if Lookup::is_debug() {
@@ -784,25 +788,34 @@ pub fn pull(uri: &str) -> Result<(), FlakeError> {
 }
 
 pub fn build_system_dependencies(
-    target: &String, dependency_file: &str, mut file: &File, user: User
+    target: &String, dependency_file: &str, mut file: &File
 ) -> Result<bool, FlakeError> {
     /*!
     Check if container provides a /systemfiles script which
     contains code to build up a list of files that needs
     to be provisioned from the host
 
-    Note: The script is part of the container and is called
-    with the privileges needed to provision the container.
-    Registering a delta container therefore means to trust
-    the code that comes with it
+    The script is part of the container and runs on the host. It
+    runs in a bash process of the user the flake is called for and
+    therefore with the privileges of that user only. Provisioning is
+    done by a pilot running as root, which the helper started for
+    that user, see systemfiles_call(). The container is mounted in
+    the storage of root, which the user may not be able to read. The
+    script is therefore copied to a file the user can read, and that
+    copy is run. bash gets a fixed environment and reads no startup
+    files, the script runs the same way for every user
     !*/
     let system_deps = format!("{}/{}", target, dependency_file);
     if exists(&system_deps, User::ROOT)? {
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
         }
-        let mut call = user.run(flakes::defaults::SH_TOOL)?;
-        call.arg(system_deps);
+        // The copy belongs to root and is readable for the user the
+        // script runs as, who cannot change it
+        let script = NamedTempFile::new()?;
+        cp(&system_deps, script.path().to_str().unwrap(), User::ROOT)?;
+        script.as_file().set_permissions(fs::Permissions::from_mode(0o644))?;
+        let mut call = systemfiles_call(script.path());
         if Lookup::is_debug() {
             debug!("{:?} {:?}", call.get_program(), call.get_args());
         }
@@ -837,6 +850,39 @@ pub fn build_system_dependencies(
         };
     }
     Ok(false)
+}
+
+pub fn systemfiles_call(script: &Path) -> Command {
+    /*!
+    Create the call of the given systemfiles script, a bash process
+    of the user the flake is called for with a fixed environment,
+    see build_system_dependencies()
+
+    A pilot running as root for a user, see the helper, gives up
+    its privileges for the call: the process runs with the user ID
+    and the primary group of that user and without supplementary
+    groups. The environment the helper provides for the pilot
+    already describes that user
+    !*/
+    let mut call = Command::new(defaults::BASH);
+    call.arg("--noprofile").arg("--norc")
+        .arg(script)
+        .env_clear()
+        .env("PATH", defaults::SYSTEMFILES_PATH)
+        .stdin(Stdio::null());
+    for name in ["HOME", "USER", "LOGNAME", "LANG"] {
+        if let Some(value) = env::var_os(name) {
+            call.env(name, value);
+        }
+    }
+    if get_current_uid() == 0 {
+        let caller = get_caller_uid();
+        let group = get_user_by_uid(caller)
+            .map(|user| user.primary_group_id())
+            .unwrap_or(caller);
+        call.uid(caller).gid(group);
+    }
+    call
 }
 
 pub fn update_removed_files(

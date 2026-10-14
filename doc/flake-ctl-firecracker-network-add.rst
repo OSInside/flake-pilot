@@ -48,9 +48,10 @@ The command performs the following steps:
    host and the VMs. That network is the one selected with
    **flake-ctl-firecracker-network-init**(8), the example above
    shows the preferred network ``172.16.0.0/24``. The name server
-   is not configurable, it is compiled into the command. The
-   address is allocated in the network state file, see ADDRESSES
-   below
+   is the public name server ``8.8.8.8``, compiled into the command.
+   If the host setup was created with ``--host-resolver`` it is the
+   gateway, e.g ``nameserver=172.16.0.1``. The address is allocated
+   in the network state file, see ADDRESSES below
 
 2. Create the TAP device of the application for the user with the
    ID UID who runs the VM, see USERS below, and switch IPv6 off on it
@@ -84,14 +85,27 @@ The command performs the following steps:
    sent to the device that route points to, which is not
    necessarily the device the application is connected to
 
-5. Allow the VM the DHCP, DNS and NFS service of the host
+5. Allow the VM the NFS service of the host
+
+   .. code:: bash
+
+      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 2049 -j ACCEPT
+
+   If the host setup was created with ``--host-resolver``, see
+   **flake-ctl-firecracker-network-init**\(8), the VM is allowed
+   the DNS service of the host as well:
+
+   .. code:: bash
+
+      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p udp --dport 53 -j ACCEPT
+      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 53 -j ACCEPT
+
+   If the host setup was created with ``--host-dhcp``, the VM is
+   allowed the DHCP service of the host:
 
    .. code:: bash
 
       sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -p udp --sport 68 --dport 67 -j ACCEPT
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p udp --dport 53 -j ACCEPT
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 53 -j ACCEPT
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 2049 -j ACCEPT
 
    Any other traffic of the VM to the host is dropped by the firewall
    setup. NFS is allowed in version 4, which needs no other port,

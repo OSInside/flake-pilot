@@ -159,9 +159,16 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 cli::Firecracker::Network { command } => {
                     match &command {
                         // init
-                        cli::Network::Init { outgoing_interface } => {
+                        cli::Network::Init {
+                            outgoing_interface, host_resolver, host_dhcp
+                        } => {
                             if ! network::init(
-                                outgoing_interface.as_deref(), user
+                                outgoing_interface.as_deref(),
+                                network::HostServices {
+                                    resolver: *host_resolver,
+                                    dhcp: *host_dhcp
+                                },
+                                user
                             ) {
                                 return Ok(ExitCode::FAILURE)
                             }

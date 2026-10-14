@@ -37,7 +37,8 @@ not exist outside of that host:
 * Gateway, the host side of the network: the first address of that
   network, e.g ``172.16.0.1``
 * Netmask: ``255.255.255.0``
-* Name server: ``8.8.8.8``
+* Name server: ``8.8.8.8``, or the gateway if the host runs the
+  resolver of the VMs, see below
 * Name of the network interface in the guest: ``eth0``
 
 The private network is selected when the host is prepared with
@@ -129,9 +130,10 @@ instances:
   outgoing interface is dropped.
 
 * Traffic from an instance to the host itself is dropped, except for
-  the DHCP, DNS and NFS service of the host, which the instance may
-  reach through its gateway. These services are allowed per instance,
-  for the address and the TAP device of the instance only. NFS is
+  the NFS service of the host, which the instance may reach through
+  its gateway, and the DNS and DHCP service if the host runs them for
+  the VMs. These services are allowed per instance, for
+  the address and the TAP device of the instance only. NFS is
   allowed in version 4, which needs no other port, see
   :ref:`firecracker-volumes`.
 
@@ -170,6 +172,26 @@ recorded such that the following commands use the same network and
 know where to route the traffic to. If IP forwarding was switched
 off, the state file records that Flake Pilot switched it on.
 
+By default the VMs use the public name server ``8.8.8.8`` and the DNS
+port of the host is closed to them. If the host runs a resolver the
+VMs should use instead, e.g to resolve names of the local network,
+pass ``--host-resolver``. The resolver has to answer queries on the
+gateway address, e.g ``172.16.0.1``, which is not the case for most
+default setups. ``dnsmasq`` can listen on it, ``systemd-resolved``
+with ``DNSStubListenerExtra=172.16.0.1``. The applications connected
+afterwards get the gateway as their name server and are allowed the
+DNS port of the host.
+
+Likewise the DHCP port of the host is closed to the VMs, they get a
+static address and use no DHCP server. Pass ``--host-dhcp`` only if
+the host runs a DHCP server for guests which are set up to request
+their address by DHCP. The server has to hand out the address
+allocated to the instance, the host route and the firewall rules of
+the instance are bound to it.
+
+A change of these settings takes effect for an application once it
+is connected again.
+
 Rules of former versions of Flake Pilot for single TAP devices are
 deleted. The rules for all traffic former versions created, a
 ``MASQUERADE`` rule for the outgoing interface and a ``FORWARD`` rule
@@ -196,9 +218,10 @@ Connect an Application
 Allocates a free address to the application, writes the network setup
 to its flake configuration, creates its TAP device for the calling
 user, makes the device the gateway of the application, routes the
-address of the application to it and allows the application the DHCP,
-DNS and NFS service of the host. The command requires the firewall
-setup of ``init`` to be active.
+address of the application to it and allows the application the NFS
+service of the host, its DNS service with ``--host-resolver`` and its
+DHCP service with ``--host-dhcp``. The command requires the firewall setup of
+``init`` to be active.
 
 As every instance needs its own address and its own TAP device, the
 command has to be called for each selector the application is called

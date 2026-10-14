@@ -224,10 +224,11 @@ pub const NETWORK_STATE_LOCK:&str =
 // Number of attempts to lock a lock file which got replaced
 // while waiting for its lock
 pub const LOCK_ATTEMPTS: u32 = 10;
-// Services of the host a VM may reach through its gateway: DHCP,
-// DNS and NFS (version 4, which needs no other port) for the
-// volumes exported to it. Any other traffic of a VM to the host
-// is dropped
+// Services of the host a VM may reach through its gateway: NFS
+// (version 4, which needs no other port) for the volumes exported
+// to it, DNS and DHCP if the host setup was created for a resolver
+// or a DHCP server on the host. Any other traffic of a VM to the
+// host is dropped
 pub const NETWORK_DHCP_SERVER_PORT:&str =
     "67";
 pub const NETWORK_DHCP_CLIENT_PORT:&str =
@@ -269,6 +270,8 @@ pub const NETWORK_PREFIX_LEN:u8 =
 // a single VM instance with the TAP device of that instance
 pub const NETWORK_HOST_PREFIX_LEN:u8 =
     32;
+// Name server of the VMs unless the host setup was created for
+// a resolver on the host, which the VMs use through their gateway
 pub const NETWORK_DNS:&str =
     "8.8.8.8";
 // Name of the network interface inside of the VM. Firecracker

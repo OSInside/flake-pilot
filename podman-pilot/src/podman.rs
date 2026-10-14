@@ -29,7 +29,7 @@ use atty::Stream;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
-use flakes::user::{User, mkdir, cp, exists};
+use flakes::user::{User, mkdir, cp, exists, get_caller_name};
 use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
@@ -52,7 +52,6 @@ use tempfile::tempfile;
 use tempfile::NamedTempFile;
 use regex::Regex;
 
-use uzers::{get_current_username};
 
 pub fn create(
     program_name: &String
@@ -162,8 +161,8 @@ pub fn create(
     let usermode = is_usermode();
     // depending on the user specific operations are restricted
     let mut supports_provsioning = true;
-    // name of the user calling the program
-    let calling_user_name = get_current_username().unwrap();
+    // name of the user the flake is called for
+    let calling_user_name = get_caller_name();
     // user identity to use for podman calls
     let user;
 
@@ -173,14 +172,12 @@ pub fn create(
         // This indicates a user specific storage setup is in place.
         // all provisioning operations need root permissions
         // and will be disabled
-        user = User::from(calling_user_name.to_str().unwrap());
+        user = User::from(calling_user_name.as_str());
         supports_provsioning = false;
     } else {
-        // provisioning needs root permissions for mount
-        // make sure we have them for this session via sudo
-        user = User::from("root");
-        let mut root = user.run(flakes::defaults::TRUE_TOOL);
-        root.status()?;
+        // A system wide flake runs as root, a user who calls it
+        // got this pilot started as root by the helper
+        user = User::ROOT;
     }
 
     // Make sure CID dir exists. The meta data directory it is
@@ -194,9 +191,7 @@ pub fn create(
     // create storage paths
     mkdir(storage.get("graphroot").unwrap(), "755", user)?;
     let container_runroot = format!(
-        "{}/{}",
-        storage.get("runroot").unwrap(),
-        calling_user_name.to_str().unwrap()
+        "{}/{}", storage.get("runroot").unwrap(), calling_user_name
     );
     mkdir(&container_runroot, "700", user)?;
 
@@ -681,7 +676,7 @@ pub fn sync_host(
     temp_files_from.write_all(removed_files_contents.as_bytes())?;
     cp(temp_files_from.path().to_str().unwrap(), &files_from, User::ROOT)?;
 
-    let mut call = user.run(flakes::defaults::RSYNC_TOOL);
+    let mut call = user.run(flakes::defaults::RSYNC_TOOL)?;
     call.args(flakes::defaults::RSYNC_OPTIONS);
     if ignore_missing {
         call.arg("--ignore-missing-args");
@@ -806,7 +801,7 @@ pub fn build_system_dependencies(
         if Lookup::is_debug() {
             debug!("Calling system deps generator: {system_deps}");
         }
-        let mut call = user.run(flakes::defaults::SH_TOOL);
+        let mut call = user.run(flakes::defaults::SH_TOOL)?;
         call.arg(system_deps);
         if Lookup::is_debug() {
             debug!("{:?} {:?}", call.get_program(), call.get_args());

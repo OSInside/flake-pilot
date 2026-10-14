@@ -72,8 +72,10 @@ against it, which keeps the data to pull small:
 This creates ``$HOME/bin/joe`` which is a simple but nice editor. The
 launch of the container requires a provision step in which the base
 container gets mounted and the delta container is layered on top of
-it. This action unfortunately requires root privileges and is
-forwarded to the system's ``sudo`` binary.
+it. This action requires root privileges, delta containers are
+therefore only supported for flakes registered system wide by root.
+A user who calls such a flake gets it run as root by the helper, see
+:ref:`privileges`.
 
 .. note::
 

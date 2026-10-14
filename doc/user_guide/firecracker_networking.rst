@@ -239,7 +239,8 @@ one user. Give every user an instance of their own:
 
 .. code-block:: bash
 
-   sudo flake-ctl firecracker network add --app /usr/bin/claude \
+   # run as root
+   flake-ctl firecracker network add --app /usr/bin/claude \
        --instance @tux --user tux
 
 Disconnect an Application
@@ -277,11 +278,13 @@ host is left in the state it has after a reboot. Calling ``init`` and
 ``add`` again connects the applications with the addresses they had
 before.
 
-All commands change the network configuration of the host and
-therefore call the required ``ip``, ``iptables``, ``sysctl`` and
-``install`` commands through ``sudo``. They can be called more than
-once: a device, a route, a rule or a chain which is already there is
-not created twice, and one which is gone is not deleted again. After a
+All commands change the network configuration of the host. The
+changes are made by the helper, see :ref:`privileges`, which is
+called through ``sudo``. It checks every argument again and only
+ever creates addresses, routes and rules within the network recorded
+by ``init``. The commands can be called more than once: a device, a
+route, a rule or a chain which is already there is not created twice,
+and one which is gone is not deleted again. After a
 reboot of the host, calling ``init`` and ``add`` again restores the
 setup with the same addresses.
 

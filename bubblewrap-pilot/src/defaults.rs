@@ -47,36 +47,16 @@ pub const SANDBOX_ROOT: &str = "/";
 // on the host and can be referenced as %OVERLAYROOT in the
 // options of the flake configuration
 pub const OVERLAY_ROOT_VAR: &str = "OVERLAYROOT";
-// Directory the overlay setups are created in. It is shared
-// between all users of the system, the setup of an instance
-// therefore lives in a directory of its own below it, see
-// OVERLAY_USER_DIR_NAME
-pub const OVERLAY_BASE_DIR: &str = "/var/tmp";
-// Name of the directory which keeps the overlay setups of one
-// user. It is suffixed with the ID of that user, which makes
-// the path of a setup unique also if two users run the same
-// flake, e.g /var/tmp/bwrap_1000
-pub const OVERLAY_USER_DIR_NAME: &str = "bwrap";
-// Names of the directories of the overlay setup. Each of them
-// is prefixed with the name of the instance it belongs to, e.g
-// /var/tmp/bwrap_1000/myapp@one_merged
-pub const OVERLAY_MERGED_NAME: &str = "merged";
-pub const OVERLAY_TMPFS_NAME: &str = "overlay";
-pub const OVERLAY_RW_NAME: &str = "rw";
-pub const OVERLAY_WORK_NAME: &str = "work";
-// Name of the upper directory of the rootfs overlay. It is
-// created in the tmpfs of the instance, next to the work
-// directory of that overlay
-pub const OVERLAY_UPPER_NAME: &str = "upper";
+// Directories of the overlay setups of the sandboxes. The setup
+// is mounted by the helper and is therefore maintained along with
+// it in the common area
+pub use flakes::defaults::{
+    OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME, OVERLAY_MERGED_NAME,
+    OVERLAY_TMPFS_NAME, OVERLAY_RW_NAME, OVERLAY_WORK_NAME,
+    OVERLAY_UPPER_NAME
+};
 // Permissions of the directories of the overlay setup
 pub const OVERLAY_DIR_MODE: &str = "755";
-// Filesystem types used to create the root of the sandbox
-pub const OVERLAY_TYPE: &str = "overlay";
-pub const TMPFS_TYPE: &str = "tmpfs";
-// Programs which create and delete the mounts on the host. They
-// are called through sudo and are therefore maintained along with
-// the other programs called this way in the common area
-pub use flakes::defaults::{MOUNT_TOOL, UMOUNT_TOOL};
 // Pilot option which selects the working directory of the
 // application in the sandbox
 pub const PILOT_CHDIR_OPTION: &str = "%chdir";

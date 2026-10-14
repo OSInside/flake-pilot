@@ -2,38 +2,64 @@
 # Reference sudoers policy for flake-pilot
 # ========================================
 #
-# WARNING: Every rule in this file which runs a program as root makes
-# the users it applies to equivalent to root. Read this header before
-# using the file.
+# flake-pilot performs every action which needs root privileges
+# through one program, the flake-pilot helper:
 #
-# Why the rules grant root
-# ------------------------
-# flake-pilot does not install a setuid binary. Every action which
-# needs more privileges than the calling user has is passed to sudo.
-# The programs called this way are general purpose tools: podman,
-# mount, rsync, cp, chmod, iptables, ip, systemctl and others.
-# flake-pilot calls them with arguments which differ from call to
-# call: temporary directories, image files, container names, network
-# addresses. sudoers can therefore not restrict them to the calls
-# flake-pilot makes. A user who may run them as root may also run
-# them directly, outside of flake-pilot and with any arguments, e.g:
+#   /usr/libexec/flake-pilot/flake-pilot-helper
 #
-#   sudo /usr/bin/podman run --privileged -v /:/host IMAGE chroot /host
-#   sudo /usr/bin/chmod u+s /usr/bin/bash
-#   sudo /usr/bin/cp ./my-sudoers /etc/sudoers
-#   sudo /usr/bin/mount --bind ./my-passwd /etc/passwd
-#   sudo /usr/sbin/iptables --modprobe=./my-program -A INPUT -j LOG
-#   sudo /usr/bin/sh
+# It is the only program flake-pilot runs through sudo. The helper
+# belongs to root and provides a fixed set of commands. It checks
+# every argument and the authority of the calling user, which it
+# takes from sudo, against data which belongs to root. It never
+# passes an argument of the user on to a program unchecked.
 #
-# This file therefore does not try to restrict the arguments. Doing so
-# would break flake-pilot without making the rules safe. The rules
-# are grouped by feature instead and each group states what it
-# grants. Only add users to the flake-pilot group whom you would also
-# trust with the root account of this host. Delete the groups of the
-# features you do not use. Where possible, prefer flakes which need
-# no root privileges at all: podman flakes registered by the user
-# who runs them and firecracker flakes. See the chapter "Privileges
-# and Trust" in the flake-pilot user guide.
+# What the rule grants
+# --------------------
+# Unlike a rule for general purpose programs like mount, iptables or
+# podman, the rules for the helper do not let a user run arbitrary
+# commands as root. A user with the rules can:
+#
+#   * Prepare and delete the network setup of the firecracker VMs:
+#     IP forwarding, the firewall chains of the setup and the TAP
+#     devices of the VMs. This is host wide: the user picks the
+#     private network of the VMs out of the networks flake-pilot
+#     selects from, the interface their traffic leaves the host
+#     through and the services of the host they may use. Deleting
+#     the setup disconnects the VMs of all users.
+#
+#   * Connect and disconnect the VMs of its own flakes and of the
+#     system wide flakes. Only root can do this for another user.
+#
+#   * Export a directory it owns through NFS to such a VM, and
+#     release the exports of its own directories. Every access of
+#     the VM is mapped to the owner of the directory.
+#
+#   * Mount and unmount the root filesystem of its own bubblewrap
+#     sandboxes: an overlay of a directory tree, mounted nosuid and
+#     nodev below its own directory in /var/tmp. The tree is only
+#     read, the overlay grants no access the user does not have on
+#     the tree itself.
+#
+#   * Run the podman flakes registered system wide, as root, in the
+#     podman setup of root. The container and its runtime options
+#     are taken from the registration, which only root can write.
+#     Whatever such a flake can do on the host, e.g through the host
+#     directories mounted into its container, every user with this
+#     rule can do through it. A delta container runs its
+#     /systemfiles script as root on the host. Registering a flake
+#     system wide therefore means granting it to every user with
+#     this rule, and trusting the author of its container with root.
+#
+#   * Create the meta data directories of the pilots configured in
+#     /etc/flakes.yml.
+#
+# Flakes registered by the calling user and run in its rootless
+# podman setup, as well as firecracker flakes, need no rule at all.
+#
+# The rules below are grouped by feature. The first argument of the
+# helper is the command to perform, a rule can therefore be limited
+# to the commands of a feature. Delete the groups of the features you
+# do not want to grant, e.g the host network setup if root creates it.
 #
 # Not active as shipped
 # ---------------------
@@ -42,7 +68,7 @@
 # original name. To activate it:
 #
 #   1. Edit a copy and delete the groups of the features you do
-#      not use
+#      not want to grant
 #   2. groupadd --system flake-pilot
 #   3. visudo --check --file ./flake-pilot.sudoers
 #   4. install -m 0440 -o root -g root ./flake-pilot.sudoers \
@@ -53,126 +79,75 @@
 # ---------
 # The rules ask for the password of the calling user, which is the
 # sudo default. sudo caches it for a few minutes, as configured by
-# timestamp_timeout. NOPASSWD does not give the user any additional
-# privilege, but it allows every process running under the account
-# of the user, e.g a malicious build script, to become root without
-# any interaction. It is therefore not used here.
+# timestamp_timeout. A user who runs system wide podman flakes or
+# bubblewrap sandboxes is asked for it when the cache expires.
+# NOPASSWD does not give the user any additional privilege, but it
+# allows every process running under the account of the user, e.g a
+# malicious build script, to use the helper without any interaction.
+# Weigh this against the system wide flakes the helper runs before
+# using it.
 #
-# Programs are given by their absolute path, the way flake-pilot
-# passes them to sudo. Distributions without a merged /usr may
-# install some of them elsewhere. Adapt the paths here and in
-# flake-pilot (common/src/defaults.rs) in that case.
+# The log messages of the helper are only shown if PILOT_DEBUG is
+# set for the caller, which passes --debug after the command then.
+# The rules for commands without other arguments list that form.
 #
-
+# The helper is given by its absolute path, the way flake-pilot
+# passes it to sudo. The helper refuses to run setuid, it has to be
+# called through sudo or by root.
 #
-# podman flakes registered by the calling user (rootless podman)
-# -------------------------------------------------------------------
-# Used by: podman-pilot and 'flake-ctl podman' for flakes in the
-#          registry of the calling user, ~/.config/flakes
-# Runs as: the calling user
-# GRANTS:  nothing
-#
-# podman is called through sudo also in this case, but as the
-# calling user. sudo requires a rule even for that. sudoers cannot
-# refer to "the calling user" in a group rule, so every user needs
-# a rule of their own. Do NOT use the following instead:
-#
-#   %flake-pilot ALL = (%flake-pilot) FLAKE_PODMAN
-#
-# That rule lets every member run podman as any other member and
-# thereby access their containers, their data and their home
-# directory.
-#
-# flake-pilot uses the two environment variables to select the
-# container storage podman operates on. With the root podman of
-# system wide flakes, see below, a user can point podman at a storage
-# setup of their own choice. This grants nothing beyond the root
-# podman rule itself.
-#
-Cmnd_Alias FLAKE_PODMAN = /usr/bin/podman
-Defaults!FLAKE_PODMAN env_keep += "CONTAINERS_STORAGE_CONF XDG_RUNTIME_DIR"
-
-# USER ALL = (USER) FLAKE_PODMAN
 
 #
 # podman flakes registered system wide, /usr/share/flakes
 # -------------------------------------------------------------------
-# Used by: podman-pilot and 'flake-ctl podman' for system wide flakes
-# Runs as: root
-# GRANTS:  ROOT
+# Used by: podman-pilot
+# GRANTS:  every system wide podman flake as root, see above
 #
-# The application runs in a container of the root podman instance,
-# which starts containers with any privilege and any host directory
-# mounted. mkdir and chmod create the storage and metadata
-# directories of that instance. Delta containers and additional
-# layers are provisioned with test, cp, rsync and sh. sh runs the
-# /systemfiles script shipped in the delta container as root:
-# registering such a container means trusting its author with root,
-# independent of this policy.
-#
-# A system wide podman flake can only be run by users with this
-# rule, which makes them equivalent to root.
-#
-Cmnd_Alias FLAKE_PODMAN_SYSTEM = FLAKE_PODMAN, \
-    /usr/bin/true, /usr/bin/test, /usr/bin/mkdir, /usr/bin/chmod, \
-    /usr/bin/cp, /usr/bin/rsync, /usr/bin/sh
+Cmnd_Alias FLAKE_HELPER_PODMAN = \
+    /usr/libexec/flake-pilot/flake-pilot-helper podman-pilot *
 
-%flake-pilot ALL = (root) FLAKE_PODMAN_SYSTEM
-
-#
-# flake-ctl firecracker network init, add, remove, cleanup
-# -------------------------------------------------------------------
-# Runs as: root
-# GRANTS:  ROOT
-#
-# Enables and disables IP forwarding, creates and deletes the
-# firewall chains and the TAP devices and routes of the VMs, and
-# records the address allocations in the network state file with
-# install. sysctl can change any kernel parameter, e.g
-# kernel.core_pattern which names a program the kernel runs as root.
-# ip can run any program as root through 'ip netns exec'. install can
-# overwrite any file.
-#
-# The network setup changes the host, not a single flake. Consider
-# running these commands as root instead of granting this rule.
-#
-Cmnd_Alias FLAKE_NETWORK = \
-    /usr/sbin/sysctl, /usr/sbin/iptables, /usr/sbin/ip, /usr/bin/install
-
-%flake-pilot ALL = (root) FLAKE_NETWORK
-
-#
-# flake-ctl firecracker volume export, release
-# -------------------------------------------------------------------
-# Runs as: root
-# GRANTS:  ROOT
-#
-# install writes /etc/exports, systemctl starts the NFS server and
-# exportfs activates the exports. install can overwrite any file.
-# systemctl can start a unit file written by the user. exportfs can
-# export any directory, / included, to any host with root access.
-#
-# As with the network setup, consider running these commands as
-# root instead of granting this rule.
-#
-Cmnd_Alias FLAKE_NFS = \
-    /usr/bin/install, /usr/bin/systemctl, /usr/sbin/exportfs
-
-%flake-pilot ALL = (root) FLAKE_NFS
+%flake-pilot ALL = (root) FLAKE_HELPER_PODMAN
 
 #
 # bubblewrap flakes
 # -------------------------------------------------------------------
 # Used by: bubblewrap-pilot, for system wide flakes as well as for
 #          flakes registered by the calling user
-# Runs as: root
-# GRANTS:  ROOT
+# GRANTS:  the root filesystem mounts of the sandboxes of the caller
 #
-# mount and umount create and delete the overlay which becomes the
-# root filesystem of the sandbox. mount as root can mount any image
-# or bind mount any file over a system file, umount can remove any
-# mount of the host.
-#
-Cmnd_Alias FLAKE_BUBBLEWRAP = /usr/bin/mount, /usr/bin/umount
+Cmnd_Alias FLAKE_HELPER_SANDBOX = \
+    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-mount *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-umount *
 
-%flake-pilot ALL = (root) FLAKE_BUBBLEWRAP
+%flake-pilot ALL = (root) FLAKE_HELPER_SANDBOX
+
+#
+# flake-ctl firecracker network add, remove, volume export, release
+# -------------------------------------------------------------------
+# GRANTS:  the network connection of the VMs of the caller and the
+#          NFS exports of the directories of the caller
+#
+Cmnd_Alias FLAKE_HELPER_VM = \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-connect *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-disconnect *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper volume-export *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper volume-release *
+
+%flake-pilot ALL = (root) FLAKE_HELPER_VM
+
+#
+# flake-ctl firecracker network init, cleanup and flake-ctl init
+# -------------------------------------------------------------------
+# GRANTS:  the network setup of the host for the VMs of all users,
+#          the meta data directories of the pilots
+#
+# The network setup changes the host, not a single flake. Consider
+# creating it as root instead of granting this rule.
+#
+Cmnd_Alias FLAKE_HELPER_HOST = \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-init *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-cleanup, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-cleanup --debug, \
+    /usr/libexec/flake-pilot/flake-pilot-helper meta-dirs-init, \
+    /usr/libexec/flake-pilot/flake-pilot-helper meta-dirs-init --debug
+
+%flake-pilot ALL = (root) FLAKE_HELPER_HOST

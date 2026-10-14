@@ -36,7 +36,7 @@ use flakes::config::{
     get_bubblewrap_ids_dir, get_firecracker_ids_dir,
     get_podman_ids_dir, read_storage_conf
 };
-use flakes::defaults::FLAKES_DIR_USER;
+use flakes::defaults::{FLAKES_DIR_USER, SYSTEM_META_DIR_PREFIX};
 use flakes::podman::{container_ids, is_known_container};
 use flakes::registration;
 use uzers::{get_current_uid, get_user_by_uid};
@@ -113,7 +113,10 @@ pub fn instance_list(engine: &str, usermode: bool) -> Vec<InstanceInfo> {
     !*/
     let mut instances: Vec<InstanceInfo> = Vec::new();
     let mut podman_state = PodmanState::new();
-    for (uid, meta_dir) in meta_dirs(&ids_dir(engine, usermode)) {
+    // The instances a user started of system wide podman flakes
+    // are kept in a directory of root, see IO::private_dir_name()
+    let with_system = engine == defaults::PODMAN_ENGINE;
+    for (uid, meta_dir) in meta_dirs(&ids_dir(engine, usermode), with_system) {
         let glob_pattern = format!(
             "{}/*.{}", meta_dir, id_extension(engine)
         );
@@ -175,7 +178,7 @@ pub fn remove_vm_meta_data(flake: &str, usermode: bool) -> bool {
     !*/
     let mut status = true;
     for (_, meta_dir) in meta_dirs(
-        &ids_dir(defaults::FIRECRACKER_ENGINE, usermode)
+        &ids_dir(defaults::FIRECRACKER_ENGINE, usermode), false
     ) {
         let entries = match fs::read_dir(&meta_dir) {
             Ok(entries) => entries,
@@ -289,13 +292,17 @@ fn instance_details(
     )
 }
 
-fn meta_dirs(ids_dir: &str) -> Vec<(u32, String)> {
+fn meta_dirs(ids_dir: &str, with_system: bool) -> Vec<(u32, String)> {
     /*!
     Provide the per user meta data directories below ids_dir
 
     Each user stores the meta data of its instances in a private
     directory named by the user ID. Directories which cannot be
-    read, e.g because they belong to another user, are skipped
+    read, e.g because they belong to another user, are skipped.
+    With with_system the directories which keep the instances a
+    user started of system wide flakes are provided as well, they
+    are named by the user ID and SYSTEM_META_DIR_PREFIX and belong
+    to root
     !*/
     let mut meta_dirs: Vec<(u32, String)> = Vec::new();
     if ! Path::new(ids_dir).is_dir() {
@@ -311,7 +318,12 @@ fn meta_dirs(ids_dir: &str) -> Vec<(u32, String)> {
     };
     for entry in entries.flatten() {
         let dir_name = entry.file_name().to_string_lossy().to_string();
-        match dir_name.parse::<u32>() {
+        let uid_name = match dir_name.strip_prefix(SYSTEM_META_DIR_PREFIX) {
+            Some(uid_name) if with_system => uid_name,
+            Some(_) => continue,
+            None => dir_name.as_str()
+        };
+        match uid_name.parse::<u32>() {
             Ok(uid) => {
                 let meta_dir = entry.path();
                 if meta_dir.is_dir() {
@@ -857,9 +869,31 @@ mod tests {
     use crate::volume::VolumeInfo;
 
     use super::{
-        flake_name, instance_selector, storage_dir, storage_info,
+        flake_name, instance_selector, meta_dirs, storage_dir, storage_info,
         vm_meta_instance, vm_values, InstanceInfo, StorageInfo, VmInfo
     };
+
+    #[test]
+    fn test_meta_dirs() {
+        let ids_dir = tempdir().unwrap();
+        let base = ids_dir.path().to_str().unwrap();
+        for name in ["1000", "system_1001", "other", "system_x"] {
+            fs::create_dir(format!("{base}/{name}")).unwrap();
+        }
+        // only the private directories of the users
+        assert_eq!(
+            vec![(1000, format!("{base}/1000"))], meta_dirs(base, false)
+        );
+        // along with the ones of root for the system wide flakes the
+        // users started
+        assert_eq!(
+            vec![
+                (1000, format!("{base}/1000")),
+                (1001, format!("{base}/system_1001"))
+            ],
+            meta_dirs(base, true)
+        );
+    }
 
     fn volume(server: &str, host_path: &str, guest_path: &str) -> VolumeInfo {
         VolumeInfo {

@@ -81,8 +81,9 @@ calling user. Called as ``root``, the directory has to be owned by a
 user other than ``root``, a directory owned by ``root`` is never
 exported. The path must not lead through a symbolic link, the command
 names the resolved path to use instead. As it changes a system wide
-NFS configuration, the required privileged operations are executed
-through ``sudo`` when needed.
+NFS configuration, the export is created by the helper, see
+:ref:`privileges`, which checks the directory, its owner and the
+address of the VM again.
 
 Every access of the VM to the volume is performed as the owner of the
 exported path. The entry maps all users of the VM, including

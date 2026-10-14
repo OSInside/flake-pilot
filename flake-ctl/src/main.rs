@@ -164,7 +164,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         } => {
                             if ! network::init(
                                 outgoing_interface.as_deref(),
-                                network::HostServices {
+                                flakes::network::HostServices {
                                     resolver: *host_resolver,
                                     dhcp: *host_dhcp
                                 },

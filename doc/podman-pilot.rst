@@ -59,11 +59,19 @@ without changing its files. Registrations of a user, see the
 rootless mode in **flake-pilot**, do not read it.
 
 A system wide registration can be called by any user. Its container
-runs in the system wide podman setup, the calls of the container
-engine are performed by sudo as root. The behavior of sudo can be
-controlled via the file /etc/sudoers. These rights make the
-user equivalent to root, see the reference policy flake-pilot.sudoers
-shipped with the flake-pilot package. If there is no system wide
+runs in the system wide podman setup of root. A caller who is not
+root hands the call over to the helper, see **flake-pilot-helper**\(8),
+which is called through **sudo**. The helper checks that the
+application is registered system wide and starts podman-pilot as root
+for the caller, with a fresh environment. The container and its
+runtime options are taken from the registration, a %VAR reference in
+them resolves to the value of the user database for the caller, e.g
+%HOME. The meta data of the instances of the caller is kept in a
+directory of root, e.g /tmp/flakes/system_1000. What the sudo rule
+for the helper grants is described in the reference policy
+flake-pilot.sudoers shipped with the flake-pilot package: every user
+with the rule can use every system wide podman flake, with what its
+registration grants on the host. If there is no system wide
 registration for the given application name, the registration of
 the calling user in `~/.config/flakes` is used. Such a flake is
 called by that user and its container runs in the rootless podman

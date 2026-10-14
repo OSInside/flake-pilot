@@ -22,7 +22,8 @@ DESCRIPTION
 
 Delete the network setup of the host which was created with
 **flake-ctl-firecracker-network-init**\(8) and
-**flake-ctl-firecracker-network-add**\(8). The command performs the
+**flake-ctl-firecracker-network-add**\(8). The setup is deleted by
+the helper, see **flake-pilot-helper**\(8), which performs the
 following steps:
 
 1. Delete the TAP devices of all connected applications of all users,
@@ -35,11 +36,11 @@ following steps:
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -t nat -D POSTROUTING -j FLAKE_PILOT_NAT
-      sudo /usr/sbin/iptables -D FORWARD -j FLAKE_PILOT_FORWARD
-      sudo /usr/sbin/iptables -D INPUT -i tap-+ -j FLAKE_PILOT_INPUT
-      sudo /usr/sbin/iptables -t nat -F FLAKE_PILOT_NAT
-      sudo /usr/sbin/iptables -t nat -X FLAKE_PILOT_NAT
+      /usr/sbin/iptables -t nat -D POSTROUTING -j FLAKE_PILOT_NAT
+      /usr/sbin/iptables -D FORWARD -j FLAKE_PILOT_FORWARD
+      /usr/sbin/iptables -D INPUT -i tap-+ -j FLAKE_PILOT_INPUT
+      /usr/sbin/iptables -t nat -F FLAKE_PILOT_NAT
+      /usr/sbin/iptables -t nat -X FLAKE_PILOT_NAT
       ...
 
 3. Delete the rules for single TAP devices former versions of
@@ -51,7 +52,7 @@ following steps:
 
    .. code:: bash
 
-      sudo /usr/sbin/sysctl -w net.ipv4.ip_forward=0
+      /usr/sbin/sysctl -w net.ipv4.ip_forward=0
 
    If IP forwarding was already switched on before, it is left alone
 
@@ -64,9 +65,10 @@ applications with the addresses they had before. To delete the setup
 of an application completely, use
 **flake-ctl-firecracker-network-remove**\(8) instead.
 
-As the setup changes the network configuration of the host, the
-commands are called through **sudo**. The calling user therefore
-needs the permission to run them as root.
+The helper is called through **sudo**, see the chapter "Privileges
+and Trust" of the flake-pilot user guide for the rule it needs. The
+setup is shared by the VMs of all users, deleting it disconnects all
+of them.
 
 A device, rule or chain which is not present is not deleted. This
 allows to call the command more than once and also covers the case

@@ -50,11 +50,11 @@ the ones you registered applications for are needed.
 
 .. warning::
 
-   Bubblewrap flakes and system wide podman flakes run programs as
-   root through ``sudo``. The ``sudo`` rights they need make a user
-   equivalent to root. See
-   :ref:`privileges` for which flakes run without them before granting
-   these rights to anyone.
+   Bubblewrap flakes and system wide podman flakes need a ``sudo``
+   rule for the Flake Pilot helper. A system wide podman flake then
+   runs as root for every user with the rule, with what its
+   registration grants on the host. See :ref:`privileges` for which
+   flakes run without the rule before granting it to anyone.
 
 Next, prepare your user environment. Applications registered as a
 normal user are placed in a directory of your choice, typically
@@ -218,9 +218,10 @@ not trust, check what it can reach:
    :ref:`sandbox-apps`.
 
 The trust you place in Flake Pilot itself is a separate question.
-Some features need ``sudo`` rights which make a user equivalent to
-root, and the ``/systemfiles`` script of a delta container runs as
-root while it is provisioned. :ref:`privileges` lists these features.
+Some features need a ``sudo`` rule for the Flake Pilot helper, which
+runs system wide podman flakes as root for every user with the rule,
+and the ``/systemfiles`` script of a delta container runs as root
+while it is provisioned. :ref:`privileges` lists these features.
 
 .. toctree::
    :hidden:

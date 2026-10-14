@@ -33,10 +33,13 @@
 //! the calling user. All calls therefore take the storage they
 //! operate on as their usermode argument.
 //!
-use std::env;
+//! podman is called with the privileges of the process. The
+//! rootless setup is used by a process of the calling user, the
+//! system wide setup by a process running as root: flake-ctl
+//! called by root, or a pilot the helper started as root for a
+//! user who called a system wide flake.
+//!
 use std::process::Command;
-
-use uzers::{get_current_uid, get_current_username};
 
 use crate::command::CommandExtTrait;
 use crate::config::{
@@ -46,41 +49,24 @@ use crate::defaults;
 use crate::error::FlakeError;
 use crate::flakelog::FlakeLog;
 use crate::io::IO;
-use crate::user::User;
+use crate::user::{User, get_caller_name};
 
 pub fn setup_podman_call(usermode: bool) -> Command {
     /*!
     Create the podman call for the given storage setup
 
-    All podman calls are done through sudo, either as the
-    calling user if the rootless storage is addressed or as
-    root for the system wide one. The storage to operate on
-    is handed over in the environment of the call
+    podman runs with the privileges of this process, see the module
+    description. The storage to operate on is handed over in the
+    environment of the call. The runtime directory is the one of
+    the user this process works for
     !*/
     let storage = read_storage_conf(usermode).unwrap();
-    let calling_user_name = get_current_username().unwrap();
     let container_runroot = format!(
-        "{}/{}",
-        storage.get("runroot").unwrap(),
-        calling_user_name.to_str().unwrap()
+        "{}/{}", storage.get("runroot").unwrap(), get_caller_name()
     );
-    env::set_var("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode));
-    env::set_var("XDG_RUNTIME_DIR", &container_runroot);
-    let mut call = Command::new("sudo");
-    // Only the variables set above are handed over to the podman
-    // call. Passing the complete environment of the caller to a
-    // process running as root allows to influence that process in
-    // ways the sudo rule for it never intended
-    call.arg(format!(
-        "--preserve-env={}",
-        ["CONTAINERS_STORAGE_CONF", "XDG_RUNTIME_DIR"].join(",")
-    ));
-    if usermode {
-        call.arg("--user").arg(calling_user_name);
-    } else {
-        call.arg("--user").arg("root");
-    }
-    call.arg(defaults::PODMAN_PATH);
+    let mut call = Command::new(defaults::PODMAN_PATH);
+    call.env("CONTAINERS_STORAGE_CONF", get_podman_storage_conf(usermode))
+        .env("XDG_RUNTIME_DIR", &container_runroot);
     call
 }
 
@@ -102,7 +88,7 @@ pub fn cid_dir(usermode: bool) -> String {
     is not created. This is the lookup of the meta data of the
     instances which were created before
     !*/
-    format!("{}/{}", get_podman_ids_dir(usermode), get_current_uid())
+    format!("{}/{}", get_podman_ids_dir(usermode), IO::private_dir_name())
 }
 
 pub fn cid_file(cid_dir: &str, name: &str) -> String {

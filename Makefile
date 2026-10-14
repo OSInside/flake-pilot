@@ -3,6 +3,9 @@
 PREFIX ?= /usr
 BINDIR ?= ${PREFIX}/bin
 SBINDIR ?= ${PREFIX}/sbin
+# The location of the helper is compiled into the tools which call
+# it, see HELPER in common/src/defaults.rs
+LIBEXECDIR ?= /usr/libexec/flake-pilot
 SHAREDIR ?= ${PREFIX}/share/podman-pilot
 COMPLETIONDIR ?= ${PREFIX}/share/bash-completion/completions
 TEMPLATEDIR ?= /etc/flakes
@@ -42,6 +45,7 @@ sourcetar:
 	cp -a podman-pilot package/flake-pilot/
 	cp -a bubblewrap-pilot package/flake-pilot/
 	cp -a flake-ctl package/flake-pilot/
+	cp -a flake-pilot-helper package/flake-pilot/
 	cp -a firecracker-pilot package/flake-pilot/
 	cp -a doc package/flake-pilot/
 	cp -a utils package/flake-pilot/
@@ -66,11 +70,13 @@ clean:
 	cd bubblewrap-pilot && cargo -v clean
 	cd firecracker-pilot && cargo -v clean
 	cd flake-ctl && cargo -v clean
+	cd flake-pilot-helper && cargo -v clean
 	cd firecracker-pilot/guestvm-tools/sci && cargo -v clean
 	rm -rf common/vendor
 	rm -rf podman-pilot/vendor
 	rm -rf bubblewrap-pilot/vendor
 	rm -rf flake-ctl/vendor
+	rm -rf flake-pilot-helper/vendor
 	rm -rf firecracker-pilot/guestvm-tools/sci/vendor
 	rm -rf package/build
 	${MAKE} -C doc clean
@@ -83,6 +89,7 @@ test:
 install:
 	install -d -m 755 $(DESTDIR)$(BINDIR)
 	install -d -m 755 $(DESTDIR)$(SBINDIR)
+	install -d -m 755 $(DESTDIR)$(LIBEXECDIR)
 	install -d -m 755 $(DESTDIR)$(SHAREDIR)
 	install -d -m 755 $(DESTDIR)$(COMPLETIONDIR)
 	install -d -m 755 $(DESTDIR)$(TEMPLATEDIR)
@@ -95,6 +102,8 @@ install:
 		$(DESTDIR)$(BINDIR)/bubblewrap-pilot
 	install -m 755 target/release/flake-ctl \
 		$(DESTDIR)$(BINDIR)/flake-ctl
+	install -m 755 target/release/flake-pilot-helper \
+		$(DESTDIR)$(LIBEXECDIR)/flake-pilot-helper
 	install -m 644 flake-ctl/template/container-flake.yaml \
 		$(DESTDIR)$(TEMPLATEDIR)/container-flake.yaml
 	install -m 644 flake-ctl/template/firecracker-flake.yaml \
@@ -124,6 +133,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/podman-pilot
 	rm -f $(DESTDIR)$(BINDIR)/firecracker-pilot
 	rm -f $(DESTDIR)$(BINDIR)/bubblewrap-pilot
+	rm -f $(DESTDIR)$(LIBEXECDIR)/flake-pilot-helper
 	rm -rf $(DESTDIR)$(SHAREDIR) $(DESTDIR)$(TEMPLATEDIR)
 
 man:

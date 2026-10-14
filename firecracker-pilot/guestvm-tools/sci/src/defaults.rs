@@ -41,6 +41,18 @@ pub const OVERLAY_LOWER: &str = "/overlayroot/rootfs_lower";
 pub const OVERLAY_UPPER: &str = "/overlayroot/rootfs_upper";
 pub const OVERLAY_WORK: &str = "/overlayroot/rootfs_work";
 pub const PROBE_MODULE: &str = "/sbin/modprobe";
+// KVM device node, created by the KVM module of the CPU vendor
+pub const KVM_DEVICE: &str = "/dev/kvm";
+// Every user of the instance may run virtual machines, like the
+// distributions set it up for /dev/kvm by default
+pub const KVM_DEVICE_MODE: u32 = 0o666;
+// KVM modules by the CPU flag of the virtualization extension
+// they require. Each of them pulls in the generic kvm module
+pub const KVM_MODULES: [(&str, &str); 2] = [
+    ("vmx", "kvm_intel"), ("svm", "kvm_amd")
+];
+pub const KVM_MODULE: &str = "kvm";
+pub const CPUINFO: &str = "/proc/cpuinfo";
 // Mount table of the kernel
 pub const PROC_MOUNTS: &str = "/proc/self/mounts";
 pub const MOUNT_TOOL: &str = "mount";

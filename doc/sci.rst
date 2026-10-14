@@ -78,6 +78,17 @@ network setup, see **flake-ctl-firecracker-network-add**(8), and
 has to provide the NFS client tools. Mounting a filesystem of
 this type requires the ``mount.nfs`` helper program.
 
+Before the command is called, sci provides KVM to the instance if
+it can. Unless ``/dev/kvm`` exists already, sci loads the KVM
+module which matches the virtualization extension of the CPU,
+``kvm_intel`` for the ``vmx`` flag or ``kvm_amd`` for the ``svm``
+flag, and ``kvm`` otherwise. A module which is not present in the
+instance is skipped silently. If ``/dev/kvm`` exists afterwards
+its permissions are set to ``0666``, such that every user of the
+instance can run virtual machines. This requires the CPU of the
+instance to expose the virtualization extension, i.e nested
+virtualization support of the host and of the VMM.
+
 Every environment variable configurable and all options 
 regarding filesystems are stored in the firecracker.json
 file for the individual instance. Having this in mind, the desired values should

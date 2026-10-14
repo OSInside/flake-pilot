@@ -79,6 +79,8 @@
         <package name="npm-default"/>
         <package name="python313"/>
         <package name="python313-pip"/>
+        <package name="python313-kiwi"/>
+        <package name="kiwi-systemdeps-boxbuild"/>
         <package name="rust"/>
         <package name="cargo"/>
         <package name="vim"/>

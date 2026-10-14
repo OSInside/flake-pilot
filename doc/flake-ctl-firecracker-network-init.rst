@@ -183,6 +183,7 @@ FILES
 * /etc/flakes/network.yaml
 * $HOME/.config/flakes/firecracker/network.yaml
 * /var/lib/firecracker/network-state.yaml
+* /var/lib/firecracker/network-state.lock
 
 EXAMPLE
 -------

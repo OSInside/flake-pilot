@@ -217,6 +217,13 @@ pub const PROC_IPV6_CONF:&str =
 // other users or claim one of them
 pub const NETWORK_STATE:&str =
     "/var/lib/firecracker/network-state.yaml";
+// Lock file which serializes the changes of the network state
+// between concurrent calls. It belongs to root like the state
+pub const NETWORK_STATE_LOCK:&str =
+    "/var/lib/firecracker/network-state.lock";
+// Number of attempts to lock a lock file which got replaced
+// while waiting for its lock
+pub const LOCK_ATTEMPTS: u32 = 10;
 // Services of the host a VM may reach through its gateway: DHCP,
 // DNS and NFS (version 4, which needs no other port) for the
 // volumes exported to it. Any other traffic of a VM to the host

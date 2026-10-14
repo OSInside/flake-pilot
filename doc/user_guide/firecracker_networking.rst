@@ -66,6 +66,9 @@ its flake configuration. Therefore an application keeps its address
 across calls and across reboots of the host until it is disconnected
 again. The addresses of all users are allocated in one file,
 ``/var/lib/firecracker/network-state.yaml``, which belongs to root.
+Concurrent calls are serialized by a lock on
+``/var/lib/firecracker/network-state.lock``, a call which finds the
+lock taken waits for it.
 The address handed out is the lowest one of the private network which
 is not allocated to another application, addresses of applications
 which were disconnected are handed out again.

@@ -40,6 +40,13 @@ pub struct NetworkConfig {
     /// were created for the preferred network
     #[serde(default)]
     pub network: Option<String>,
+    /// The host runs a resolver the VMs use through their gateway.
+    /// Only then the VMs get the gateway as their name server and
+    /// may reach the DNS port of the host. Records which were
+    /// written before this became selectable provide none, their
+    /// VMs use the public name server
+    #[serde(default)]
+    pub host_resolver: bool,
 }
 
 pub fn get_network_config_file(usermode: bool) -> String {
@@ -284,10 +291,12 @@ mod tests {
     #[test]
     fn test_read_network_record() {
         let network_config: NetworkConfig = serde_yaml::from_str(
-            "outgoing_interface: eth0\nnetwork: 172.16.0.0/24\n"
+            "outgoing_interface: eth0\nnetwork: 172.16.0.0/24\n\
+            host_resolver: true\n"
         ).unwrap();
         assert_eq!("eth0", network_config.outgoing_interface);
         assert_eq!(Some("172.16.0.0/24".to_string()), network_config.network);
+        assert!(network_config.host_resolver);
         // a record which predates the selection of the network
         // provides no network
         let network_config: NetworkConfig = serde_yaml::from_str(
@@ -295,5 +304,8 @@ mod tests {
         ).unwrap();
         assert_eq!("eth0", network_config.outgoing_interface);
         assert_eq!(None, network_config.network);
+        // a record which predates the host resolver setting
+        // does not use it
+        assert!(! network_config.host_resolver);
     }
 }

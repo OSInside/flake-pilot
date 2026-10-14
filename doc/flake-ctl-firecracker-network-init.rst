@@ -12,10 +12,11 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>]
+       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver]
 
    OPTIONS:
        --outgoing-interface <OUTGOING_INTERFACE>
+       --host-resolver
        --help
 
 DESCRIPTION
@@ -116,8 +117,8 @@ The effect of the setup is:
 
 * Traffic from a VM to the host itself is dropped, except for answers
   to traffic of the host. **flake-ctl-firecracker-network-add**\(8)
-  allows each VM the DHCP, DNS and NFS service of the host through its
-  gateway, see there.
+  allows each VM the DHCP and NFS service of the host through its
+  gateway, and the DNS service with ``--host-resolver``, see there.
 
 The chains are deleted as a whole by
 **flake-ctl-firecracker-network-cleanup**\(8).
@@ -175,6 +176,23 @@ OPTIONS
   If the host has more than one default route, the one with the
   lowest metric is taken. Without a default route the interface
   has to be specified
+
+--host-resolver
+
+  The host runs a DNS resolver which answers queries on the gateway
+  address of the private network, e.g ``172.16.0.1``. The resolver
+  has to be set up for that address, e.g with ``dnsmasq`` or with
+  ``DNSStubListenerExtra=`` of ``systemd-resolved``. The setting is
+  recorded in the network configuration file. Applications which
+  are connected afterwards get the gateway as their name server and
+  are allowed the DNS port of the host.
+
+  Without this option the VMs use the public name server
+  ``8.8.8.8`` and the DNS port of the host is closed to them, a
+  resolver the host runs is not exposed to the VMs. Applications
+  which were connected before the setting changed keep their
+  name server and firewall rules until they are connected again
+  with **flake-ctl-firecracker-network-add**\(8)
 
 FILES
 -----

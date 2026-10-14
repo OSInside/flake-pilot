@@ -51,7 +51,9 @@ use crate::app_config::{
 use crate::defaults;
 use crate::firecracker::run_as;
 
-pub fn init(outgoing_interface: Option<&str>, usermode: bool) -> bool {
+pub fn init(
+    outgoing_interface: Option<&str>, host_resolver: bool, usermode: bool
+) -> bool {
     /*!
     Prepare the host for NAT based VM networking
 
@@ -81,6 +83,13 @@ pub fn init(outgoing_interface: Option<&str>, usermode: bool) -> bool {
     and the VMs are stored such that the setup of the single flakes,
     done by add(), uses the same network and knows where to route
     its traffic to.
+
+    With host_resolver the host runs a DNS resolver on the gateway
+    address of the private network. This is stored as well, add()
+    then hands the gateway to the VMs as their name server and lets
+    them reach the DNS port of the host. Otherwise the VMs use a
+    public name server and the DNS port of the host stays closed,
+    a resolver of the host is not exposed to them.
 
     Please note, the setup assumes there is no other firewall
     software active on the host. If the host firewall is managed
@@ -121,13 +130,16 @@ pub fn init(outgoing_interface: Option<&str>, usermode: bool) -> bool {
         return false
     }
     delete_legacy_rules(&outgoing_interface);
-    if ! write_network_config(&outgoing_interface, &network, usermode) {
+    if ! write_network_config(
+        &outgoing_interface, &network, host_resolver, usermode
+    ) {
         return false
     }
     info!("Host is prepared for VM networking:");
     info!("  network: {network}");
     info!("  gateway: {}", network.gateway());
     info!("  outgoing interface: {outgoing_interface}");
+    info!("  name server: {}", get_nameserver(&network, host_resolver));
     true
 }
 
@@ -144,9 +156,10 @@ pub fn add(
     of all users apart. The TAP device it expects is created for the
     user who runs the VM, given by user, the calling user if not
     given, and a host route connects that address with that device.
-    The VM is allowed to use the DHCP, DNS and NFS service of the
-    host through its gateway, any other traffic to the host is
-    dropped by the firewall setup created by init().
+    The VM is allowed to use the DHCP and NFS service of the host
+    through its gateway, and the DNS service if the host setup was
+    created for a resolver on the host. Any other traffic to the
+    host is dropped by the firewall setup created by init().
 
     Each instance of an application needs its own address and its
     own TAP device. Therefore the command has to be called for
@@ -168,6 +181,7 @@ pub fn add(
         Some(network) => network,
         None => return false
     };
+    let host_resolver = uses_host_resolver(usermode);
     if ! firewall_is_active() {
         error!("The firewall setup of the host is not active");
         error!(
@@ -187,7 +201,7 @@ pub fn add(
 
     // 1. the address allocation and the flake configuration
     let address = match configure_flake(
-        &flake, uid, &network, &mut state, usermode
+        &flake, uid, &network, host_resolver, &mut state, usermode
     ) {
         Some(address) => address,
         None => return false
@@ -212,7 +226,9 @@ pub fn add(
     }
 
     // 5. the services of the host the instance may use
-    if ! allow_guest_services(&flake.tap, &address, &network) {
+    if ! allow_guest_services(
+        &flake.tap, &address, &network, host_resolver
+    ) {
         return false
     }
 
@@ -221,6 +237,7 @@ pub fn add(
     info!("  gateway: {}", network.gateway());
     info!("  tap device: {} (user ID {uid})", flake.tap);
     info!("  outgoing interface: {outgoing_interface}");
+    info!("  name server: {}", get_nameserver(&network, host_resolver));
     if let Some(instance) = flake.instance {
         info!("Call the application as: {app} {instance}");
     }
@@ -537,7 +554,7 @@ pub fn get_instance_name(instance: &str) -> String {
 
 fn configure_flake(
     flake: &FlakeNetwork, uid: u32, network: &Ipv4Network,
-    state: &mut NetworkState, usermode: bool
+    host_resolver: bool, state: &mut NetworkState, usermode: bool
 ) -> Option<Ipv4Addr> {
     /*!
     Allocate the address of the given flake instance and write the
@@ -584,7 +601,9 @@ fn configure_flake(
         network.gateway_route(),
         defaults::NETWORK_GUEST_INTERFACE
     );
-    let dns_option = format!("nameserver={}", defaults::NETWORK_DNS);
+    let dns_option = format!(
+        "nameserver={}", get_nameserver(network, host_resolver)
+    );
 
     // The route to the gateway and the name server are the same
     // for all instances and are therefore always set globally
@@ -1076,6 +1095,30 @@ pub fn write_flake_config(config_file: &str, yaml_config: &AppConfig) -> bool {
             error!("Failed to write {config_file}: {error:?}");
             false
         }
+    }
+}
+
+fn uses_host_resolver(usermode: bool) -> bool {
+    /*!
+    Check if the host setup was created for a resolver on the host
+
+    A host setup without record, e.g because it was created by
+    hand, does not use it
+    !*/
+    read_network_config(usermode)
+        .map(|network_config| network_config.host_resolver)
+        .unwrap_or(false)
+}
+
+fn get_nameserver(network: &Ipv4Network, host_resolver: bool) -> String {
+    /*!
+    Provide the name server of the VMs, the gateway if the host
+    runs the resolver, the public name server otherwise
+    !*/
+    if host_resolver {
+        network.gateway().to_string()
+    } else {
+        defaults::NETWORK_DNS.to_string()
     }
 }
 
@@ -1650,19 +1693,22 @@ impl fmt::Display for Ipv4Network {
 }
 
 fn write_network_config(
-    outgoing_interface: &str, network: &Ipv4Network, usermode: bool
+    outgoing_interface: &str, network: &Ipv4Network, host_resolver: bool,
+    usermode: bool
 ) -> bool {
     /*!
     Record the host network setup
 
     The record allows the setup of the single flakes to find the
-    interface their traffic has to be routed to and the private
-    network their addresses are taken from
+    interface their traffic has to be routed to, the private
+    network their addresses are taken from and whether they use
+    the resolver of the host
     !*/
     let config_file = get_network_config_file(usermode);
     let network_config = NetworkConfig {
         outgoing_interface: outgoing_interface.to_string(),
-        network: Some(network.to_string())
+        network: Some(network.to_string()),
+        host_resolver
     };
     let yaml_data = match serde_yaml::to_string(&network_config) {
         Ok(yaml_data) => yaml_data,
@@ -2031,17 +2077,21 @@ fn get_firewall_rules(
 }
 
 fn get_guest_service_rules(
-    tap: &str, address: &Ipv4Addr, network: &Ipv4Network
+    tap: &str, address: &Ipv4Addr, network: &Ipv4Network,
+    host_resolver: bool
 ) -> Vec<FirewallRule> {
     /*!
     Provide the rules which let the VM behind the given TAP device
     use the services of the host
 
-    The VM may reach the DHCP, DNS and NFS service of the host
-    through its gateway. Apart from DHCP, which is used before the
-    VM has an address, the traffic has to come from the address of
-    the VM and from its own TAP device. A VM can therefore not use
-    the services, e.g the NFS exports, of another VM
+    The VM may reach the DHCP and NFS service of the host through
+    its gateway. The DNS service only if the host runs the resolver
+    of the VMs, otherwise the VMs do not use it and a resolver of
+    the host stays closed to them. Apart from DHCP, which is used
+    before the VM has an address, the traffic has to come from the
+    address of the VM and from its own TAP device. A VM can
+    therefore not use the services, e.g the NFS exports, of
+    another VM
     !*/
     let address = address.to_string();
     let gateway = network.gateway().to_string();
@@ -2053,11 +2103,13 @@ fn get_guest_service_rules(
             "-j", "ACCEPT"
         ])
     ];
-    for (protocol, port) in [
-        ("udp", defaults::NETWORK_DNS_PORT),
-        ("tcp", defaults::NETWORK_DNS_PORT),
-        ("tcp", defaults::NETWORK_NFS_PORT)
-    ] {
+    let mut services = Vec::new();
+    if host_resolver {
+        services.push(("udp", defaults::NETWORK_DNS_PORT));
+        services.push(("tcp", defaults::NETWORK_DNS_PORT));
+    }
+    services.push(("tcp", defaults::NETWORK_NFS_PORT));
+    for (protocol, port) in services {
         rules.push(
             FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &[
                 "-i", tap, "-s", &address, "-d", &gateway,
@@ -2125,13 +2177,14 @@ fn firewall_is_active() -> bool {
 }
 
 fn allow_guest_services(
-    tap: &str, address: &Ipv4Addr, network: &Ipv4Network
+    tap: &str, address: &Ipv4Addr, network: &Ipv4Network,
+    host_resolver: bool
 ) -> bool {
     /*!
     Let the VM behind the given TAP device use the services of the
     host, see get_guest_service_rules()
     !*/
-    get_guest_service_rules(tap, address, network).iter().all(
+    get_guest_service_rules(tap, address, network, host_resolver).iter().all(
         |rule| add_rule(rule, RulePosition::Top)
     )
 }
@@ -2572,6 +2625,7 @@ mod tests {
     use super::{
         get_address_list_networks, get_effective_boot_args, get_flake_taps,
         get_firewall_rules, get_free_address, get_guest_service_rules,
+        get_nameserver,
         get_listed_rules, get_network_candidates, get_network_info,
         get_preferred_network, get_remove_command,
         get_route_list_default_device, get_route_list_networks,
@@ -2889,8 +2943,25 @@ mod tests {
 
     #[test]
     fn test_guest_service_rules() {
+        // without a resolver on the host the DNS port stays closed
         let rules = get_guest_service_rules(
-            "tap-1000_myapp", &address("172.16.0.2"), &network("172.16.0.0/24")
+            "tap-1000_myapp", &address("172.16.0.2"),
+            &network("172.16.0.0/24"), false
+        );
+        assert!(rules.iter().all(|rule| rule.chain == "FLAKE_PILOT_INPUT"));
+        assert_eq!(
+            vec![
+                "-i tap-1000_myapp -p udp --sport 68 --dport 67 -j ACCEPT",
+                "-i tap-1000_myapp -s 172.16.0.2 -d 172.16.0.1 -p tcp \
+                --dport 2049 -j ACCEPT"
+            ],
+            rules.iter().map(|rule| rule.spec.join(" ")).collect::<Vec<_>>()
+        );
+
+        // with a resolver on the host the VM may reach it
+        let rules = get_guest_service_rules(
+            "tap-1000_myapp", &address("172.16.0.2"),
+            &network("172.16.0.0/24"), true
         );
         assert!(rules.iter().all(|rule| rule.chain == "FLAKE_PILOT_INPUT"));
         assert_eq!(
@@ -2904,6 +2975,17 @@ mod tests {
                 --dport 2049 -j ACCEPT"
             ],
             rules.iter().map(|rule| rule.spec.join(" ")).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_get_nameserver() {
+        assert_eq!("8.8.8.8", get_nameserver(&network("172.16.0.0/24"), false));
+        assert_eq!(
+            "172.16.0.1", get_nameserver(&network("172.16.0.0/24"), true)
+        );
+        assert_eq!(
+            "192.168.3.1", get_nameserver(&network("192.168.3.0/24"), true)
         );
     }
 
@@ -2935,10 +3017,12 @@ mod tests {
         // both of them have to agree on its format
         let record = serde_yaml::to_string(&NetworkConfig {
             outgoing_interface: "eth0".to_string(),
-            network: Some("172.16.0.0/24".to_string())
+            network: Some("172.16.0.0/24".to_string()),
+            host_resolver: true
         }).unwrap();
         assert!(record.contains("outgoing_interface: eth0"));
         assert!(record.contains("network: 172.16.0.0/24"));
+        assert!(record.contains("host_resolver: true"));
     }
 
     #[test]

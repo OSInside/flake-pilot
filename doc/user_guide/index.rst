@@ -195,7 +195,8 @@ not trust, check what it can reach:
      and appears there with the address of the host. The firewall
      setup only keeps it away from other instances, from the other
      interfaces of the host and from the services of the host except
-     DHCP, DNS and NFS.
+     DHCP and NFS, and DNS if the host setup was created for a
+     resolver on the host.
 
    A VM which is neither connected nor given a volume talks to the
    host only through the serial console or vsock connection of the

@@ -85,11 +85,10 @@ The command performs the following steps:
    sent to the device that route points to, which is not
    necessarily the device the application is connected to
 
-5. Allow the VM the DHCP and NFS service of the host
+5. Allow the VM the NFS service of the host
 
    .. code:: bash
 
-      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -p udp --sport 68 --dport 67 -j ACCEPT
       sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 2049 -j ACCEPT
 
    If the host setup was created with ``--host-resolver``, see
@@ -100,6 +99,13 @@ The command performs the following steps:
 
       sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p udp --dport 53 -j ACCEPT
       sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -s 172.16.0.2 -d 172.16.0.1 -p tcp --dport 53 -j ACCEPT
+
+   If the host setup was created with ``--host-dhcp``, the VM is
+   allowed the DHCP service of the host:
+
+   .. code:: bash
+
+      sudo /usr/sbin/iptables -I FLAKE_PILOT_INPUT 1 -i tap-<UID>_<APP> -p udp --sport 68 --dport 67 -j ACCEPT
 
    Any other traffic of the VM to the host is dropped by the firewall
    setup. NFS is allowed in version 4, which needs no other port,

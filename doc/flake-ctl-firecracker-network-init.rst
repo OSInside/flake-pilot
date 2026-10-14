@@ -12,11 +12,12 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver]
+       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver] [--host-dhcp]
 
    OPTIONS:
        --outgoing-interface <OUTGOING_INTERFACE>
        --host-resolver
+       --host-dhcp
        --help
 
 DESCRIPTION
@@ -117,8 +118,9 @@ The effect of the setup is:
 
 * Traffic from a VM to the host itself is dropped, except for answers
   to traffic of the host. **flake-ctl-firecracker-network-add**\(8)
-  allows each VM the DHCP and NFS service of the host through its
-  gateway, and the DNS service with ``--host-resolver``, see there.
+  allows each VM the NFS service of the host through its gateway,
+  the DNS service with ``--host-resolver`` and the DHCP service with
+  ``--host-dhcp``, see there.
 
 The chains are deleted as a whole by
 **flake-ctl-firecracker-network-cleanup**\(8).
@@ -193,6 +195,24 @@ OPTIONS
   which were connected before the setting changed keep their
   name server and firewall rules until they are connected again
   with **flake-ctl-firecracker-network-add**\(8)
+
+--host-dhcp
+
+  The host runs a DHCP server for the VMs on the gateway address of
+  the private network. The setting is recorded in the network
+  configuration file. Applications which are connected afterwards
+  are allowed the DHCP port of the host.
+
+  The VMs are still configured with the static address allocated to
+  them, see **flake-ctl-firecracker-network-add**\(8). Only a guest
+  which is set up to request its address by DHCP uses the server,
+  and the server has to hand out the allocated address, the host
+  route and the firewall rules of the VM are bound to it.
+
+  Without this option the DHCP port of the host is closed to the
+  VMs, a DHCP server the host runs is not exposed to them.
+  Applications which were connected before the setting changed keep
+  their firewall rules until they are connected again
 
 FILES
 -----

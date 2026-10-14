@@ -251,6 +251,16 @@ pub enum Network {
         /// port of the host is closed to them
         #[clap(long)]
         host_resolver: bool,
+
+        /// The host runs a DHCP server for the VMs on the
+        /// gateway address of the VM network. The VMs connected
+        /// afterwards may reach the DHCP port of the host. The
+        /// VMs are still configured with a static address, a
+        /// guest which requests one by DHCP has to be set up for
+        /// it. Without this option the DHCP port of the host is
+        /// closed to them
+        #[clap(long)]
+        host_dhcp: bool,
     },
     /// Connect a VM application to the host network
     Add {

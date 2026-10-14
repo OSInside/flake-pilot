@@ -224,11 +224,11 @@ pub const NETWORK_STATE_LOCK:&str =
 // Number of attempts to lock a lock file which got replaced
 // while waiting for its lock
 pub const LOCK_ATTEMPTS: u32 = 10;
-// Services of the host a VM may reach through its gateway: DHCP,
-// NFS (version 4, which needs no other port) for the volumes
-// exported to it and DNS if the host setup was created for a
-// resolver on the host. Any other traffic of a VM to the host
-// is dropped
+// Services of the host a VM may reach through its gateway: NFS
+// (version 4, which needs no other port) for the volumes exported
+// to it, DNS and DHCP if the host setup was created for a resolver
+// or a DHCP server on the host. Any other traffic of a VM to the
+// host is dropped
 pub const NETWORK_DHCP_SERVER_PORT:&str =
     "67";
 pub const NETWORK_DHCP_CLIENT_PORT:&str =

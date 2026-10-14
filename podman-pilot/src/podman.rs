@@ -114,6 +114,8 @@ pub fn create(
         # time and then take precedence over the setting here
         pilot_options:
           - "%ignore_missing_volume_path"
+          - "%pull_newer"
+          - "%prune_images"
 
         podman:
           - --storage-opt size=10G
@@ -204,11 +206,20 @@ pub fn create(
     );
     IO::no_symlink(&container_cid_file)?;
 
+    let pilot_options = Lookup::get_pilot_run_options(
+        config().pilot_options()
+    );
+
     // init podman creation call
     let mut app = engine::setup_podman_call(usermode);
-    app.arg("create")
-        .arg("--pull=newer")
-        .arg("--cidfile").arg(&container_cid_file);
+    app.arg("create");
+    // An image which is in the local registry is used as it is. Only
+    // with %pull_newer the registry is asked for a newer one on every
+    // creation. An image which is missing is pulled in any case
+    if pilot_options.contains_key("%pull_newer") {
+        app.arg("--pull=newer");
+    }
+    app.arg("--cidfile").arg(&container_cid_file);
 
     // Check early return condition in resume mode
     if Path::new(&container_cid_file).exists() &&
@@ -219,12 +230,8 @@ pub fn create(
         return Ok((cid, container_cid_file));
     }
 
-    // Garbage collect occasionally
-    gc(user)?;
-
-    let pilot_options = Lookup::get_pilot_run_options(
-        config().pilot_options()
-    );
+    // Garbage collect occasionally, unused images only with %prune_images
+    gc(user, pilot_options.contains_key("%prune_images"))?;
 
     // create the container with configured runtime arguments
     let var_pattern = Regex::new(r"%([A-Z]+)").unwrap();
@@ -935,10 +942,14 @@ pub fn gc_cid_file(container_cid_file: &String) -> Result<bool, FlakeError> {
     }
 }
 
-pub fn gc(user: User) -> Result<(), FlakeError> {
+pub fn gc(user: User, prune_images: bool) -> Result<(), FlakeError> {
     /*!
     Garbage collect CID files for which no container exists anymore
-    Next prune old containers if present
+
+    With prune_images the images which are not used by a container
+    anymore are deleted as well. This affects all images of the
+    podman setup the flake runs in, not only the ones of this flake,
+    and is therefore only done on request
     !*/
     let mut cid_file_names: Vec<String> = Vec::new();
     let mut cid_file_count: i32 = 0;
@@ -964,6 +975,8 @@ pub fn gc(user: User) -> Result<(), FlakeError> {
             let _ = gc_cid_file(&container_cid_file);
         }
     }
-    engine::prune(usermode());
+    if prune_images {
+        engine::prune(usermode());
+    }
     Ok(())
 }

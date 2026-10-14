@@ -206,6 +206,21 @@ OPTIONS
   missing. This can lead to a non functional instance of course, you
   have been warned.
 
+%pull_newer
+
+  Ask the registry for a newer version of the container image each
+  time a container instance is created, and pull it if there is one.
+  By default an image which is in the local registry is used as it
+  is, only an image which is missing is pulled. Updating the image
+  is then left to **flake-ctl-podman-pull**\(8).
+
+%prune_images
+
+  Delete the container images which are not used by any container
+  anymore each time a container instance is created. This applies to
+  all images of the podman setup the flake runs in, not only to the
+  ones of this flake, and is therefore not done by default.
+
 %interactive
 
   Force interactive call style for processes like a shell.

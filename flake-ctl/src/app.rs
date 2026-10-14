@@ -492,36 +492,36 @@ pub fn remove_allowed(
 pub fn app_names(usermode: bool) -> Vec<String> {
     /*!
     Read all flake config files
+
+    The name of a flake is the name of its config file without
+    the .yaml extension. It may contain dots itself, e.g a flake
+    registered for the application python3.11
     !*/
     let mut flakes: Vec<String> = Vec::new();
     for config_file in registration::config_files(usermode) {
-        let base_config_file = basename(&config_file.to_string_lossy());
-        match base_config_file.split('.').next() {
-            Some(value) => flakes.push(value.to_string()),
-            None => error!(
-                "Ignoring invalid config_file: {base_config_file}"
+        match config_file.file_stem().and_then(|stem| stem.to_str()) {
+            Some(value) if ! value.is_empty() => {
+                flakes.push(value.to_string())
+            },
+            _ => error!(
+                "Ignoring invalid config_file: {}", config_file.display()
             ),
         }
     }
     flakes
 }
 
-pub fn app_details(app: &str, usermode: bool) -> app_config::AppConfig {
+pub fn app_details(
+    app: &str, usermode: bool
+) -> Result<app_config::AppConfig, String> {
     /*!
     Read app config for given app base name
     !*/
     let config_file = registration::config_file(app, usermode);
-    match app_config::AppConfig::init_from_file(Path::new(&config_file)) {
-        Ok(app_conf) => {
-            app_conf
-        },
-        Err(error) => {
-            panic!(
-                "Failed reading app config file: {}: {:?}",
-                config_file, error
-            );
-        }
-    }
+    app_config::AppConfig::init_from_file(Path::new(&config_file))
+        .map_err(|error| {
+            format!("Failed reading app config file: {config_file}: {error:?}")
+        })
 }
 
 // FlakeInfo represents one registered flake application
@@ -548,6 +548,16 @@ pub fn app_list(usermode: bool) -> Vec<FlakeInfo> {
         let mut flake = FlakeInfo {
             name: app, engine: None, target: None,
             host_app_path: None, config
+        };
+        // A flake whose config cannot be read is still listed,
+        // with the values from its config left empty
+        let details = match details {
+            Ok(details) => details,
+            Err(error) => {
+                error!("{error}");
+                flakes.push(flake);
+                continue
+            }
         };
         if let Some(ref container_conf) = details.container {
             flake.engine = Some(defaults::PODMAN_ENGINE.to_string());
@@ -629,7 +639,7 @@ fn list_as_csv(flakes: &[FlakeInfo]) {
     output::print_csv(&rows);
 }
 
-pub fn purge(app: &str, engine: &str, usermode: bool) {
+pub fn purge(app: &str, engine: &str, usermode: bool) -> bool {
     /*!
     Iterate over all yaml config files and delete all app
     registrations and its connected resources for the specified app
@@ -638,8 +648,9 @@ pub fn purge(app: &str, engine: &str, usermode: bool) {
         podman::purge_container(app, usermode)
     }
     if engine == defaults::FIRECRACKER_PILOT {
-        firecracker::purge_vm(app, usermode)
+        return firecracker::purge_vm(app, usermode)
     }
+    true
 }
 
 pub fn init(app: Option<&String>, usermode: bool) -> bool {

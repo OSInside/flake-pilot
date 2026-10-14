@@ -25,7 +25,6 @@
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use glob::glob;
 use crate::defaults;
 use crate::app;
 use crate::app_config;
@@ -71,21 +70,15 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
     Call podman load with the provided oci tar file
     !*/
     info!("Loading OCI image...");
-    let mut container_archive: String = oci.to_string();
-    if !Path::new(oci).exists() {
-        let container_archives = oci.to_owned() + "*";
-        // glob puts things in alpha sorted order which is expected to give
-        // us the highest version of the archive
-        for entry in glob(&container_archives)
-            .expect("Failed to read glob pattern").flatten() {
-                    container_archive = entry.display().to_string()
-            }
-        }
-    info!("podman load -i {container_archive}");
+    if ! Path::new(oci).is_file() {
+        error!("OCI archive '{oci}' not found");
+        return 1
+    }
+    info!("podman load -i {oci}");
     let mut call = engine::setup_podman_call(usermode);
     call.arg("load")
         .arg("-i")
-        .arg(container_archive);
+        .arg(oci);
     let status = match call.status() {
         Ok(status) => {
             if status.success() {

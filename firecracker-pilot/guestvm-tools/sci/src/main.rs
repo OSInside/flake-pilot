@@ -324,6 +324,9 @@ fn main() {
     // mount nfs volumes if requested
     mount_nfs_volumes();
 
+    // provide KVM if the instance supports it
+    setup_kvm();
+
     // start sshd if present
     start_sshd();
 
@@ -1370,6 +1373,90 @@ fn setup_resolver_link() {
     }
 }
 
+fn setup_kvm() {
+    /*!
+    Provide KVM to the commands of the instance
+
+    /dev/kvm is created by the KVM module of the CPU vendor. The
+    module is loaded if the device does not exist yet, e.g with
+    KVM built into the kernel, and if it is present in the
+    instance. Without KVM support of the instance or its kernel
+    there is nothing to do. The device node is made accessible to
+    every user of the instance
+    !*/
+    if ! Path::new(defaults::KVM_DEVICE).exists() {
+        let module = match fs::read_to_string(defaults::CPUINFO) {
+            Ok(cpuinfo) => get_kvm_module(&cpuinfo),
+            Err(error) => {
+                debug(&format!(
+                    "Failed to read {}: {}", defaults::CPUINFO, error
+                ));
+                defaults::KVM_MODULE
+            }
+        };
+        // A missing module is not an error, don't report it on
+        // the console of the instance
+        let mut modprobe = Command::new(defaults::PROBE_MODULE);
+        modprobe.arg("--quiet").arg(module)
+            .stderr(std::process::Stdio::null());
+        debug(&format!(
+            "SCI CALL: {} -> {:?}", defaults::PROBE_MODULE, modprobe.get_args()
+        ));
+        match run_child(&mut modprobe) {
+            Ok(status) if status.success() => { },
+            Ok(status) => {
+                debug(&format!("Loading {module} module failed: {status}"));
+            },
+            Err(error) => {
+                debug(&format!("Loading {module} module failed: {error}"));
+            }
+        }
+    }
+    if ! Path::new(defaults::KVM_DEVICE).exists() {
+        debug(&format!("No {} available [skipped]", defaults::KVM_DEVICE));
+        return
+    }
+    match fs::set_permissions(
+        defaults::KVM_DEVICE,
+        fs::Permissions::from_mode(defaults::KVM_DEVICE_MODE)
+    ) {
+        Ok(_) => debug(&format!(
+            "Set permissions of {} to {:o}",
+            defaults::KVM_DEVICE, defaults::KVM_DEVICE_MODE
+        )),
+        Err(error) => debug(&format!(
+            "Failed to set permissions of {}: {}",
+            defaults::KVM_DEVICE, error
+        ))
+    }
+}
+
+fn get_kvm_module(cpuinfo: &str) -> &'static str {
+    /*!
+    Provide the KVM module for the virtualization extension the
+    CPU flags in the given cpuinfo announce
+
+    Without one of the known flags the generic kvm module is
+    used, e.g on architectures without a vendor module
+    !*/
+    for line in cpuinfo.lines() {
+        let (key, flags) = match line.split_once(':') {
+            Some(entry) => entry,
+            None => continue
+        };
+        if key.trim() != "flags" {
+            continue
+        }
+        let flags: Vec<&str> = flags.split_whitespace().collect();
+        for (flag, module) in defaults::KVM_MODULES {
+            if flags.contains(&flag) {
+                return module
+            }
+        }
+    }
+    defaults::KVM_MODULE
+}
+
 fn start_sshd() {
     if Path::new(defaults::SSHD).exists() {
         let mut sshd = Command::new(defaults::SSHD);
@@ -1772,6 +1859,7 @@ mod tests {
     use super::get_mount_args;
     use sys_mount::MountFlags;
     use super::get_resize_request;
+    use super::get_kvm_module;
 
     #[test]
     fn test_get_resize_request() {
@@ -1870,5 +1958,22 @@ mod tests {
         assert_eq!(get_nfs_volume("/local/path"), None);
         assert_eq!(get_nfs_volume(""), None);
     }
-}
 
+    #[test]
+    fn test_get_kvm_module() {
+        let cpuinfo = |flags: &str| format!(
+            "processor\t: 0\nvendor_id\t: Some\nflags\t\t: {}\n\n", flags
+        );
+        assert_eq!(get_kvm_module(&cpuinfo("fpu vme vmx sse")), "kvm_intel");
+        assert_eq!(get_kvm_module(&cpuinfo("fpu svm sse")), "kvm_amd");
+        // no virtualization extension
+        assert_eq!(get_kvm_module(&cpuinfo("fpu vme sse")), "kvm");
+        // flags are matched as a whole
+        assert_eq!(get_kvm_module(&cpuinfo("fpu vmxe svmx")), "kvm");
+        // no flags line, e.g on aarch64
+        assert_eq!(
+            get_kvm_module("processor\t: 0\nFeatures\t: fp asimd\n"), "kvm"
+        );
+        assert_eq!(get_kvm_module(""), "kvm");
+    }
+}

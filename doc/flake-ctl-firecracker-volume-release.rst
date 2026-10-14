@@ -46,7 +46,11 @@ OPTIONS
 --app <APP>
 
   An absolute path to the application on the host. Only the VM of
-  this application is removed from the export
+  this application is removed from the export. The VM is identified
+  by the address allocated to it in the network state file, the
+  application therefore has to be still connected to the network.
+  The export of an application which was disconnected already is
+  released for all VMs by calling the command without --app
 
 --instance <INSTANCE>
 
@@ -57,6 +61,7 @@ FILES
 -----
 
 * /etc/exports
+* /var/lib/firecracker/network-state.yaml
 
 EXAMPLE
 -------

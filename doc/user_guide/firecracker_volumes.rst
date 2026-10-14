@@ -25,7 +25,8 @@ The setup works within the following requirements:
 * The application has to be connected to the host network with
   ``flake-ctl firecracker network add``, see
   :ref:`firecracker-networking`. The volume setup reads the gateway
-  address and the address of the VM from that network setup.
+  address from that network setup and the address of the VM from the
+  address allocations of the host.
 
 * The local path has to be owned by a user other than ``root``. Every
   access of the VM to the volume is performed as that user.
@@ -51,8 +52,12 @@ Export a Local Path
 Writes a ``flake-pilot`` managed entry for the given path to
 ``/etc/exports`` which allows exactly the VM of the given application
 as a client. The VM is identified by its address in the private
-firecracker network, e.g ``172.16.0.2``, read from the ``ip=`` boot
-option written by ``flake-ctl firecracker network add``. If the
+firecracker network, e.g ``172.16.0.2``, read from the address
+allocations in ``/var/lib/firecracker/network-state.yaml``, which
+``flake-ctl firecracker network add`` writes. The ``ip=`` boot option
+in the flake configuration is not used for this, the configuration of
+a user belongs to that user and could name the VM of another user,
+the state file belongs to root. If the
 ``nfs-server`` systemd service is not running yet it is started,
 otherwise the export table is reloaded so the new export becomes
 effective right away.

@@ -53,7 +53,10 @@ Manual compilation and installation can be done as follows:
 
 This compiles the workspace with ``cargo build --release``, renders
 the manual pages with ``rst2man`` and installs the binaries, the
-templates, the bash completion and the manual pages below ``/usr``.
+configuration and templates below ``/etc``, the bash completion, the
+manual pages, the ``systemd-tmpfiles`` configuration, the dracut
+network startup module for firecracker guests and the state
+directories below ``/var/lib``.
 
 The build requires:
 
@@ -67,6 +70,21 @@ The build requires:
    ``make install`` honors ``DESTDIR`` and ``PREFIX``, which allows
    to install into a staging area, e.g
    ``make install DESTDIR=/tmp/root``.
+
+The following ``make`` variables control optional parts of the build:
+
+* ``SCI_STATIC=yes``
+
+  Passed to ``make build``, additionally builds a statically linked
+  ``sci``, which ``make install`` then prefers over the dynamically
+  linked one. This requires the static ``glibc`` library.
+
+* ``TMPFILES_STATEDIRS=yes``
+
+  Passed to ``make install``, installs ``systemd-tmpfiles``
+  configurations which create the podman and firecracker state
+  directories below ``/var/lib`` at boot instead of installing the
+  directories.
 
 Privileges
 ==========

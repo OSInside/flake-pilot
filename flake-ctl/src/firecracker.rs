@@ -782,7 +782,13 @@ pub fn release_volume(
             app, instance, usermode
         ) {
             Some(guest) => NfsExportUpdate::RemoveGuest(guest),
-            None => return false
+            None => {
+                error!(
+                    "To release the export for all VMs call \
+                    'flake-ctl firecracker volume release --path {path}'"
+                );
+                return false
+            }
         },
         None => NfsExportUpdate::RemoveAll
     };

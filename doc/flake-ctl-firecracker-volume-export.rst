@@ -27,10 +27,13 @@ Export the given absolute host path through NFS to the VM of the given
 application. The command writes a flake-pilot managed entry to
 ``/etc/exports`` which allows exactly that VM as a client. The VM is
 identified by its address in the private firecracker network, read
-from the ``ip=`` boot option written by
-**flake-ctl-firecracker-network-add**(8). The application, or the
-given instance of it, therefore has to be connected to the network
-first. Exporting the same path for further applications or instances
+from the address allocations in the network state file
+``/var/lib/firecracker/network-state.yaml`` which
+**flake-ctl-firecracker-network-add**(8) writes. The ``ip=`` boot
+option in the flake configuration is not used for this, the flake
+configuration of a user belongs to that user while the state file
+belongs to root. The application, or the given instance of it,
+therefore has to be connected to the network first. Exporting the same path for further applications or instances
 adds their VMs to the entry.
 
 Only a path owned by a user can be exported: called by a user, the
@@ -80,6 +83,7 @@ FILES
 -----
 
 * /etc/exports
+* /var/lib/firecracker/network-state.yaml
 * /etc/flakes/network.yaml
 * $HOME/.config/flakes/network.yaml
 * /usr/share/flakes

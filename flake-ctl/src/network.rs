@@ -1328,39 +1328,83 @@ pub fn get_guest_address(
     /*!
     Provide the address of the VM the given flake instance runs in
 
-    The address is the static ip= option of the kernel commandline
-    of the instance, as written by 'flake-ctl firecracker network
-    add'. It is used to allow exactly this VM as a client, e.g in
-    the NFS exports of the host. Only an address of the private
+    The address is the one allocated to the instance in the host
+    wide network state by 'flake-ctl firecracker network add'. It
+    is used to allow exactly this VM as a client, e.g in the NFS
+    exports of the host. The ip= option in the flake configuration
+    is not used for this. A flake configuration of the user belongs
+    to the user, it could name the address of the VM of another
+    user. The state belongs to root and records which address is
+    connected to which TAP device. Only an address of the private
     network between the host and the VMs is accepted
     !*/
     let config_file = get_flake_config_file(app, usermode)?;
-    let mut yaml_config = read_flake_config(&config_file)?;
-    let engine_section = get_engine_section(
-        &mut yaml_config, &config_file, "volume"
-    )?;
     let instance = instance.map(|instance| get_instance_name(instance));
-    let boot_args = get_effective_boot_args(
-        engine_section, instance.as_deref()
-    );
-    let address = match get_boot_args_address(&boot_args) {
-        Some(address) => address,
-        None => {
-            error!("No static guest address found in {config_file}");
-            error!("The address is read from the ip= boot option");
+    let state = read_network_state()?;
+    let allocation = match get_flake_allocations(
+        &state, &config_file, instance.as_deref()
+    )[..] {
+        [allocation] => allocation,
+        [] => {
+            error!(
+                "No address is allocated to {config_file}{} in {}",
+                instance.as_deref()
+                    .map(|instance| format!(" instance {instance}"))
+                    .unwrap_or_default(),
+                defaults::NETWORK_STATE
+            );
             error!("{}", get_add_command_hint(app, instance.as_deref()));
+            return None
+        },
+        ref allocations => {
+            error!(
+                "More than one address is allocated to {config_file}{} \
+                in {}:",
+                instance.as_deref()
+                    .map(|instance| format!(" instance {instance}"))
+                    .unwrap_or_default(),
+                defaults::NETWORK_STATE
+            );
+            for allocation in allocations {
+                error!(
+                    "  {} on {} of user ID {}",
+                    allocation.address, allocation.tap, allocation.uid
+                );
+            }
+            error!("Please connect the instance again");
             return None
         }
     };
+    let address = allocation.address;
     let network = get_network(usermode)?;
     if ! is_vm_address(&network, &address) {
         error!(
-            "Guest address {address} of {config_file} is not a VM \
-            address of the private network {network}"
+            "Guest address {address} allocated to {config_file} is \
+            not a VM address of the private network {network}"
         );
         return None
     }
+    info!(
+        "Guest address {address} of {} (user ID {})",
+        allocation.tap, allocation.uid
+    );
     Some(address)
+}
+
+fn get_flake_allocations<'a>(
+    state: &'a NetworkState, config_file: &str, instance: Option<&str>
+) -> Vec<&'a Allocation> {
+    /*!
+    Provide the address allocations of the given state for the
+    given instance of the flake of the given configuration file.
+    An instance is connected for one user at a time, a consistent
+    state therefore provides at most one
+    !*/
+    state.allocations.iter()
+        .filter(|allocation| allocation.config_file == config_file
+            && allocation.instance.as_deref() == instance
+        )
+        .collect()
 }
 
 fn is_vm_address(network: &Ipv4Network, address: &Ipv4Addr) -> bool {
@@ -2647,8 +2691,8 @@ mod tests {
 
     use super::{
         get_address_list_networks, get_effective_boot_args, get_flake_taps,
-        get_firewall_rules, get_free_address, get_guest_service_rules,
-        get_nameserver, HostServices,
+        get_firewall_rules, get_flake_allocations, get_free_address,
+        get_guest_service_rules, get_nameserver, HostServices,
         get_listed_rules, get_network_candidates, get_network_info,
         get_preferred_network, get_remove_command,
         get_route_list_default_device, get_route_list_networks,
@@ -2710,6 +2754,40 @@ mod tests {
             config_file: config_file.to_string(),
             instance: instance.map(ToOwned::to_owned)
         }
+    }
+
+    #[test]
+    fn test_get_flake_allocations() {
+        let user_flake = "/home/tux/.config/flakes/myapp.yaml";
+        let state = NetworkState {
+            ip_forward_enabled: false,
+            allocations: vec![
+                allocation(
+                    "172.16.0.2", 1000, "tap-1000_myapp", user_flake, None
+                ),
+                allocation(
+                    "172.16.0.3", 1000, "tap-1000_myapp_one",
+                    user_flake, Some("@one")
+                ),
+                allocation(
+                    "172.16.0.4", 0, "tap-0_myapp",
+                    "/usr/share/flakes/myapp.yaml", None
+                )
+            ]
+        };
+        let addresses = |instance| get_flake_allocations(
+            &state, user_flake, instance
+        ).iter().map(|allocation| allocation.address).collect::<Vec<_>>();
+
+        // the instance selects the allocation, another flake of the
+        // same name is not taken into account
+        assert_eq!(vec![address("172.16.0.2")], addresses(None));
+        assert_eq!(vec![address("172.16.0.3")], addresses(Some("@one")));
+        // an instance which is not connected has none
+        assert!(addresses(Some("@two")).is_empty());
+        assert!(get_flake_allocations(
+            &state, "/home/tux/.config/flakes/other.yaml", None
+        ).is_empty());
     }
 
     #[test]

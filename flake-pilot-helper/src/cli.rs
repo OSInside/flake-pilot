@@ -145,15 +145,26 @@ pub enum Commands {
         #[clap(long)]
         instance: String,
 
-        /// Directory tree which is the lower layer of the overlay
+        /// Directory tree which is the lowest layer of the overlay
         #[clap(long)]
         rootfs: String,
+
+        /// Directory tree stacked on top of the rootfs, read only.
+        /// Given more than once, the layers are stacked in the
+        /// given order
+        #[clap(long = "layer", multiple_occurrences = true)]
+        layers: Vec<String>,
     },
-    /// Delete the mounts of a bubblewrap sandbox of the caller
+    /// Delete the overlay of a bubblewrap sandbox of the caller
     SandboxUmount {
         /// Name of the sandbox instance, e.g myapp@one
         #[clap(long)]
         instance: String,
+
+        /// Delete the writable layer of the instance as well, along
+        /// with everything written in its sandboxes
+        #[clap(long)]
+        discard: bool,
     },
     /// Create the meta data base directories of the pilots, as
     /// configured system wide

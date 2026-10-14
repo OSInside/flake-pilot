@@ -15,4 +15,8 @@ sandbox:
       - "--proc /proc"
       - "--tmpfs /tmp"
       - "--unshare-pid"
+      - "--unshare-ipc"
+      - "--unshare-uts"
+      - "--new-session"
       - "--die-with-parent"
+      - "--clearenv"

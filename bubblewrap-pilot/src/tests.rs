@@ -22,7 +22,7 @@
 // SOFTWARE.
 //
 use crate::bubblewrap::get_instance_name;
-use crate::bubblewrap::get_sandbox_options;
+use crate::bubblewrap::{get_engine_arguments, get_sandbox_options};
 use crate::config::config_from_str;
 use crate::overlay::{get_dir, get_user_dir};
 
@@ -30,18 +30,34 @@ use uzers::get_current_uid;
 
 use std::env;
 
-fn sandbox_options(
+fn sandbox_setup(
     options: Option<Vec<&str>>, workdir: &str
-) -> Vec<String> {
+) -> (Vec<String>, Vec<String>) {
     /*!
-    Provide the bwrap options of an instance named myapp
+    Provide the layers and the bwrap options of an instance named
+    myapp
 
     The root of the sandbox is the overlay mount of the rootfs
     on the host. All tests refer to the same one, thus they
     can set the variable which provides it in parallel
     !*/
     env::set_var("OVERLAYROOT", get_dir("myapp", "merged"));
-    get_sandbox_options("myapp", options, workdir).unwrap()
+    let (layers, engine_arguments) = get_engine_arguments(options).unwrap();
+    (
+        layers,
+        get_sandbox_options(
+            &get_dir("myapp", "merged"), engine_arguments, workdir
+        )
+    )
+}
+
+fn sandbox_options(
+    options: Option<Vec<&str>>, workdir: &str
+) -> Vec<String> {
+    /*!
+    Provide the bwrap options of an instance named myapp
+    !*/
+    sandbox_setup(options, workdir).1
 }
 
 fn options(arguments: &[&str]) -> Vec<String> {
@@ -56,15 +72,10 @@ fn sandbox_root_options() -> Vec<String> {
     /*!
     Provide the bwrap options which mount the root of the
     sandbox. They are the first options of every sandbox and
-    refer to the directories of the overlay setup, which live
-    in the overlay directory of the calling user
+    bind the overlay of the rootfs writable, which lives in the
+    overlay directory of the calling user
     !*/
-    vec![
-        "--overlay-src".to_string(), get_dir("myapp", "merged"),
-        "--overlay".to_string(),
-        get_dir("myapp", "rw"), get_dir("myapp", "work"),
-        "/".to_string()
-    ]
+    vec!["--bind".to_string(), get_dir("myapp", "merged"), "/".to_string()]
 }
 
 #[test]
@@ -152,10 +163,25 @@ fn test_default_sandbox_options() {
         "--proc", "/proc",
         "--tmpfs", "/tmp",
         "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--new-session",
         "--die-with-parent",
-        "--chdir", "/"
+        "--clearenv"
     ]));
-    assert_eq!(expected, sandbox_options(None, "/"));
+    // the environment is cleared, only the variables of the allow
+    // list which are set for the caller are set again
+    for name in ["PATH", "HOME", "USER", "LOGNAME", "TERM", "LANG", "LC_ALL", "TZ"] {
+        if let Ok(value) = env::var(name) {
+            expected.extend(options(&["--setenv", name, &value]));
+        }
+    }
+    expected.extend(options(&["--chdir", "/"]));
+    let (layers, sandbox_options) = sandbox_setup(None, "/");
+    assert!(layers.is_empty());
+    assert_eq!(expected, sandbox_options);
+    // a variable of the caller outside of the allow list is not set
+    assert!(! sandbox_options.iter().any(|option| option == "OVERLAYROOT"));
 }
 
 #[test]
@@ -182,53 +208,61 @@ fn test_configured_sandbox_options() {
 }
 
 #[test]
-fn test_configured_overlay_sources() {
-    // a source configured for the root of the sandbox is stacked
-    // on top of the overlay of the rootfs. The sources have to be
-    // given before the mount they belong to, they are therefore
-    // moved in front of it, in the configured order
-    let mut expected = vec![
-        "--overlay-src".to_string(), get_dir("myapp", "merged"),
-        "--overlay-src".to_string(), "/data/one".to_string(),
-        "--overlay-src".to_string(), "/data/two".to_string(),
-        "--overlay".to_string(),
-        get_dir("myapp", "rw"), get_dir("myapp", "work"),
-        "/".to_string()
-    ];
-    expected.extend(options(&["--unshare-all", "--chdir", "/"]));
-    assert_eq!(
-        expected,
-        sandbox_options(
-            Some(vec![
-                "--overlay-src /data/one",
-                "--unshare-all",
-                "--overlay-src /data/two"
-            ]),
-            "/"
-        )
+fn test_cleared_environment_of_configured_options() {
+    // a configuration which clears the environment gets the allow
+    // list as well, a variable it sets itself is kept as configured.
+    // The environment is only read, other tests run in parallel
+    let cleared = sandbox_options(
+        Some(vec!["--clearenv", "--setenv HOME /home/sandbox"]), "/"
+    );
+    let setenv: Vec<(&str, &str)> = cleared.windows(3)
+        .filter(|args| args[0] == "--setenv")
+        .map(|args| (args[1].as_str(), args[2].as_str()))
+        .collect();
+    assert!(setenv.contains(&("HOME", "/home/sandbox")));
+    assert_eq!(1, setenv.iter().filter(|(name, _)| *name == "HOME").count());
+    if let Ok(path) = env::var("PATH") {
+        assert!(setenv.contains(&("PATH", path.as_str())));
+    }
+    // without --clearenv the environment of the caller is used and
+    // nothing is set
+    assert!(
+        ! sandbox_options(Some(vec!["--unshare-pid"]), "/")
+            .iter().any(|option| option == "--setenv")
     );
 }
 
 #[test]
-fn test_overlay_source_configured_without_its_value() {
-    // an option can be configured in an entry of its own. The
-    // source which follows it is sorted to the top of the list
-    // together with the option it belongs to
-    let mut expected = vec![
-        "--overlay-src".to_string(), get_dir("myapp", "merged"),
-        "--overlay-src".to_string(), "/data/one".to_string(),
-        "--overlay".to_string(),
-        get_dir("myapp", "rw"), get_dir("myapp", "work"),
-        "/".to_string()
-    ];
+fn test_configured_overlay_sources() {
+    // a source configured for the root of the sandbox is a layer
+    // stacked on top of the rootfs, in the configured order. The
+    // layers are part of the overlay on the host and are not
+    // passed to bwrap
+    let mut expected = sandbox_root_options();
     expected.extend(options(&["--unshare-all", "--chdir", "/"]));
-    assert_eq!(
-        expected,
-        sandbox_options(
-            Some(vec!["--unshare-all", "--overlay-src", "/data/one"]),
-            "/"
-        )
+    let (layers, sandbox_options) = sandbox_setup(
+        Some(vec![
+            "--overlay-src /data/one",
+            "--unshare-all",
+            "--overlay-src /data/two"
+        ]),
+        "/"
     );
+    assert_eq!(options(&["/data/one", "/data/two"]), layers);
+    assert_eq!(expected, sandbox_options);
+}
+
+#[test]
+fn test_overlay_source_configured_without_its_value() {
+    // an option can be configured in an entry of its own, the
+    // source which follows it is the layer
+    let mut expected = sandbox_root_options();
+    expected.extend(options(&["--unshare-all", "--chdir", "/"]));
+    let (layers, sandbox_options) = sandbox_setup(
+        Some(vec!["--unshare-all", "--overlay-src", "/data/one"]), "/"
+    );
+    assert_eq!(options(&["/data/one"]), layers);
+    assert_eq!(expected, sandbox_options);
 }
 
 #[test]

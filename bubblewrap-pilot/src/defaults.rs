@@ -32,12 +32,15 @@ pub const SANDBOX_ID_EXTENSION: &str = "bwrapid";
 // Contents of the meta data file of an instance which was
 // created but is not started yet
 pub const SANDBOX_NOT_STARTED: &str = "0";
-// Options which mount the root filesystem of the sandbox. The
-// root is the overlay of the rootfs created on the host. It is
-// provided to bwrap as the read only layer of another overlay
-// which makes the root writable inside of the sandbox
+// Option which mounts the root filesystem of the sandbox. The root
+// is the overlay of the rootfs created on the host, it is writable
+// and keeps what is written to it in the tmpfs of the instance
+pub const BWRAP_BIND_OPTION: &str = "--bind";
+// Option which stacks another layer on top of the rootfs. A flake
+// can configure it to add layers to the root of the sandbox. The
+// layers are part of the overlay created on the host and are not
+// passed to bwrap
 pub const BWRAP_OVERLAY_SRC_OPTION: &str = "--overlay-src";
-pub const BWRAP_OVERLAY_OPTION: &str = "--overlay";
 // Option which selects the working directory in the sandbox
 pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
 // Mount point of the root filesystem of the sandbox
@@ -55,8 +58,13 @@ pub use flakes::defaults::{
     OVERLAY_TMPFS_NAME, OVERLAY_RW_NAME, OVERLAY_WORK_NAME,
     OVERLAY_UPPER_NAME
 };
-// Permissions of the directories of the overlay setup
-pub const OVERLAY_DIR_MODE: &str = "755";
+// Permissions of the directories of the overlay setup. Nobody but
+// the user of the sandbox has access to them
+pub const OVERLAY_DIR_MODE: &str = "700";
+// Pilot option which discards the writable layer of the instance
+// when the sandbox ends. Without it the layer is kept for the next
+// sandbox of the instance until the host is rebooted
+pub const PILOT_DISCARD_OPTION: &str = "%discard";
 // Pilot option which selects the working directory of the
 // application in the sandbox
 pub const PILOT_CHDIR_OPTION: &str = "%chdir";
@@ -64,11 +72,27 @@ pub const PILOT_CHDIR_OPTION: &str = "%chdir";
 // configuration nor the caller provides one
 pub const SANDBOX_WORKDIR: &str = "/";
 // Options used to create the sandbox if the flake
-// configuration provides none
-pub const BWRAP_OPTIONS: [&str; 5] = [
+// configuration provides none. The application runs in a session
+// of its own, which keeps it from injecting input into the terminal
+// of the caller, with its own IPC and host name namespace and with
+// an environment of its own, see SANDBOX_ENVIRONMENT
+pub const BWRAP_OPTIONS: [&str; 9] = [
     "--dev /dev",
     "--proc /proc",
     "--tmpfs /tmp",
     "--unshare-pid",
-    "--die-with-parent"
+    "--unshare-ipc",
+    "--unshare-uts",
+    "--new-session",
+    "--die-with-parent",
+    "--clearenv"
 ];
+// Environment variables of the caller the application gets in an
+// environment cleared by --clearenv, unless the flake sets them
+// itself with --setenv. A variable which is not set for the caller
+// is not set either
+pub const SANDBOX_ENVIRONMENT: [&str; 8] = [
+    "PATH", "HOME", "USER", "LOGNAME", "TERM", "LANG", "LC_ALL", "TZ"
+];
+pub const BWRAP_CLEARENV_OPTION: &str = "--clearenv";
+pub const BWRAP_SETENV_OPTION: &str = "--setenv";

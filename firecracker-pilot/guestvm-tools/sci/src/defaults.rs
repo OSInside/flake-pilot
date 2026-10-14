@@ -69,6 +69,9 @@ pub const TERM_RESIZE_PORT: u32 = 53;
 pub const TERM_CONSOLE_PORT: u32 = 0;
 pub const VM_PORT: u32 = 52;
 pub const GUEST_CID: u32 = 3;
+// The host is the only vsock peer sci accepts connections from
+// and the one it connects back to
+pub const HOST_CID: u32 = libc::VMADDR_CID_HOST;
 pub const RETRIES: u32 =
     60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =

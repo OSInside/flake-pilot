@@ -38,7 +38,7 @@ use std::fs;
 use sys_mount::{Mount, MountFlags};
 use env_logger::Env;
 use std::{thread, time};
-use vsock::{VsockListener, VsockStream};
+use vsock::{VsockAddr, VsockListener, VsockStream};
 use std::io::Read;
 use std::net::Shutdown;
 use std::os::fd::AsRawFd;
@@ -360,6 +360,14 @@ fn main() {
                     ok = true;
                     match listener.accept() {
                         Ok((mut stream, addr)) => {
+                            if ! is_host_peer(&addr) {
+                                debug(&format!(
+                                    "Refused connection from non-host peer: {}:{}",
+                                    addr.cid(), addr.port()
+                                ));
+                                let _ = stream.shutdown(Shutdown::Both);
+                                continue
+                            }
                             // read command string from incoming connection
                             debug(&format!(
                                 "Accepted incoming connection from: {}:{}",
@@ -442,7 +450,7 @@ fn main() {
                                             break
                                         }
                                         match VsockStream::connect_with_cid_port(
-                                            2, exec_port_num
+                                            defaults::HOST_CID, exec_port_num
                                         ) {
                                             Ok(vsock_stream) => {
                                                 redirect_command(
@@ -549,6 +557,18 @@ fn load_vhost_transport() {
     }
 }
 
+fn is_host_peer(peer: &VsockAddr) -> bool {
+    /*!
+    Tell whether the given vsock peer is the host
+
+    Commands and window size changes are only accepted from the
+    pilot on the host. A process inside of the guest could reach
+    the listeners as well, e.g through the local CID, and would
+    otherwise be able to run commands with the privileges of sci
+    !*/
+    peer.cid() == defaults::HOST_CID
+}
+
 fn start_terminal_resize_listener() {
     /*!
     Start listening for window size changes of the caller
@@ -574,6 +594,16 @@ fn start_terminal_resize_listener() {
                 for connection in listener.incoming() {
                     match connection {
                         Ok(mut stream) => {
+                            match stream.peer_addr() {
+                                Ok(addr) if is_host_peer(&addr) => { },
+                                peer => {
+                                    debug(&format!(
+                                        "Refused resize connection from non-host peer: {peer:?}"
+                                    ));
+                                    let _ = stream.shutdown(Shutdown::Both);
+                                    continue
+                                }
+                            }
                             // A request is a single line and the
                             // connection ends with it. Don't wait
                             // for a caller which does not send it
@@ -1768,10 +1798,21 @@ fn setup_logger() {
 
 #[cfg(test)]
 mod tests {
+    use super::is_host_peer;
+    use vsock::VsockAddr;
     use super::get_nfs_volume;
     use super::get_mount_args;
     use sys_mount::MountFlags;
     use super::get_resize_request;
+
+    #[test]
+    fn test_is_host_peer() {
+        assert!(is_host_peer(&VsockAddr::new(2, 1024)));
+        // any, hypervisor, local and the guest itself
+        for cid in [u32::MAX, 0, 1, 3] {
+            assert!(! is_host_peer(&VsockAddr::new(cid, 1024)), "{}", cid);
+        }
+    }
 
     #[test]
     fn test_get_resize_request() {

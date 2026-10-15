@@ -57,6 +57,15 @@ and replace the private directories of all other users. A
 directory which is set up differently is reported as an error,
 along with the call to fix it.
 
+The private directory of a user is named after the ID of that
+user, e.g /tmp/flakes/1000. As the parent meta data directory is writable
+for everybody, another user can create it first, or a symbolic link
+or file in its place, which keeps the pilots of that user from
+running. Such an entry is reported along with the user who owns it
+and the call to remove it, which only root can do. Called as root
+the command reports all of them, called by a user only the one of
+that user. The pilots report it when they refuse to run.
+
 The pilots do not create a meta data directory and refuse to run
 if it does not exist or is set up differently. The flake-pilot
 package lets systemd-tmpfiles create the default meta data

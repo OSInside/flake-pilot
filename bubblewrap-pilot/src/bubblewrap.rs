@@ -198,7 +198,8 @@ pub fn start(
     };
 
     let overlay_root = match overlay::mount(
-        &instance, config().sandbox.name, &layers, get_sandbox_user()
+        &instance, config().sandbox.name, &layers,
+        get_tmpfs_size().as_deref(), get_sandbox_user()
     ) {
         Ok(overlay_root) => overlay_root,
         Err(error) => {
@@ -442,6 +443,18 @@ fn get_sandbox_workdir() -> String {
         Some(workdir) if ! workdir.is_empty() => workdir.to_string(),
         _ => defaults::SANDBOX_WORKDIR.to_string()
     }
+}
+
+fn get_tmpfs_size() -> Option<String> {
+    /*!
+    Provide the size of the tmpfs which keeps the writable layer of
+    the instance, as requested with the %tmpfs_size pilot option.
+    Without it the limit configured system wide applies, if any
+    !*/
+    Lookup::get_pilot_run_options(config().pilot_options())
+        .get(defaults::PILOT_TMPFS_SIZE_OPTION)
+        .filter(|size| ! size.is_empty())
+        .cloned()
 }
 
 fn discard_requested() -> bool {

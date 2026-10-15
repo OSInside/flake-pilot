@@ -154,6 +154,13 @@ pub enum Commands {
         /// given order
         #[clap(long = "layer", multiple_occurrences = true)]
         layers: Vec<String>,
+
+        /// Size of the tmpfs which keeps the writable layer, e.g 2G or
+        /// 25%. It must not exceed the limit configured as
+        /// sandbox_tmpfs_size in /etc/flakes.yml, which is the
+        /// default size
+        #[clap(long)]
+        size: Option<String>,
     },
     /// Delete the overlay of a bubblewrap sandbox of the caller
     SandboxUmount {

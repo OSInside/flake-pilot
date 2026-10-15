@@ -21,7 +21,7 @@ SYNOPSIS
        network-disconnect --config-file <FILE> [--instance <NAME>] [--uid <UID>]
        volume-export --path <PATH> --config-file <FILE> [--instance <NAME>]
        volume-release --path <PATH> [--config-file <FILE> [--instance <NAME>]]
-       sandbox-mount --instance <NAME> --rootfs <DIR> [--layer <DIR>]...
+       sandbox-mount --instance <NAME> --rootfs <DIR> [--layer <DIR>]... [--size <SIZE>]
        sandbox-umount --instance <NAME> [--discard]
        podman-pilot --app <PATH> [--term <TERM>] -- [ARGS]...
        meta-dirs-init
@@ -106,7 +106,9 @@ sandbox-mount, sandbox-umount
   are derived from the caller and the instance name. The mounts are
   created nosuid and nodev, without following a symbolic link. The
   tmpfs is kept for the next sandbox of the instance, **--discard**
-  deletes it. Called by **bubblewrap-pilot**\(8)
+  deletes it. Its size is **--size**, which must not exceed the
+  sandbox_tmpfs_size limit of /etc/flakes.yml, or the limit itself.
+  A kept tmpfs is resized. Called by **bubblewrap-pilot**\(8)
 
 podman-pilot
   Run a podman flake registered system wide for the caller. The

@@ -135,6 +135,21 @@ pub fn get_bubblewrap_ids_dir(user: bool) -> String {
     }
 }
 
+pub fn get_sandbox_tmpfs_size() -> Option<String> {
+    /*!
+    Provide the size limit of the tmpfs which keeps the writable
+    layer of a bubblewrap sandbox
+
+    The limit is only read from the system wide configuration,
+    which belongs to root. It is the default size of the tmpfs and
+    the maximum size a flake may request, enforced by the helper
+    which mounts it. Without a limit the tmpfs gets the default
+    size of the kernel, half of the memory of the host
+    !*/
+    let GenericData { sandbox_tmpfs_size, .. } = &flakes_config(false).generic;
+    sandbox_tmpfs_size.clone()
+}
+
 fn flakes_config(user: bool) -> &'static FlakesConfig {
     if user {
         &FLAKES_CONFIG_USER
@@ -202,7 +217,8 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
                 podman_ids_dir: None::<String>,
                 firecracker_ids_dir: None::<String>,
                 bubblewrap_ids_dir: None::<String>,
-                podman_storage_conf: None::<String>
+                podman_storage_conf: None::<String>,
+                sandbox_tmpfs_size: None::<String>
             }
         }
     }
@@ -258,5 +274,9 @@ struct GenericData {
     bubblewrap_ids_dir: Option<String>,
 
     /// Container storage conf for podman pilot
-    podman_storage_conf: Option<String>
+    podman_storage_conf: Option<String>,
+
+    /// Size limit of the tmpfs which keeps the writable layer of a
+    /// bubblewrap sandbox, in the notation of the tmpfs size option
+    sandbox_tmpfs_size: Option<String>
 }

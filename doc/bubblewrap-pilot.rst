@@ -207,6 +207,12 @@ application is called with the **%discard** option, see OPTIONS. To
 start an instance from the unmodified rootfs every time, register
 the flake with **%discard** as pilot option.
 
+The size of the tmpfs is limited by the **sandbox_tmpfs_size**
+setting in `/etc/flakes.yml`, which only root can write. It is the
+size of every tmpfs and the largest size a flake can request with
+the **%tmpfs_size** option, see OPTIONS. Without the setting the
+kernel default applies, half of the memory of the host.
+
 Former versions kept the written data on disk, in the directories
 `myapp@one_rw` and `myapp@one_work` next to the ones above. They are
 not used anymore and are deleted along with the tmpfs when the
@@ -305,6 +311,17 @@ OPTIONS
   former versions kept the written data in on disk are deleted as
   well. Configured as pilot option of the flake, every call starts
   from the unmodified rootfs
+
+%tmpfs_size:SIZE
+
+  Limit the tmpfs which keeps the writable layer of the instance to
+  the given size: a number of bytes with an optional k, m, g or t
+  suffix, e.g 512M, or a percentage of the memory of the host, e.g
+  10%. The size must not exceed the **sandbox_tmpfs_size** limit of
+  `/etc/flakes.yml`, the limit is the default. A tmpfs kept from a
+  former call is resized. This fails if it holds more data than the
+  new size allows, the instance has to be called with **%discard**
+  then
 
 DEBUGGING
 ---------

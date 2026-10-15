@@ -152,6 +152,41 @@ pub fn terminal_type(term: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn tmpfs_size(size: &str, memory: u64) -> Result<u64, String> {
+    /*!
+    Check a size in the notation of the size option of tmpfs and
+    provide it in bytes. The size is a number with an optional k, m,
+    g or t suffix, or a percentage of the given memory of the host.
+    A size of 0 is refused, tmpfs takes it as no limit at all
+    !*/
+    let invalid = || format!(
+        "Invalid tmpfs size {size:?}: expected a number with an optional \
+        k, m, g or t suffix, or a percentage of the memory, e.g 2G or 25%"
+    );
+    if let Some(percent) = size.strip_suffix('%') {
+        let percent: u64 = percent.parse().map_err(|_| invalid())?;
+        if percent == 0 || percent > 100 {
+            return Err(invalid())
+        }
+        return Ok((u128::from(memory) * u128::from(percent) / 100) as u64)
+    }
+    let (number, factor): (&str, u64) = match size.chars().last() {
+        Some('k' | 'K') => (&size[..size.len() - 1], 1 << 10),
+        Some('m' | 'M') => (&size[..size.len() - 1], 1 << 20),
+        Some('g' | 'G') => (&size[..size.len() - 1], 1 << 30),
+        Some('t' | 'T') => (&size[..size.len() - 1], 1 << 40),
+        _ => (size, 1)
+    };
+    if number.is_empty() || ! number.chars().all(|c| c.is_ascii_digit()) {
+        return Err(invalid())
+    }
+    let value: u64 = number.parse().map_err(|_| invalid())?;
+    if value == 0 {
+        return Err(invalid())
+    }
+    value.checked_mul(factor).ok_or_else(invalid)
+}
+
 // FlakeConfig is the flake configuration of an application the
 // caller may act on
 #[derive(Debug, PartialEq)]
@@ -315,6 +350,21 @@ mod tests {
         assert!(interface_name("..").is_err());
         assert!(interface_name("eth0/../lo").is_err());
         assert!(interface_name("averyverylongname").is_err());
+    }
+
+    #[test]
+    fn test_tmpfs_size() {
+        let memory = 8 << 30;
+        assert_eq!(Ok(2 << 30), tmpfs_size("2G", memory));
+        assert_eq!(Ok(512 << 20), tmpfs_size("512m", memory));
+        assert_eq!(Ok(4096), tmpfs_size("4k", memory));
+        assert_eq!(Ok(1000), tmpfs_size("1000", memory));
+        assert_eq!(Ok(2 << 30), tmpfs_size("25%", memory));
+        // tmpfs takes 0 as no limit at all
+        for size in ["0", "0G", "0%", "", "G", "101%", "2x", "-1G", "2 G", "1.5G"] {
+            assert!(tmpfs_size(size, memory).is_err(), "{:?}", size);
+        }
+        assert!(tmpfs_size("99999999999T", memory).is_err());
     }
 
     #[test]

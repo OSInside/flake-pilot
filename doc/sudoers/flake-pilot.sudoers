@@ -40,7 +40,8 @@
 #     read, the overlay grants no access the user does not have on
 #     the trees themselves. The writable layer is a tmpfs, kept
 #     until the user discards it or the host is rebooted, which uses
-#     memory of the host meanwhile.
+#     memory of the host meanwhile. Set sandbox_tmpfs_size in
+#     /etc/flakes.yml to limit it, users can only ask for less.
 #
 #   * Run the podman flakes registered system wide, as root, in the
 #     podman setup of root. The container and its runtime options

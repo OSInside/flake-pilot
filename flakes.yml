@@ -4,3 +4,8 @@ generic:
   firecracker_ids_dir: /tmp/flakes
   bubblewrap_ids_dir: /tmp/flakes
   podman_storage_conf: /etc/flakes/storage.conf
+  # Size limit of the tmpfs which keeps what is written in a
+  # bubblewrap sandbox, e.g 2G or 25%. It is the default size and
+  # the maximum a flake may request with the %tmpfs_size option.
+  # Without it the tmpfs may use up to half of the memory
+  # sandbox_tmpfs_size: 2G

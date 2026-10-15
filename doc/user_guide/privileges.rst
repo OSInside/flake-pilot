@@ -83,7 +83,9 @@ The root filesystem of a bubblewrap sandbox
   through the overlay is checked against their own permissions. The
   writable layer is a tmpfs of the caller which is kept until the
   caller discards it or the host is rebooted, it uses memory of the
-  host meanwhile. See :ref:`sandbox-apps`.
+  host meanwhile. Its size is limited by ``sandbox_tmpfs_size`` in
+  ``/etc/flakes.yml``, a caller can only ask for less. See
+  :ref:`sandbox-apps`.
 
 System wide podman flakes
   The application has to be a link to ``podman-pilot`` which belongs

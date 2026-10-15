@@ -34,7 +34,8 @@ use std::fs;
 use std::process::Command;
 
 pub fn mount(
-    instance: &str, rootfs: &str, layers: &[String], user: User
+    instance: &str, rootfs: &str, layers: &[String], size: Option<&str>,
+    user: User
 ) -> Result<String, FlakeError> {
     /*!
     Provide the root filesystem of the sandbox as overlay mount
@@ -82,6 +83,11 @@ pub fn mount(
     call.arg("--instance").arg(instance).arg("--rootfs").arg(rootfs);
     for layer in layers {
         call.arg("--layer").arg(layer);
+    }
+    // The size of the tmpfs, which the helper checks against the
+    // limit configured system wide
+    if let Some(size) = size {
+        call.arg("--size").arg(size);
     }
     run_helper(&mut call)?;
     Ok(get_dir(instance, defaults::OVERLAY_MERGED_NAME))

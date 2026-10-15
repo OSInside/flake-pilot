@@ -29,12 +29,7 @@ Packager:       Marcus Schaefer <marcus.schaefer@suse.com>
 Group:          System/Management
 URL:            https://github.com/OSInside/flake-pilot
 Source0:        %{name}.tar.gz
-Source1:        cargo_config
 Source2:        %{name}-rpmlintrc
-Source3:        systemd-tmpfiles-flake-pilot.conf
-# SUSE-specific source additions (1001+)
-Source1001:     systemd-tmpfiles-firecracker-for-suse.conf
-Source1002:     systemd-tmpfiles-podman-for-suse.conf
 %if 0%{?debian} || 0%{?ubuntu}
 Requires:       golang-github-containers-common
 %endif
@@ -64,6 +59,16 @@ BuildRequires:  rust-all
 %endif
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 %{!?_tmpfilesdir:%global _tmpfilesdir %{_prefix}/lib/tmpfiles.d}
+%global sci_static no
+%ifnarch ppc64le
+%if 0%{?fedora} || (0%{?suse_version} && 0%{?suse_version} >= 1600)
+%global sci_static yes
+%endif
+%endif
+%global tmpfiles_statedirs no
+%if 0%{?suse_version} >= 1600
+%global tmpfiles_statedirs yes
+%endif
 
 %description
 Run flake applications using a symlink structure pointing
@@ -143,46 +148,13 @@ Guest VM tools to help with firecracker workloads
 %setup -q -n flake-pilot
 
 %build
-mkdir -p .cargo
-cp %{SOURCE1} .cargo/config.toml
-make build
-%ifnarch ppc64le
-%if 0%{?fedora} || (0%{?suse_version} && 0%{?suse_version} >= 1600)
-make compile_sci_static
-%endif
-%endif
+make SCI_STATIC=%{sci_static} build
 
 %install
-make DESTDIR=%{buildroot}/ install
-
-test -f target/*-unknown-linux-gnu/static/sci && \
-make DESTDIR=%{buildroot}/ install_sci_static || \
-make DESTDIR=%{buildroot}/ install_sci
-
-mkdir -p %{buildroot}/overlayroot
-
-# The meta data directory shared by the pilots of all users is
-# created at boot, see the comment in the file
-install -D -m 644 %{SOURCE3} %{buildroot}%{_tmpfilesdir}/flake-pilot.conf
-
-%if 0%{?suse_version} >= 1600
-install -D -m 644 %{SOURCE1001} %{buildroot}%{_tmpfilesdir}/flake-pilot-firecracker.conf
-install -D -m 644 %{SOURCE1002} %{buildroot}%{_tmpfilesdir}/flake-pilot-podman.conf
-%else
-mkdir -p %{buildroot}/var/lib/firecracker/images
-mkdir -p %{buildroot}/var/lib/firecracker/storage
-mkdir -p %{buildroot}/var/lib/podman/storage
-%endif
-
-mkdir -p %{buildroot}/etc/dracut.conf.d
-mkdir -p %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
-cp -a firecracker-pilot/dracut/usr/lib/dracut/modules.d/80netstart/* \
-    %{buildroot}%{_prefix}/lib/dracut/modules.d/80netstart
-install -m 644 firecracker-pilot/dracut/etc/dracut.conf.d/extramodules.conf \
-    %{buildroot}/etc/dracut.conf.d/extramodules.conf
-
-mkdir -p %{buildroot}/etc
-install -m 644 flakes.yml %{buildroot}/etc/flakes.yml
+make DESTDIR=%{buildroot}/ \
+    TMPFILESDIR=%{_tmpfilesdir} \
+    TMPFILES_STATEDIRS=%{tmpfiles_statedirs} \
+    install
 
 # After 3.1.37 the organization and permission handling of state files
 # has changed. Handle the transition

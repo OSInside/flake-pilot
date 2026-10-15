@@ -17,9 +17,10 @@ tree on the host, so the application sees the libraries and the
 tooling of that tree instead of the ones installed on the host. The
 tree is mounted as the read only layer of an overlay, thus the
 application can write anywhere in its root filesystem without the tree
-on the host being modified. The data written this way is stored on
-disk, separately for every instance of the application, and is still
-there on the next call, see :ref:`sandbox-written-data`.
+on the host being modified. The data written this way is kept in
+memory, separately for every instance of the application, and is still
+there on the next call until it is discarded or the host is rebooted,
+see :ref:`sandbox-written-data`.
 
 Unlike the other engines this one has no image registry. There is
 nothing to pull and nothing to delete, the registration refers to the
@@ -65,9 +66,9 @@ the bash shell on the host itself. Everything looks familiar, ``ls``,
 the home directory and the installed tooling are all there, and a
 write anywhere in the tree succeeds but lands in the overlay of the
 sandbox. Installing a package or deleting a file leaves the host as
-it is. The change is kept in the overlay on disk though, and it is
-still in place when ``protected-shell`` is called again, see
-:ref:`sandbox-written-data`.
+it is. The change is kept in the overlay though, and it is still in
+place when ``protected-shell`` is called again, until it is
+discarded, see :ref:`sandbox-written-data`.
 
 This is useful to try out a command which is supposed to modify the
 system, or to hand a directory to a program which should read it but
@@ -148,23 +149,32 @@ the sandbox:
 
 .. code-block:: bash
 
-   --dev /dev --proc /proc --tmpfs /tmp --unshare-pid --die-with-parent
+   --dev /dev --proc /proc --tmpfs /tmp --unshare-pid --unshare-ipc
+   --unshare-uts --new-session --die-with-parent --clearenv
 
-They provide the pseudo filesystems, a writable ``/tmp``, a private
-process ID namespace and the termination of the sandbox together with
-the pilot. All of them are written to the flake configuration and can
-be changed there like any other setting, see :ref:`application-setup`.
+They provide the pseudo filesystems, a writable ``/tmp``, private
+process ID, IPC and host name namespaces and the termination of the
+sandbox together with the pilot. The application runs in a session of
+its own and can therefore not inject input into your terminal. As a
+consequence an interactive shell in the sandbox has no job control.
+The environment of the application is cleared, only ``PATH``,
+``HOME``, ``USER``, ``LOGNAME``, ``TERM``, ``LANG``, ``LC_ALL`` and
+``TZ`` are set again with your values. A variable you set with a
+``--setenv`` option of your own keeps that value, any other variable
+the application needs has to be given that way. All of the options
+are written to the flake configuration and can be changed there like
+any other setting, see :ref:`application-setup`.
 
-The options which mount the root filesystem of the sandbox are not
-part of that list. They are always added by the launcher, ahead of
-every other option, because they refer to the overlay it creates for
-the called instance. The root of the sandbox as it exists on the host
-is available to the other options as ``%OVERLAYROOT``.
+The option which mounts the root filesystem of the sandbox is not
+part of that list. It is always added by the launcher, ahead of every
+other option, because it refers to the overlay it creates for the
+called instance. The root of the sandbox as it exists on the host is
+available to the other options as ``%OVERLAYROOT``.
 
 An ``--overlay-src`` option of your own adds a directory to that
 root instead of mounting it at a path of its own. Such an option is
-moved in front of the mount of the root, where ``bwrap`` expects the
-sources of an overlay, and is stacked on top of the rootfs:
+not passed to ``bwrap``, the directory becomes a layer of the overlay
+created on the host and is stacked on top of the rootfs:
 
 .. code-block:: bash
 
@@ -189,40 +199,48 @@ Where Written Data Is Kept
 ==========================
 
 The overlay of the tree is created below ``/var/tmp``, in a directory
-named after the ID of the calling user. Everything the application
-writes to its root filesystem ends up in the ``rw`` directory of its
-instance, e.g for the ``leapshell`` app of the user with the ID
-``1000``:
+named after the ID of the calling user, e.g ``/var/tmp/bwrap_1000``.
+Only that user has access to it. Everything the application writes
+to its root filesystem ends up in a tmpfs of its instance, nothing of
+it is written to disk:
 
 .. code-block:: text
 
-   /var/tmp/bwrap_1000/leapshell_rw
+   /var/tmp/bwrap_1000/leapshell_overlay
 
-This is a directory on disk. It is neither deleted when the
-application terminates nor when the flake is removed, and the next
+The tmpfs is not deleted when the application terminates. The next
 call of the same instance starts with the root filesystem as the
 former call has left it. An application called with an ``@NAME``
-selector, e.g ``leapshell @one``, uses directories of its own, e.g
-``leapshell@one_rw``.
+selector, e.g ``leapshell @one``, uses a tmpfs of its own, e.g
+``leapshell@one_overlay``.
 
 There are two exceptions. Data written below ``/tmp`` with the
 default options is kept in a tmpfs created by ``bwrap`` and is gone
 when the application terminates. Data written to a path which is
 bound writable from the host changes that path on the host.
 
-The directories are created with the permissions ``755``. Other users
-of the host can therefore read the data written inside of the
-sandbox, as far as the permissions of the files themselves allow.
-Keep this in mind before handing secrets to a sandbox app.
-
-Only an age based cleanup of ``/var/tmp``, if the host is configured
-for one, e.g by ``systemd-tmpfiles``, removes the directories. To
-start from the unmodified tree again, delete the ``rw`` and the
-``work`` directory of the instance while it is not running:
+The tmpfs uses memory of the host for as long as it exists. A reboot
+of the host deletes it, and so does a call of the application with
+the ``%discard`` pilot option. The written data is then discarded when
+the application terminates, and the next call starts from the
+unmodified tree again:
 
 .. code-block:: bash
 
-   rm -rf /var/tmp/bwrap_1000/leapshell_rw /var/tmp/bwrap_1000/leapshell_work
+   leapshell %discard
+
+Registered as pilot option, ``%discard`` lets every call start from
+the unmodified tree:
+
+.. code-block:: bash
+
+   flake-ctl bubblewrap register --rootfs ~/.local/share/rootfs/leap \
+       --app $HOME/bin/leapshell --target /bin/bash \
+       --pilot-option "%discard"
+
+Former versions kept the written data on disk, in the directories
+``leapshell_rw`` and ``leapshell_work``. They are not used anymore.
+A call with ``%discard`` deletes them as well.
 
 Registration Options in Short
 =============================

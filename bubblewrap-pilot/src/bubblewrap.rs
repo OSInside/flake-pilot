@@ -174,13 +174,31 @@ pub fn start(
     Create the sandbox and call the application inside of it
 
     The root filesystem of the sandbox is provided as an overlay
-    of the rootfs on the host. It only exists as long as the
-    application and is deleted with it
+    of the rootfs on the host. The overlay only exists as long as
+    the application and is deleted with it. What the application
+    writes is kept in the tmpfs of the instance for the next
+    sandbox of the instance, unless the %discard pilot option is
+    given, see overlay::umount()
     !*/
     let instance = get_instance_name(program_name);
 
+    // The root of the sandbox is referenced as %OVERLAYROOT in
+    // the options which create it
+    env::set_var(
+        defaults::OVERLAY_ROOT_VAR,
+        overlay::get_dir(&instance, defaults::OVERLAY_MERGED_NAME)
+    );
+    let RuntimeSection { bubblewrap, .. } = config().runtime();
+    let (layers, engine_arguments) = match get_engine_arguments(bubblewrap) {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            delete_sandbox_id_file(sandbox_id_file);
+            return Err(error)
+        }
+    };
+
     let overlay_root = match overlay::mount(
-        &instance, config().sandbox.name, get_sandbox_user()
+        &instance, config().sandbox.name, &layers, get_sandbox_user()
     ) {
         Ok(overlay_root) => overlay_root,
         Err(error) => {
@@ -190,20 +208,20 @@ pub fn start(
             return Err(error)
         }
     };
-    // The root of the sandbox is referenced as %OVERLAYROOT in
-    // the options which create it
-    env::set_var(defaults::OVERLAY_ROOT_VAR, overlay_root);
 
-    let result = run_sandbox(program_name, sandbox_id_file, &instance);
+    let result = run_sandbox(
+        program_name, sandbox_id_file, &overlay_root, engine_arguments
+    );
 
     // The overlay of the rootfs exists as long as the sandbox
-    overlay::umount(&instance);
+    overlay::umount(&instance, discard_requested());
 
     result
 }
 
 fn run_sandbox(
-    program_name: &str, sandbox_id_file: &str, instance: &str
+    program_name: &str, sandbox_id_file: &str, overlay_root: &str,
+    engine_arguments: Vec<String>
 ) -> Result<ExitCode, FlakeError> {
     /*!
     Call the application in the sandbox
@@ -213,12 +231,10 @@ fn run_sandbox(
     flake is therefore the application running in the sandbox.
     Its exit code becomes the exit code of the pilot
     !*/
-    let RuntimeSection { bubblewrap, .. } = config().runtime();
-
     let mut call = Command::new(defaults::BWRAP_PATH);
     let sandbox_options = get_sandbox_options(
-        instance, bubblewrap, &get_sandbox_workdir()
-    )?;
+        overlay_root, engine_arguments, &get_sandbox_workdir()
+    );
     for option in sandbox_options {
         call.arg(option);
     }
@@ -266,28 +282,29 @@ pub fn get_target_app_path(program_name: &str) -> String {
     config().sandbox.target_app_path.unwrap_or(program_name).to_owned()
 }
 
-pub fn get_sandbox_options(
-    instance: &str, options: Option<Vec<&str>>, workdir: &str
-) -> Result<Vec<String>, FlakeError> {
+pub fn get_engine_arguments(
+    options: Option<Vec<&str>>
+) -> Result<(Vec<String>, Vec<String>), FlakeError> {
     /*!
-    Construct the bwrap options which create the sandbox
+    Read the bwrap options of the flake and provide the layers of
+    the root of the sandbox along with the other options
 
-    The root of the new root system is always the overlay of the
-    rootfs created on the host for the given instance. It is
-    mounted as another overlay, with the rw and the work
-    directory of the instance, which makes the root writable
-    inside of the sandbox. The overlay of the rootfs is the first
-    source of that mount. A flake which configures further
-    --overlay-src options stacks them on top of it, in the order
-    they are given, they are therefore sorted to the top of the
-    option list and end up in front of the mount. All other
-    options are added after it. If the flake configures no
-    options at all, a default setup which provides the standard
-    pseudo filesystems and a writable /tmp is used. A variable
-    reference in the format %NAME is replaced by the value of the
-    environment variable of that name. The given workdir is the
-    directory the application is called in, unless the flake
-    configures one
+    If the flake configures no options at all, a default setup is
+    used: the standard pseudo filesystems, a writable /tmp, the
+    application in namespaces and a session of its own, and a
+    cleared environment. A variable reference in the format %NAME
+    is replaced by the value of the environment variable of that
+    name.
+
+    With --clearenv, from the defaults or from the configuration,
+    the variables of the caller listed in SANDBOX_ENVIRONMENT are
+    set again, unless the configuration sets them with --setenv.
+
+    A source configured with --overlay-src is a layer stacked on
+    top of the rootfs, in the order the sources are given. The
+    layers are part of the overlay created on the host, see
+    overlay::mount(), they are provided apart from the options
+    which are passed to bwrap
     !*/
     let configured_options = options.unwrap_or_default();
     let engine_options = if configured_options.is_empty() {
@@ -295,7 +312,6 @@ pub fn get_sandbox_options(
     } else {
         configured_options
     };
-    let engine_options = sort_overlay_sources(engine_options);
 
     // An option can be configured together with its value(s) in
     // one entry, e.g "--ro-bind /etc /etc". bwrap expects them
@@ -305,37 +321,60 @@ pub fn get_sandbox_options(
         arguments.push(expand_variables(option)?);
     }
 
-    // The sources of the root of the sandbox. The overlay of the
-    // rootfs on the host is the lowest one of them, the sources
-    // configured by the flake are stacked on top of it. They are
-    // on top of the option list and are taken from it here, the
-    // mount they belong to is created after them
-    let mut sandbox_options = vec![
-        defaults::BWRAP_OVERLAY_SRC_OPTION.to_string(),
-        expand_variables(&format!("%{}", defaults::OVERLAY_ROOT_VAR))?
-    ];
+    let mut layers: Vec<String> = Vec::new();
     let mut engine_arguments: Vec<String> = Vec::new();
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         if argument == defaults::BWRAP_OVERLAY_SRC_OPTION {
-            sandbox_options.push(argument);
-            if let Some(source) = arguments.next() {
-                sandbox_options.push(source);
+            if let Some(layer) = arguments.next() {
+                layers.push(layer);
             }
         } else {
             engine_arguments.push(argument);
         }
     }
 
-    // Mount the sources as the root of the sandbox. The rw and the
-    // work directory of the instance keep everything written to it
-    sandbox_options.extend([
-        defaults::BWRAP_OVERLAY_OPTION.to_string(),
-        overlay::get_dir(instance, defaults::OVERLAY_RW_NAME),
-        overlay::get_dir(instance, defaults::OVERLAY_WORK_NAME),
+    // A cleared environment gets the variables of the allow list
+    // again. They are added after all other options and thus after
+    // --clearenv. Their values are passed on as they are and are
+    // not split
+    if engine_arguments.iter().any(|argument| argument == defaults::BWRAP_CLEARENV_OPTION) {
+        let configured: Vec<String> = engine_arguments.windows(2)
+            .filter(|pair| pair[0] == defaults::BWRAP_SETENV_OPTION)
+            .map(|pair| pair[1].clone())
+            .collect();
+        for name in defaults::SANDBOX_ENVIRONMENT {
+            if configured.iter().any(|configured| configured == name) {
+                continue
+            }
+            if let Some(value) = env::var_os(name) {
+                engine_arguments.push(defaults::BWRAP_SETENV_OPTION.to_string());
+                engine_arguments.push(name.to_string());
+                engine_arguments.push(value.to_string_lossy().to_string());
+            }
+        }
+    }
+    Ok((layers, engine_arguments))
+}
+
+pub fn get_sandbox_options(
+    overlay_root: &str, engine_arguments: Vec<String>, workdir: &str
+) -> Vec<String> {
+    /*!
+    Construct the bwrap options which create the sandbox
+
+    The root of the new root system is always the overlay of the
+    rootfs created on the host for the instance, mounted writable.
+    The other options, see get_engine_arguments(), are added after
+    it. The given workdir is the directory the application is
+    called in, unless the flake configures one
+    !*/
+    let mut sandbox_options = vec![
+        defaults::BWRAP_BIND_OPTION.to_string(),
+        overlay_root.to_string(),
         defaults::SANDBOX_ROOT.to_string()
-    ]);
-    sandbox_options.append(&mut engine_arguments);
+    ];
+    sandbox_options.extend(engine_arguments);
 
     // Without a directory to change into, bwrap keeps the working
     // directory of the caller. That directory usually does not
@@ -346,42 +385,7 @@ pub fn get_sandbox_options(
         sandbox_options.push(defaults::BWRAP_CHDIR_OPTION.to_string());
         sandbox_options.push(workdir.to_string());
     }
-    Ok(sandbox_options)
-}
-
-fn sort_overlay_sources(engine_options: Vec<&str>) -> Vec<&str> {
-    /*!
-    Sort the engine options such that all --overlay-src options
-    are on top of the list
-
-    bwrap reads the sources of an overlay before the mount they
-    belong to. An option which provides a source is therefore
-    moved to the top of the list. The order of the sources is
-    kept, they are stacked in exactly the order they are
-    configured. A source which is configured in an entry of its
-    own, next to the option it belongs to, is moved along with
-    that option. All other options keep their order as well
-    !*/
-    let mut sources: Vec<&str> = Vec::new();
-    let mut other_options: Vec<&str> = Vec::new();
-    let mut engine_options = engine_options.into_iter();
-    while let Some(option) = engine_options.next() {
-        let mut option_parts = option.split_whitespace();
-        if option_parts.next() != Some(defaults::BWRAP_OVERLAY_SRC_OPTION) {
-            other_options.push(option);
-            continue
-        }
-        sources.push(option);
-        if option_parts.next().is_none() {
-            // the option was configured without its value, the
-            // source is expected in the entry after it
-            if let Some(source) = engine_options.next() {
-                sources.push(source);
-            }
-        }
-    }
-    sources.extend(other_options);
-    sources
+    sandbox_options
 }
 
 fn expand_variables(option: &str) -> Result<String, FlakeError> {
@@ -438,6 +442,15 @@ fn get_sandbox_workdir() -> String {
         Some(workdir) if ! workdir.is_empty() => workdir.to_string(),
         _ => defaults::SANDBOX_WORKDIR.to_string()
     }
+}
+
+fn discard_requested() -> bool {
+    /*!
+    Check if the writable layer of the instance is discarded when
+    the sandbox ends, see the %discard pilot option
+    !*/
+    Lookup::get_pilot_run_options(config().pilot_options())
+        .contains_key(defaults::PILOT_DISCARD_OPTION)
 }
 
 pub fn sandbox_running(sandbox_id_file: &str) -> Result<bool, FlakeError> {

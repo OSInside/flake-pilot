@@ -84,14 +84,15 @@ OPTIONS
   Sandbox runtime option, and optional value, used to create the
   sandbox. This option can be specified multiple times. The
   options are added to the standard options of the sandbox which
-  provide the pseudo filesystems, a writable /tmp, a private
-  process ID namespace and the termination of the sandbox
-  together with the pilot. As the root filesystem of the sandbox
-  is an overlay of the given tree, this is the place to provide
-  the paths on the host the application needs in addition. Data
-  written to the root filesystem does not change the given tree,
-  it is stored on disk below /var/tmp/bwrap_USERID and is kept
-  across calls of the application, see the **bubblewrap-pilot**
+  provide the pseudo filesystems, a writable /tmp, private process
+  ID, IPC and host name namespaces, a session of its own, a cleared
+  environment and the termination of the sandbox together with the
+  pilot. As the root filesystem of the sandbox is an overlay of the
+  given tree, this is the place to provide the paths on the host the
+  application needs in addition. Data written to the root filesystem
+  does not change the given tree, it is kept in a tmpfs across calls
+  of the application until it is discarded with the %discard pilot
+  option or the host is rebooted, see the **bubblewrap-pilot**
   manual page. See the example section for further details. An option which starts with a
   dash has to be escaped with a backslash to not be read as an
   option of the register command itself. For details on bwrap

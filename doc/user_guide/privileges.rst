@@ -78,9 +78,12 @@ The root filesystem of a bubblewrap sandbox
   directories of the setup have to belong to the caller and are
   opened without following a symbolic link. The tmpfs and the
   overlay are mounted nosuid and nodev onto these opened directories.
-  The tree of the sandbox is the read only layer of the overlay,
-  access to its content through the overlay is checked against its
-  own permissions. See :ref:`sandbox-apps`.
+  The tree of the sandbox and the layers a flake stacks on top of it
+  are the read only layers of the overlay, access to their content
+  through the overlay is checked against their own permissions. The
+  writable layer is a tmpfs of the caller which is kept until the
+  caller discards it or the host is rebooted, it uses memory of the
+  host meanwhile. See :ref:`sandbox-apps`.
 
 System wide podman flakes
   The application has to be a link to ``podman-pilot`` which belongs

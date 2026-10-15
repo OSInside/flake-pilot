@@ -444,7 +444,7 @@ mod tests {
         assert!(read_template("firecracker-flake.yaml").vm.is_some());
         let sandbox = read_template("bubblewrap-flake.yaml").sandbox.unwrap();
         let runtime = sandbox.runtime.unwrap();
-        assert_eq!(5, runtime.bubblewrap.unwrap().len());
+        assert_eq!(9, runtime.bubblewrap.unwrap().len());
     }
 
     #[test]

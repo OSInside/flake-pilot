@@ -100,11 +100,11 @@ fn main() -> ExitCode {
                 &caller, path, config_file.as_deref(), instance.as_deref()
             )
         },
-        cli::Commands::SandboxMount { instance, rootfs } => {
-            sandbox::mount(&caller, instance, rootfs)
+        cli::Commands::SandboxMount { instance, rootfs, layers } => {
+            sandbox::mount(&caller, instance, rootfs, layers)
         },
-        cli::Commands::SandboxUmount { instance } => {
-            sandbox::umount(&caller, instance)
+        cli::Commands::SandboxUmount { instance, discard } => {
+            sandbox::umount(&caller, instance, *discard)
         },
         cli::Commands::PodmanPilot { app, term, args } => {
             podman::run_pilot(&caller, app, debug, term.as_deref(), args)

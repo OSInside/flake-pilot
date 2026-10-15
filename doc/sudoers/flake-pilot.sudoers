@@ -35,10 +35,12 @@
 #     the VM is mapped to the owner of the directory.
 #
 #   * Mount and unmount the root filesystem of its own bubblewrap
-#     sandboxes: an overlay of a directory tree, mounted nosuid and
-#     nodev below its own directory in /var/tmp. The tree is only
+#     sandboxes: an overlay of directory trees, mounted nosuid and
+#     nodev below its own directory in /var/tmp. The trees are only
 #     read, the overlay grants no access the user does not have on
-#     the tree itself.
+#     the trees themselves. The writable layer is a tmpfs, kept
+#     until the user discards it or the host is rebooted, which uses
+#     memory of the host meanwhile.
 #
 #   * Run the podman flakes registered system wide, as root, in the
 #     podman setup of root. The container and its runtime options

@@ -26,83 +26,99 @@ use crate::defaults;
 use flakes::error::FlakeError;
 use flakes::helper::helper_call;
 use flakes::lookup::Lookup;
-use flakes::user::{User, mkdir};
+use flakes::user::{User, chmod, mkdir};
 
 use uzers::get_current_uid;
 
+use std::fs;
 use std::process::Command;
 
 pub fn mount(
-    instance: &str, rootfs: &str, user: User
+    instance: &str, rootfs: &str, layers: &[String], user: User
 ) -> Result<String, FlakeError> {
     /*!
     Provide the root filesystem of the sandbox as overlay mount
 
-    The rootfs of the flake is the lower, read only layer of an
-    overlay filesystem. Its upper and work directory live in a
-    tmpfs which is created for the instance. Thus the rootfs on
-    the host stays untouched. The data the application writes
-    inside of the sandbox does not end up in that tmpfs though:
-    bwrap makes the root writable through an overlay of its own,
-    whose upper directory is the rw directory on disk. The rw and
-    the work directory are kept after the sandbox has ended and
-    are reused by the next sandbox of the same instance.
+    The rootfs of the flake is the lowest, read only layer of an
+    overlay filesystem, the given layers are stacked on top of it.
+    Its upper and work directory live in a tmpfs which is created
+    for the instance. Thus the rootfs on the host stays untouched
+    and nothing written in the sandbox ends up on disk. The overlay
+    exists as long as the sandbox. The tmpfs is kept for the next
+    sandbox of the same instance, which sees what was written
+    before, until it is discarded, see umount(), or the host is
+    rebooted.
 
     The setup of an instance named myapp@one, created by the
     user with the ID 1000, looks as follows:
 
     /var/tmp/bwrap_1000/
        ├── myapp@one_merged   <- overlay mount of the rootfs
-       ├── myapp@one_overlay  <- tmpfs with the upper/work dirs
-       ├── myapp@one_rw       <- upper dir of the sandbox root (disk)
-       └── myapp@one_work     <- work dir of the sandbox root (disk)
+       └── myapp@one_overlay  <- tmpfs with the upper/work dirs
 
-    The directories are created here for the user of the sandbox.
-    The tmpfs and the overlay are mounted by the helper, see its
-    sandbox-mount command, which derives all paths from the user
-    and the instance and checks the directories before it mounts.
+    The directories are created here for the user of the sandbox,
+    with access for that user only. The tmpfs and the overlay are
+    mounted by the helper, see its sandbox-mount command, which
+    derives all paths from the user and the instance and checks the
+    directories before it mounts.
 
-    The merged directory is returned. It becomes the root
-    filesystem bwrap creates the sandbox from, whereas the rw and
-    the work directory are used by bwrap to make that root
-    writable inside of the sandbox
+    The merged directory is returned. It becomes the writable root
+    filesystem bwrap creates the sandbox from
     !*/
-    // 1. Create the directories of the setup. The rw and the work
-    //    directory are the writable layer of the sandbox root and
-    //    are therefore created for the user of the sandbox. The
-    //    user directory which keeps them is created first, to not
-    //    leave its permissions to the umask of the caller
-    mkdir(&get_user_dir(), defaults::OVERLAY_DIR_MODE, user)?;
-    for name in [
-        defaults::OVERLAY_RW_NAME,
-        defaults::OVERLAY_WORK_NAME,
-        defaults::OVERLAY_MERGED_NAME,
-        defaults::OVERLAY_TMPFS_NAME
-    ] {
+    // 1. Create the directories of the setup. The user directory is
+    //    created first, to not leave its permissions to the umask of
+    //    the caller. It closes the directories of all instances to
+    //    other users, also those created by former versions with
+    //    more permissions
+    let user_dir = get_user_dir();
+    mkdir(&user_dir, defaults::OVERLAY_DIR_MODE, user)?;
+    chmod(&user_dir, defaults::OVERLAY_DIR_MODE, user)?;
+    for name in [defaults::OVERLAY_MERGED_NAME, defaults::OVERLAY_TMPFS_NAME] {
         mkdir(&get_dir(instance, name), defaults::OVERLAY_DIR_MODE, user)?;
     }
 
-    // 2. Mount the tmpfs and the overlay of the rootfs on them
+    // 2. Mount the tmpfs and the overlay of the layers on them
     let mut call = helper_call("sandbox-mount");
     call.arg("--instance").arg(instance).arg("--rootfs").arg(rootfs);
+    for layer in layers {
+        call.arg("--layer").arg(layer);
+    }
     run_helper(&mut call)?;
     Ok(get_dir(instance, defaults::OVERLAY_MERGED_NAME))
 }
 
-pub fn umount(instance: &str) {
+pub fn umount(instance: &str, discard: bool) {
     /*!
-    Delete the overlay mount of the rootfs and the tmpfs below it
+    Delete the overlay mount of the rootfs
 
-    The mounts exist as long as the sandbox and are deleted by the
-    helper, see its sandbox-umount command. A mount which cannot be
-    deleted is reported. It does not stop the pilot, at the time the
-    mounts are released the application in the sandbox has
-    terminated already
+    The overlay exists as long as the sandbox and is deleted by
+    the helper, see its sandbox-umount command. The tmpfs below it
+    is kept for the next sandbox of the instance. With discard it
+    is deleted as well, along with everything written in the
+    sandboxes of the instance. The writable layer former versions
+    kept on disk is deleted in this case too.
+
+    A mount which cannot be deleted is reported. It does not stop
+    the pilot, at the time the mounts are released the application
+    in the sandbox has terminated already
     !*/
     let mut call = helper_call("sandbox-umount");
     call.arg("--instance").arg(instance);
+    if discard {
+        call.arg("--discard");
+    }
     if let Err(error) = run_helper(&mut call) {
         error!("Failed to release the root filesystem of {instance}: {error}");
+    }
+    if discard {
+        for name in [defaults::OVERLAY_RW_NAME, defaults::OVERLAY_WORK_NAME] {
+            let legacy_dir = get_dir(instance, name);
+            if let Err(error) = fs::remove_dir_all(&legacy_dir) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    error!("Failed to remove {legacy_dir}: {error}");
+                }
+            }
+        }
     }
 }
 

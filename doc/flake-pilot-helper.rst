@@ -21,8 +21,8 @@ SYNOPSIS
        network-disconnect --config-file <FILE> [--instance <NAME>] [--uid <UID>]
        volume-export --path <PATH> --config-file <FILE> [--instance <NAME>]
        volume-release --path <PATH> [--config-file <FILE> [--instance <NAME>]]
-       sandbox-mount --instance <NAME> --rootfs <DIR>
-       sandbox-umount --instance <NAME>
+       sandbox-mount --instance <NAME> --rootfs <DIR> [--layer <DIR>]...
+       sandbox-umount --instance <NAME> [--discard]
        podman-pilot --app <PATH> [--term <TERM>] -- [ARGS]...
        meta-dirs-init
 
@@ -101,9 +101,12 @@ volume-release
 
 sandbox-mount, sandbox-umount
   Mount and unmount the root filesystem of a bubblewrap sandbox of
-  the caller. All paths are derived from the caller and the instance
-  name. The mounts are created nosuid and nodev, without following a
-  symbolic link. Called by **bubblewrap-pilot**\(8)
+  the caller: an overlay of the rootfs and the given layers, read
+  only, with its writable layer in a tmpfs of the caller. All paths
+  are derived from the caller and the instance name. The mounts are
+  created nosuid and nodev, without following a symbolic link. The
+  tmpfs is kept for the next sandbox of the instance, **--discard**
+  deletes it. Called by **bubblewrap-pilot**\(8)
 
 podman-pilot
   Run a podman flake registered system wide for the caller. The

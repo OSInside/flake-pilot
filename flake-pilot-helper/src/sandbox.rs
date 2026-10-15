@@ -31,6 +31,19 @@
 //!    ├── myapp@one_merged   <- overlay mount of the rootfs
 //!    └── myapp@one_overlay  <- tmpfs with the upper/work dirs
 //!
+//! The overlay is the root filesystem of the sandbox and the tmpfs
+//! keeps everything written to it. The overlay exists as long as
+//! the sandbox. The tmpfs is kept for the next sandbox of the same
+//! instance until it is discarded or the host is rebooted, nothing
+//! written in the sandbox ends up on disk.
+//!
+//! Layers stacked on top of the rootfs are mostly part of it.
+//! An overlay refuses lower directories of which one contains
+//! another. The rootfs is therefore provided to the overlay
+//! through a read only overlay of its own if layers are stacked
+//! on top of it, which is mounted on a directory in the tmpfs
+//! while the overlay is created.
+//!
 //! The directories belong to the user, the mounts can only be
 //! created by root. A user can rename and replace the entries of
 //! a directory of its own at any time. Every directory is therefore
@@ -69,21 +82,41 @@ const OVERLAY_TYPE: &str = "overlay";
 const OVERLAY_MAGIC: i64 = 0x794c_7630;
 
 // Permissions of the upper and the work directory of the overlay
-const OVERLAY_DIR_MODE: libc::mode_t = 0o755;
+const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 
-pub fn mount(caller: &Caller, instance: &str, rootfs: &str) -> bool {
+// Max. number of layers a flake can stack on top of its rootfs
+const MAX_LAYERS: usize = 16;
+
+// Directories in the tmpfs of an instance for the read only overlay
+// of the rootfs: its mount point, and the empty directory stacked on
+// top of the rootfs, a read only overlay needs two lower directories
+const ROOTFS_OVERLAY_NAME: &str = "lower";
+const ROOTFS_OVERLAY_EMPTY_NAME: &str = "empty";
+
+// Directories created in the tmpfs of an instance
+const TMPFS_DIR_NAMES: [&str; 4] = [
+    OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME,
+    ROOTFS_OVERLAY_NAME, ROOTFS_OVERLAY_EMPTY_NAME
+];
+
+pub fn mount(
+    caller: &Caller, instance: &str, rootfs: &str, layers: &[String]
+) -> bool {
     /*!
     Create the overlay of the given rootfs for the given sandbox
     instance of the caller
 
-    The rootfs is the lower, read only layer. The upper and the
-    work directory live in a tmpfs which belongs to the caller.
-    Both mounts are created with nosuid and nodev. The rootfs is
-    only read: access to its content through the overlay is checked
-    against its own permissions, the overlay grants no access the
-    caller does not have on the rootfs itself
+    The rootfs is the lowest, read only layer. The given layers are
+    stacked on top of it in the given order, read only as well. The
+    upper and the work directory live in a tmpfs which belongs to
+    the caller. A tmpfs which is left from a former sandbox of the
+    instance is used again, it keeps what was written in that
+    sandbox. Both mounts are created with nosuid and nodev. The
+    layers are only read: access to their content through the
+    overlay is checked against their own permissions, the overlay
+    grants no access the caller does not have on the layers
     !*/
-    match mount_overlay(caller, instance, rootfs) {
+    match mount_overlay(caller, instance, rootfs, layers) {
         Ok(()) => true,
         Err(error) => {
             error!("{error}");
@@ -92,17 +125,18 @@ pub fn mount(caller: &Caller, instance: &str, rootfs: &str) -> bool {
     }
 }
 
-pub fn umount(caller: &Caller, instance: &str) -> bool {
+pub fn umount(caller: &Caller, instance: &str, discard: bool) -> bool {
     /*!
-    Delete the mounts of the given sandbox instance of the caller
+    Delete the overlay of the given sandbox instance of the caller
 
-    The overlay is deleted first, the tmpfs provides its upper and
-    work directory. A directory which is no mount of the expected
-    type is left alone
+    The tmpfs is kept for the next sandbox of the instance. With
+    discard it is deleted as well, along with everything that was
+    written in the sandboxes of the instance. A directory which is
+    no mount of the expected type is left alone
     !*/
     let result = validate::sandbox_instance(instance)
         .and_then(|_| open_user_dir(caller))
-        .map(|user_dir| release_mounts(&user_dir, instance));
+        .map(|user_dir| release_mounts(&user_dir, instance, discard));
     match result {
         Ok(ok) => ok,
         Err(error) => {
@@ -113,51 +147,52 @@ pub fn umount(caller: &Caller, instance: &str) -> bool {
 }
 
 fn mount_overlay(
-    caller: &Caller, instance: &str, rootfs: &str
+    caller: &Caller, instance: &str, rootfs: &str, layers: &[String]
 ) -> Result<(), String> {
     validate::sandbox_instance(instance)?;
+    if layers.len() > MAX_LAYERS {
+        return Err(format!(
+            "Up to {MAX_LAYERS} layers can be stacked on top of the rootfs"
+        ))
+    }
     validate::absolute_path(rootfs)?;
     let rootfs_dir = open_dir(libc::AT_FDCWD, rootfs, true).map_err(
         |error| format!("Failed to open rootfs {rootfs}: {error}")
     )?;
+    // The topmost layer is the first one of the lower directories
+    let mut layer_dirs: Vec<OwnedFd> = Vec::new();
+    for layer in layers.iter().rev() {
+        validate::absolute_path(layer)?;
+        layer_dirs.push(open_dir(libc::AT_FDCWD, layer, true).map_err(
+            |error| format!("Failed to open layer {layer}: {error}")
+        )?);
+    }
     let user_dir = open_user_dir(caller)?;
 
-    // A setup left behind by a sandbox which did not end properly,
-    // e.g because its pilot got killed, is released first. There is
-    // only one sandbox per instance
-    release_mounts(&user_dir, instance);
-    let tmpfs_dir = open_setup_dir(
-        &user_dir, caller, instance, OVERLAY_TMPFS_NAME
-    )?;
+    // An overlay left behind by a sandbox which did not end
+    // properly, e.g because its pilot got killed, is released
+    // first. There is only one sandbox per instance
+    release_mounts(&user_dir, instance, false);
     let merged_dir = open_setup_dir(
         &user_dir, caller, instance, OVERLAY_MERGED_NAME
     )?;
 
-    // 1. The tmpfs, with the upper and the work directory created
-    //    before it becomes visible
-    let tmpfs = create_mount(TMPFS_TYPE, &[
-        ("mode", "0700"),
-        ("uid", &caller.uid.to_string()),
-        ("gid", &caller.gid.to_string())
-    ]).map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
-    for name in [OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME] {
-        make_dir_for(&tmpfs, name, caller).map_err(
-            |error| format!("Failed to create {name} in the tmpfs: {error}")
-        )?;
-    }
-    attach_mount(&tmpfs, &tmpfs_dir).map_err(
-        |error| format!("Failed to mount the tmpfs of {instance}: {error}")
-    )?;
+    // 1. The tmpfs of the instance, kept from a former sandbox or
+    //    created along with its directories before it becomes visible
+    let (tmpfs, created) = match open_kept_tmpfs(&user_dir, caller, instance)? {
+        Some(tmpfs) => {
+            info!("Using the writable layer kept for {instance}");
+            (tmpfs, false)
+        },
+        None => (create_tmpfs(&user_dir, caller, instance)?, true)
+    };
 
-    // 2. The overlay of the rootfs. All of its directories are
-    //    given through the descriptors opened above
-    let overlay = create_mount(OVERLAY_TYPE, &[
-        ("lowerdir", &fd_path(&rootfs_dir)),
-        ("upperdir", &format!("{}/{OVERLAY_UPPER_NAME}", fd_path(&tmpfs))),
-        ("workdir", &format!("{}/{OVERLAY_WORK_NAME}", fd_path(&tmpfs)))
-    ]).and_then(|overlay| attach_mount(&overlay, &merged_dir));
+    // 2. The overlay of the layers
+    let overlay = mount_layers(&tmpfs, &merged_dir, &layer_dirs, &rootfs_dir);
     if let Err(error) = overlay {
-        detach_mount(&tmpfs);
+        if created {
+            detach_mount(&tmpfs);
+        }
         return Err(format!(
             "Failed to mount the overlay of {rootfs} for {instance}: {error}"
         ))
@@ -165,16 +200,140 @@ fn mount_overlay(
     Ok(())
 }
 
-fn release_mounts(user_dir: &OwnedFd, instance: &str) -> bool {
+fn mount_layers(
+    tmpfs: &OwnedFd, merged_dir: &OwnedFd,
+    layer_dirs: &[OwnedFd], rootfs_dir: &OwnedFd
+) -> io::Result<()> {
     /*!
-    Detach the overlay and the tmpfs of the given instance if they
-    are mounted. A setup directory which is no mount root of the
-    expected type is left alone
+    Mount the overlay of the given layers on top of the given rootfs
+    on the merged directory, with its upper and work directory in
+    the given tmpfs. All of its directories are given through
+    descriptors
+
+    With layers the rootfs is provided through a read only overlay
+    of its own, the layers are mostly part of the rootfs. That
+    overlay is only attached while the overlay of the layers is
+    created, which keeps it in use from then on
+    !*/
+    let rootfs_overlay = if layer_dirs.is_empty() {
+        None
+    } else {
+        Some(mount_rootfs_overlay(tmpfs, rootfs_dir)?)
+    };
+    let lowerdir: Vec<String> = layer_dirs.iter()
+        .chain(std::iter::once(rootfs_overlay.as_ref().unwrap_or(rootfs_dir)))
+        .map(fd_path)
+        .collect();
+    let overlay = create_mount(OVERLAY_TYPE, &[
+        ("lowerdir", &lowerdir.join(":")),
+        ("upperdir", &format!("{}/{OVERLAY_UPPER_NAME}", fd_path(tmpfs))),
+        ("workdir", &format!("{}/{OVERLAY_WORK_NAME}", fd_path(tmpfs)))
+    ]).and_then(|overlay| attach_mount(&overlay, merged_dir));
+    if let Some(rootfs_overlay) = rootfs_overlay {
+        detach_mount(&rootfs_overlay);
+    }
+    overlay
+}
+
+fn mount_rootfs_overlay(
+    tmpfs: &OwnedFd, rootfs_dir: &OwnedFd
+) -> io::Result<OwnedFd> {
+    /*!
+    Mount a read only overlay of the given rootfs on its directory
+    in the given tmpfs and provide its root. An overlay left on the
+    directory, e.g by a helper which got killed, is released first
+    !*/
+    let tmpfs_fd = tmpfs.as_raw_fd();
+    let mut mount_point = open_dir(tmpfs_fd, ROOTFS_OVERLAY_NAME, false)?;
+    if is_mount_root_of(tmpfs, &mount_point, OVERLAY_MAGIC)? {
+        detach_mount(&mount_point);
+        mount_point = open_dir(tmpfs_fd, ROOTFS_OVERLAY_NAME, false)?;
+    }
+    let empty_dir = open_dir(tmpfs_fd, ROOTFS_OVERLAY_EMPTY_NAME, false)?;
+    let overlay = create_mount(OVERLAY_TYPE, &[(
+        "lowerdir",
+        &format!("{}:{}", fd_path(&empty_dir), fd_path(rootfs_dir))
+    )])?;
+    attach_mount(&overlay, &mount_point)?;
+    Ok(overlay)
+}
+
+fn open_kept_tmpfs(
+    user_dir: &OwnedFd, caller: &Caller, instance: &str
+) -> Result<Option<OwnedFd>, String> {
+    /*!
+    Provide the root of the tmpfs a former sandbox of the instance
+    left, None if there is none. It has to belong to the caller.
+    The directories in it are created if they are gone
+    !*/
+    let entry = format!("{instance}_{OVERLAY_TMPFS_NAME}");
+    let directory = match open_dir(user_dir.as_raw_fd(), &entry, false) {
+        Ok(directory) => directory,
+        Err(_) => return Ok(None)
+    };
+    if ! is_mount_root_of(user_dir, &directory, TMPFS_MAGIC)
+        .map_err(|error| format!("Failed to inspect {entry}: {error}"))?
+    {
+        return Ok(None)
+    }
+    let attributes = fstat(&directory).map_err(|error| error.to_string())?;
+    if attributes.st_uid != caller.uid || attributes.st_mode & 0o077 != 0 {
+        return Err(format!(
+            "The tmpfs on {entry} does not belong to the caller or is \
+            accessible for others"
+        ))
+    }
+    for name in TMPFS_DIR_NAMES {
+        match make_dir_for(&directory, name, caller) {
+            Ok(()) => { },
+            Err(error) if error.raw_os_error() == Some(libc::EEXIST) => { },
+            Err(error) => return Err(
+                format!("Failed to create {name} in the tmpfs: {error}")
+            )
+        }
+    }
+    Ok(Some(directory))
+}
+
+fn create_tmpfs(
+    user_dir: &OwnedFd, caller: &Caller, instance: &str
+) -> Result<OwnedFd, String> {
+    /*!
+    Create the tmpfs of the instance, with its directories created
+    before it becomes visible, and provide its root
+    !*/
+    let tmpfs_dir = open_setup_dir(
+        user_dir, caller, instance, OVERLAY_TMPFS_NAME
+    )?;
+    let tmpfs = create_mount(TMPFS_TYPE, &[
+        ("mode", "0700"),
+        ("uid", &caller.uid.to_string()),
+        ("gid", &caller.gid.to_string())
+    ]).map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
+    for name in TMPFS_DIR_NAMES {
+        make_dir_for(&tmpfs, name, caller).map_err(
+            |error| format!("Failed to create {name} in the tmpfs: {error}")
+        )?;
+    }
+    attach_mount(&tmpfs, &tmpfs_dir).map_err(
+        |error| format!("Failed to mount the tmpfs of {instance}: {error}")
+    )?;
+    Ok(tmpfs)
+}
+
+fn release_mounts(user_dir: &OwnedFd, instance: &str, with_tmpfs: bool) -> bool {
+    /*!
+    Detach the overlay of the given instance if it is mounted, and
+    with with_tmpfs the tmpfs of the instance as well. A setup
+    directory which is no mount root of the expected type is left
+    alone
     !*/
     let mut ok = true;
-    for (name, magic) in [
-        (OVERLAY_MERGED_NAME, OVERLAY_MAGIC), (OVERLAY_TMPFS_NAME, TMPFS_MAGIC)
-    ] {
+    let mut mounts = vec![(OVERLAY_MERGED_NAME, OVERLAY_MAGIC)];
+    if with_tmpfs {
+        mounts.push((OVERLAY_TMPFS_NAME, TMPFS_MAGIC));
+    }
+    for (name, magic) in mounts {
         let entry = format!("{instance}_{name}");
         let directory = match open_dir(user_dir.as_raw_fd(), &entry, false) {
             Ok(directory) => directory,
@@ -277,15 +436,16 @@ fn open_setup_dir(
 }
 
 fn is_mount_root_of(
-    user_dir: &OwnedFd, directory: &OwnedFd, magic: i64
+    parent: &OwnedFd, directory: &OwnedFd, magic: i64
 ) -> io::Result<bool> {
     /*!
-    Check if the given directory below the user directory is the
-    root of a mount of the filesystem type of the given magic
-    number. The lookup of a mount point provides the root of the
-    filesystem mounted on it, which lives on another device
+    Check if the given directory below the given parent directory,
+    e.g the user directory, is the root of a mount of the filesystem
+    type of the given magic number. The lookup of a mount point
+    provides the root of the filesystem mounted on it, which lives
+    on another device
     !*/
-    if fstat(directory)?.st_dev == fstat(user_dir)?.st_dev {
+    if fstat(directory)?.st_dev == fstat(parent)?.st_dev {
         return Ok(false)
     }
     let mut attributes: libc::statfs = unsafe { std::mem::zeroed() };
@@ -498,6 +658,6 @@ mod tests {
             libc::AT_FDCWD, tmp_dir.path().to_str().unwrap(), false
         ).unwrap();
         // directories which are no mounts and missing ones are fine
-        assert!(release_mounts(&user_dir, "myapp"));
+        assert!(release_mounts(&user_dir, "myapp", true));
     }
 }

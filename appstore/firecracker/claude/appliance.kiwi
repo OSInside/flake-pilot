@@ -20,10 +20,13 @@
         <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
         <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/home/ai" name="ai" groups="users"/>
     </users>
-    <repository type="rpm-md">
+    <repository type="rpm-md" priority="1">
         <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/openSUSE_Leap_16.0"/>
     </repository>
-    <repository type="rpm-md">
+    <repository type="rpm-md" priority="99">
+        <source path="https://download.opensuse.org/repositories/devel:/languages:/python:/backports/16.0"/>
+    </repository>
+    <repository type="rpm-md" priority="2">
         <source path="https://download.opensuse.org/distribution/leap/16.0/repo/oss"/>
     </repository>
     <packages type="image">

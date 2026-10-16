@@ -82,7 +82,7 @@
         <package name="npm-default"/>
         <package name="python313"/>
         <package name="python313-pip"/>
-        <package name="python313-kiwi"/>
+        <package name="python3-kiwi"/>
         <package name="python313-poetry"/>
         <package name="kiwi-systemdeps-boxbuild"/>
         <package name="rust"/>

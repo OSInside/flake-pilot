@@ -27,7 +27,7 @@ use std::os::unix::fs::{
     DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt
 };
 
-use uzers::get_current_uid;
+use uzers::{get_current_uid, get_user_by_uid};
 
 use crate::defaults;
 use crate::flakelog::FlakeLog;
@@ -72,12 +72,12 @@ impl IO {
             }
         }
         let attributes = fs::symlink_metadata(&private_dir)?;
-        if ! attributes.is_dir() || attributes.uid() != get_current_uid() {
+        if let Some(problem) = Self::private_dir_problem(
+            &private_dir, &attributes, get_current_uid()
+        ) {
             return Err(FlakeError::IOError {
                 kind: "Insecure meta data directory".to_string(),
-                message: format!(
-                    "{private_dir} is not a directory owned by the caller"
-                )
+                message: problem
             })
         }
         if attributes.permissions().mode() & 0o077 != 0 {
@@ -86,6 +86,92 @@ impl IO {
             )?;
         }
         Ok(private_dir)
+    }
+
+    pub fn private_dir_problem(
+        private_dir: &str, attributes: &fs::Metadata, owner: u32
+    ) -> Option<String> {
+        /*!
+        Tell what is wrong with the given private meta data
+        directory, None if it is a directory of the given owner
+
+        The base directory is writable for everybody. A user can
+        therefore create the private directory of another user, or
+        a symbolic link or file in its place, before that user does,
+        and keep the pilots of that user from running. The entry is
+        reported along with the user it belongs to. Only that user
+        and root can delete it, the base directory is sticky
+        !*/
+        if attributes.is_dir() && attributes.uid() == owner {
+            return None
+        }
+        let kind = if attributes.file_type().is_symlink() {
+            "a symbolic link"
+        } else if attributes.is_dir() {
+            "a directory"
+        } else {
+            "a file"
+        };
+        Some(format!(
+            "{private_dir} is {kind} of {} instead of a directory of {}. \
+            It was created by that user, not by flake-pilot, and keeps \
+            the flakes of {} from running. Please have it removed by \
+            root: rm -rf {private_dir}",
+            Self::user_text(attributes.uid()),
+            Self::user_text(owner),
+            Self::user_text(owner)
+        ))
+    }
+
+    pub fn squatted_private_dirs(base: &str) -> Vec<String> {
+        /*!
+        Provide the problems of the private meta data directories
+        below the given base directory, see private_dir_problem()
+
+        A private directory is named after the ID of its user, the
+        one of a pilot running as root for a user after the ID of
+        that user and SYSTEM_META_DIR_PREFIX, which belongs to root.
+        Entries with other names are no private directories and are
+        not checked. A base directory which cannot be read provides
+        no problems
+        !*/
+        let mut problems: Vec<String> = Vec::new();
+        let entries = match fs::read_dir(base) {
+            Ok(entries) => entries,
+            Err(_) => return problems
+        };
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let owner = match name.strip_prefix(defaults::SYSTEM_META_DIR_PREFIX) {
+                Some(uid) if uid.parse::<u32>().is_ok() => 0,
+                Some(_) => continue,
+                None => match name.parse::<u32>() {
+                    Ok(uid) => uid,
+                    Err(_) => continue
+                }
+            };
+            let private_dir = format!("{base}/{name}");
+            if let Ok(attributes) = fs::symlink_metadata(&private_dir) {
+                problems.extend(
+                    Self::private_dir_problem(&private_dir, &attributes, owner)
+                );
+            }
+        }
+        problems
+    }
+
+    fn user_text(uid: u32) -> String {
+        /*!
+        Provide the name and the ID of the given user for a message
+        !*/
+        match get_user_by_uid(uid) {
+            Some(user) => format!(
+                "user {} (ID {uid})", user.name().to_string_lossy()
+            ),
+            None => format!("an unknown user (ID {uid})")
+        }
     }
 
     pub fn private_dir_name() -> String {
@@ -238,6 +324,85 @@ mod tests {
         fs::set_permissions(&ids_dir, fs::Permissions::from_mode(mode))
             .unwrap();
         ids_dir
+    }
+
+    fn user_name() -> String {
+        uzers::get_current_username().unwrap().to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_private_dir_problem() {
+        let workdir = tempdir().unwrap();
+        let base = workdir.path().to_str().unwrap();
+        let uid = get_current_uid();
+        let private_dir = format!("{base}/{uid}");
+        fs::create_dir(&private_dir).unwrap();
+        let attributes = fs::symlink_metadata(&private_dir).unwrap();
+
+        // a directory of its user is fine
+        assert_eq!(
+            None, IO::private_dir_problem(&private_dir, &attributes, uid)
+        );
+        // a directory of another user is reported with the owner
+        let problem = IO::private_dir_problem(
+            &private_dir, &attributes, uid + 1
+        ).unwrap();
+        assert!(problem.contains(
+            &format!("is a directory of user {} (ID {uid})", user_name())
+        ));
+        assert!(problem.contains(&format!("rm -rf {private_dir}")));
+
+        // so are a symbolic link and a file in its place
+        let link = format!("{base}/link");
+        symlink(&private_dir, &link).unwrap();
+        let attributes = fs::symlink_metadata(&link).unwrap();
+        assert!(
+            IO::private_dir_problem(&link, &attributes, uid).unwrap()
+                .contains("is a symbolic link of user")
+        );
+        let file = format!("{base}/file");
+        fs::write(&file, "").unwrap();
+        let attributes = fs::symlink_metadata(&file).unwrap();
+        assert!(
+            IO::private_dir_problem(&file, &attributes, uid).unwrap()
+                .contains("is a file of user")
+        );
+    }
+
+    #[test]
+    fn test_squatted_private_dirs() {
+        let workdir = tempdir().unwrap();
+        let base = workdir.path().to_str().unwrap();
+        let uid = get_current_uid();
+        // the directory of the calling user, created by that user
+        fs::create_dir(format!("{base}/{uid}")).unwrap();
+        // the directory of another user, created by the calling user
+        fs::create_dir(format!("{base}/{}", uid + 1)).unwrap();
+        // a link in place of the directory of another user
+        symlink(base, format!("{base}/{}", uid + 2)).unwrap();
+        // the root owned directory of the system wide flakes a user
+        // started, which is squatted unless the caller is root
+        fs::create_dir(format!("{base}/system_{}", uid + 1)).unwrap();
+        // no private directories
+        fs::create_dir(format!("{base}/other")).unwrap();
+        fs::create_dir(format!("{base}/system_other")).unwrap();
+
+        let problems = IO::squatted_private_dirs(base);
+        let mut expected = vec![
+            format!("{base}/{} is a directory of", uid + 1),
+            format!("{base}/{} is a symbolic link of", uid + 2)
+        ];
+        if uid != 0 {
+            expected.push(
+                format!("{base}/system_{} is a directory of", uid + 1)
+            );
+        }
+        assert_eq!(expected.len(), problems.len(), "{:?}", problems);
+        for (problem, start) in problems.iter().zip(expected.iter()) {
+            assert!(problem.starts_with(start), "{problem}");
+        }
+        // a base directory which cannot be read has no problems
+        assert!(IO::squatted_private_dirs(&format!("{base}/missing")).is_empty());
     }
 
     #[test]

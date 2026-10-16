@@ -190,6 +190,14 @@ The metadata directory is provided by root, not by the pilots.
   ``flake-ctl init`` once after every boot instead. It creates the
   directory through the helper.
 
+A user can block the flakes of another user.
+  The private directory of a user is named after the ID of that
+  user, e.g ``/tmp/flakes/1000``. Another user can create it first,
+  or a symbolic link or file in its place. The pilots of the user it
+  is named after then refuse to run and name the user who owns the
+  entry along with the call to remove it, which only root can do.
+  ``flake-ctl init`` called as root reports all such entries.
+
 A password limits who uses the rule.
   ``sudo`` asks for the password of the calling user and caches it
   for a few minutes. ``NOPASSWD`` gives the user no further

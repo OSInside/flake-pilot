@@ -146,6 +146,18 @@ fn init_meta_dirs() -> bool {
             error!("{problem}");
             result = false
         }
+        // Private directories which were created by another user than
+        // the one they are named after keep that user from running
+        // flakes. They are reported but not deleted, root decides.
+        // Root gets all of them reported, a user its own one
+        let problems = IO::squatted_private_dirs(&ids_dir).into_iter().filter(
+            |problem| get_current_uid() == 0 || problem.starts_with(
+                &format!("{ids_dir}/{} ", get_current_uid())
+            )
+        );
+        for problem in problems {
+            warn!("{problem}");
+        }
     }
     result
 }

@@ -79,7 +79,7 @@ Claude AI as a Firecracker VM App
 .. code-block:: bash
 
    flake-ctl firecracker pull --name claude \
-       --kis-image https://ddrasqgvrmpt8.cloudfront.net/claude.x86_64-1.15.6-0.tar.xz
+       --kis-image https://ddrasqgvrmpt8.cloudfront.net/claude.x86_64-1.16.0-0.tar.xz
 
    flake-ctl firecracker register --vm claude \
        --app $HOME/bin/claude --target /bin/bash \

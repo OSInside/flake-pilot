@@ -100,8 +100,8 @@ fn main() -> ExitCode {
                 &caller, path, config_file.as_deref(), instance.as_deref()
             )
         },
-        cli::Commands::SandboxMount { instance, rootfs, layers } => {
-            sandbox::mount(&caller, instance, rootfs, layers)
+        cli::Commands::SandboxMount { instance, rootfs, layers, size } => {
+            sandbox::mount(&caller, instance, rootfs, layers, size.as_deref())
         },
         cli::Commands::SandboxUmount { instance, discard } => {
             sandbox::umount(&caller, instance, *discard)

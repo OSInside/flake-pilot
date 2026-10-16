@@ -56,9 +56,11 @@ use std::ffi::CString;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 
+use flakes::config::get_sandbox_tmpfs_size;
 use flakes::defaults::{
-    OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME, OVERLAY_MERGED_NAME,
-    OVERLAY_TMPFS_NAME, OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME
+    FLAKES_CONFIG, OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME,
+    OVERLAY_MERGED_NAME, OVERLAY_TMPFS_NAME, OVERLAY_UPPER_NAME,
+    OVERLAY_WORK_NAME
 };
 
 use crate::caller::Caller;
@@ -68,6 +70,9 @@ use crate::validate;
 const FSOPEN_CLOEXEC: libc::c_uint = 0x1;
 const FSCONFIG_SET_STRING: libc::c_uint = 1;
 const FSCONFIG_CMD_CREATE: libc::c_uint = 6;
+const FSCONFIG_CMD_RECONFIGURE: libc::c_uint = 7;
+const FSPICK_CLOEXEC: libc::c_uint = 0x1;
+const FSPICK_EMPTY_PATH: libc::c_uint = 0x8;
 const FSMOUNT_CLOEXEC: libc::c_uint = 0x1;
 const MOUNT_ATTR_NOSUID: libc::c_uint = 0x2;
 const MOUNT_ATTR_NODEV: libc::c_uint = 0x4;
@@ -87,6 +92,10 @@ const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 // Max. number of layers a flake can stack on top of its rootfs
 const MAX_LAYERS: usize = 16;
 
+// Memory information of the kernel, the base of a tmpfs size given
+// as percentage
+const PROC_MEMINFO: &str = "/proc/meminfo";
+
 // Directories in the tmpfs of an instance for the read only overlay
 // of the rootfs: its mount point, and the empty directory stacked on
 // top of the rootfs, a read only overlay needs two lower directories
@@ -100,7 +109,8 @@ const TMPFS_DIR_NAMES: [&str; 4] = [
 ];
 
 pub fn mount(
-    caller: &Caller, instance: &str, rootfs: &str, layers: &[String]
+    caller: &Caller, instance: &str, rootfs: &str, layers: &[String],
+    size: Option<&str>
 ) -> bool {
     /*!
     Create the overlay of the given rootfs for the given sandbox
@@ -114,9 +124,12 @@ pub fn mount(
     sandbox. Both mounts are created with nosuid and nodev. The
     layers are only read: access to their content through the
     overlay is checked against their own permissions, the overlay
-    grants no access the caller does not have on the layers
+    grants no access the caller does not have on the layers.
+
+    The size of the tmpfs is the given size or the limit configured
+    system wide, see get_tmpfs_size()
     !*/
-    match mount_overlay(caller, instance, rootfs, layers) {
+    match mount_overlay(caller, instance, rootfs, layers, size) {
         Ok(()) => true,
         Err(error) => {
             error!("{error}");
@@ -147,9 +160,13 @@ pub fn umount(caller: &Caller, instance: &str, discard: bool) -> bool {
 }
 
 fn mount_overlay(
-    caller: &Caller, instance: &str, rootfs: &str, layers: &[String]
+    caller: &Caller, instance: &str, rootfs: &str, layers: &[String],
+    size: Option<&str>
 ) -> Result<(), String> {
     validate::sandbox_instance(instance)?;
+    let size = get_tmpfs_size(
+        size, get_sandbox_tmpfs_size().as_deref(), host_memory()?
+    )?;
     if layers.len() > MAX_LAYERS {
         return Err(format!(
             "Up to {MAX_LAYERS} layers can be stacked on top of the rootfs"
@@ -182,9 +199,21 @@ fn mount_overlay(
     let (tmpfs, created) = match open_kept_tmpfs(&user_dir, caller, instance)? {
         Some(tmpfs) => {
             info!("Using the writable layer kept for {instance}");
+            if let Some(size) = &size {
+                resize_tmpfs(&tmpfs, size).map_err(|error| format!(
+                    "Failed to resize the writable layer of {instance} to \
+                    {size}: {error}. It may hold more data already, discard \
+                    it with the %discard pilot option"
+                ))?;
+            }
             (tmpfs, false)
         },
-        None => (create_tmpfs(&user_dir, caller, instance)?, true)
+        None => {
+            let tmpfs = create_tmpfs(
+                &user_dir, caller, instance, size.as_deref()
+            )?;
+            (tmpfs, true)
+        }
     };
 
     // 2. The overlay of the layers
@@ -296,20 +325,26 @@ fn open_kept_tmpfs(
 }
 
 fn create_tmpfs(
-    user_dir: &OwnedFd, caller: &Caller, instance: &str
+    user_dir: &OwnedFd, caller: &Caller, instance: &str, size: Option<&str>
 ) -> Result<OwnedFd, String> {
     /*!
-    Create the tmpfs of the instance, with its directories created
-    before it becomes visible, and provide its root
+    Create the tmpfs of the instance, of the given size if any, with
+    its directories created before it becomes visible, and provide
+    its root
     !*/
     let tmpfs_dir = open_setup_dir(
         user_dir, caller, instance, OVERLAY_TMPFS_NAME
     )?;
-    let tmpfs = create_mount(TMPFS_TYPE, &[
-        ("mode", "0700"),
-        ("uid", &caller.uid.to_string()),
-        ("gid", &caller.gid.to_string())
-    ]).map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
+    let uid = caller.uid.to_string();
+    let gid = caller.gid.to_string();
+    let mut options = vec![
+        ("mode", "0700"), ("uid", uid.as_str()), ("gid", gid.as_str())
+    ];
+    if let Some(size) = size {
+        options.push(("size", size));
+    }
+    let tmpfs = create_mount(TMPFS_TYPE, &options)
+        .map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
     for name in TMPFS_DIR_NAMES {
         make_dir_for(&tmpfs, name, caller).map_err(
             |error| format!("Failed to create {name} in the tmpfs: {error}")
@@ -541,6 +576,84 @@ fn create_mount(fstype: &str, options: &[(&str, &str)]) -> io::Result<OwnedFd> {
     })
 }
 
+fn resize_tmpfs(tmpfs: &OwnedFd, size: &str) -> io::Result<()> {
+    /*!
+    Set the size of the given mounted tmpfs, through the descriptor
+    of its root
+    !*/
+    let empty = to_c_string("")?;
+    let context = syscall_fd(unsafe {
+        libc::syscall(
+            libc::SYS_fspick, tmpfs.as_raw_fd(), empty.as_ptr(),
+            FSPICK_CLOEXEC | FSPICK_EMPTY_PATH
+        )
+    })?;
+    let key = to_c_string("size")?;
+    let value = to_c_string(size)?;
+    syscall_ok(unsafe {
+        libc::syscall(
+            libc::SYS_fsconfig, context.as_raw_fd(), FSCONFIG_SET_STRING,
+            key.as_ptr(), value.as_ptr(), 0
+        )
+    })?;
+    syscall_ok(unsafe {
+        libc::syscall(
+            libc::SYS_fsconfig, context.as_raw_fd(), FSCONFIG_CMD_RECONFIGURE,
+            std::ptr::null::<libc::c_char>(),
+            std::ptr::null::<libc::c_char>(), 0
+        )
+    })
+}
+
+fn get_tmpfs_size(
+    requested: Option<&str>, limit: Option<&str>, memory: u64
+) -> Result<Option<String>, String> {
+    /*!
+    Provide the size of the tmpfs of a sandbox
+
+    The size limit is configured by root in the system wide flakes
+    configuration. It is the default size, and a flake may request
+    a size up to it but not more. Without a limit the requested
+    size is used, without either the tmpfs gets the default size of
+    the kernel
+    !*/
+    let limit_bytes = match limit {
+        Some(limit) => Some(validate::tmpfs_size(limit, memory).map_err(
+            |error| format!("{error}, see sandbox_tmpfs_size in {FLAKES_CONFIG}")
+        )?),
+        None => None
+    };
+    let requested = match requested {
+        Some(requested) => requested,
+        None => return Ok(limit.map(ToOwned::to_owned))
+    };
+    let requested_bytes = validate::tmpfs_size(requested, memory)?;
+    if let (Some(limit), Some(limit_bytes)) = (limit, limit_bytes) {
+        if requested_bytes > limit_bytes {
+            return Err(format!(
+                "The requested tmpfs size {requested} exceeds the limit \
+                of {limit} set in {FLAKES_CONFIG}"
+            ))
+        }
+    }
+    Ok(Some(requested.to_string()))
+}
+
+fn host_memory() -> Result<u64, String> {
+    /*!
+    Provide the memory of the host in bytes
+    !*/
+    let meminfo = std::fs::read_to_string(PROC_MEMINFO).map_err(
+        |error| format!("Failed to read {PROC_MEMINFO}: {error}")
+    )?;
+    meminfo.lines()
+        .find_map(|line| line.strip_prefix("MemTotal:"))
+        .and_then(|value| value.trim().strip_suffix("kB"))
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|kib| kib * 1024)
+        .ok_or_else(|| format!("No MemTotal in {PROC_MEMINFO}"))
+}
+
 fn attach_mount(mount: &OwnedFd, target: &OwnedFd) -> io::Result<()> {
     /*!
     Attach the given detached mount to the given directory
@@ -648,6 +761,36 @@ mod tests {
         ).unwrap();
         let path = tmp_dir.path().to_str().unwrap();
         assert_eq!(get_current_uid() == 0, open_root_owned_dir(path).is_ok());
+    }
+
+    #[test]
+    fn test_get_tmpfs_size() {
+        let memory = 8 << 30;
+        // neither a request nor a limit, the default of the kernel
+        assert_eq!(Ok(None), get_tmpfs_size(None, None, memory));
+        // the limit is the default size
+        assert_eq!(
+            Ok(Some("2G".to_string())), get_tmpfs_size(None, Some("2G"), memory)
+        );
+        // a request without a limit, and one up to the limit
+        assert_eq!(
+            Ok(Some("4G".to_string())), get_tmpfs_size(Some("4G"), None, memory)
+        );
+        assert_eq!(
+            Ok(Some("512M".to_string())),
+            get_tmpfs_size(Some("512M"), Some("25%"), memory)
+        );
+        // a request above the limit is refused
+        assert!(get_tmpfs_size(Some("3G"), Some("2G"), memory).is_err());
+        assert!(get_tmpfs_size(Some("50%"), Some("2G"), memory).is_err());
+        // as are invalid sizes
+        assert!(get_tmpfs_size(Some("0"), None, memory).is_err());
+        assert!(get_tmpfs_size(None, Some("lots"), memory).is_err());
+    }
+
+    #[test]
+    fn test_host_memory() {
+        assert!(host_memory().unwrap() > 0);
     }
 
     #[test]

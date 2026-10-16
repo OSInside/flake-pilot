@@ -65,6 +65,10 @@ pub const OVERLAY_DIR_MODE: &str = "700";
 // when the sandbox ends. Without it the layer is kept for the next
 // sandbox of the instance until the host is rebooted
 pub const PILOT_DISCARD_OPTION: &str = "%discard";
+// Pilot option which requests the size of the tmpfs which keeps the
+// writable layer of the instance, e.g %tmpfs_size:2G. The helper
+// refuses a size above the limit configured in /etc/flakes.yml
+pub const PILOT_TMPFS_SIZE_OPTION: &str = "%tmpfs_size";
 // Pilot option which selects the working directory of the
 // application in the sandbox
 pub const PILOT_CHDIR_OPTION: &str = "%chdir";

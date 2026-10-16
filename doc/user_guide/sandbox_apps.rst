@@ -238,6 +238,29 @@ the unmodified tree:
        --app $HOME/bin/leapshell --target /bin/bash \
        --pilot-option "%discard"
 
+The administrator limits the size of the tmpfs with the
+``sandbox_tmpfs_size`` setting in ``/etc/flakes.yml``, e.g:
+
+.. code-block:: yaml
+
+   generic:
+     sandbox_tmpfs_size: 2G
+
+Without the setting the kernel default applies, half of the memory
+of the host. Every tmpfs gets the configured size unless the flake
+asks for a smaller one with the ``%tmpfs_size`` pilot option. A
+number with a ``k``, ``m``, ``g`` or ``t`` suffix or a percentage of
+the memory of the host using the ``%`` suffix is accepted, a size
+above the limit is refused:
+
+.. code-block:: bash
+
+   leapshell %tmpfs_size:512M
+
+A tmpfs kept from a former call is resized to the new size. If it
+holds more data than fits, the call fails and the instance has to be
+called with ``%discard`` first.
+
 Former versions kept the written data on disk, in the directories
 ``leapshell_rw`` and ``leapshell_work``. They are not used anymore.
 A call with ``%discard`` deletes them as well.

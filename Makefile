@@ -162,6 +162,10 @@ else
 	install -d -m 755 $(DESTDIR)/var/lib/podman
 	install -d -m 700 $(DESTDIR)/var/lib/podman/storage
 endif
+	# podman additional image store, configured in storage.conf.
+	# podman refuses to work if it does not exist
+	install -d -m 755 $(DESTDIR)/usr/lib/podman
+	install -d -m 700 $(DESTDIR)/usr/lib/podman/storage
 	# dracut network startup module for firecracker guests
 	install -m 644 \
 		firecracker-pilot/dracut/usr/lib/dracut/modules.d/80netstart/module-setup.sh \

@@ -34,13 +34,16 @@ use flakes::io::IO;
 use flakes::lookup::Lookup;
 use flakes::podman as engine;
 
-pub fn pull(uri: &String, usermode: bool) -> i32 {
+pub fn pull(uri: &String, usermode: bool, use_addon_store: bool) -> i32 {
     /*!
     Call podman pull and prune with the provided uri
+
+    With use_addon_store the image is stored in the additional
+    image store of the system wide setup, see store_call
     !*/
     info!("Fetching from registry...");
     info!("podman pull {uri}");
-    let mut call = engine::setup_podman_call(usermode);
+    let mut call = store_call(usermode, use_addon_store);
     call.arg("pull")
         .arg(uri);
     let status = match call.status() {
@@ -59,15 +62,17 @@ pub fn pull(uri: &String, usermode: bool) -> i32 {
     if ! status.success() {
         error!("Failed, error message(s) reported");
     } else {
-        info!("podman prune");
-        engine::prune(usermode);
+        prune(usermode, use_addon_store);
     }
     status_code
 }
 
-pub fn load(oci: &String, usermode: bool) -> i32 {
+pub fn load(oci: &String, usermode: bool, use_addon_store: bool) -> i32 {
     /*!
     Call podman load with the provided oci tar file
+
+    With use_addon_store the image is stored in the additional
+    image store of the system wide setup, see store_call
     !*/
     info!("Loading OCI image...");
     if ! Path::new(oci).is_file() {
@@ -75,7 +80,7 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
         return 1
     }
     info!("podman load -i {oci}");
-    let mut call = engine::setup_podman_call(usermode);
+    let mut call = store_call(usermode, use_addon_store);
     call.arg("load")
         .arg("-i")
         .arg(oci);
@@ -96,11 +101,41 @@ pub fn load(oci: &String, usermode: bool) -> i32 {
     if ! status.success() {
         error!("Failed, error message(s) reported");
     } else {
-        // prune old images
-        info!("podman prune");
-        engine::prune(usermode);
+        prune(usermode, use_addon_store);
     }
     status_code
+}
+
+fn store_call(usermode: bool, use_addon_store: bool) -> Command {
+    /*!
+    Create the podman call for a command which stores an image
+
+    With use_addon_store the image is stored in the additional
+    image store of the system wide setup instead of its graphroot.
+    The add-on store is read-only for all other podman calls, the
+    containers of the flakes are still created in the graphroot
+    !*/
+    if use_addon_store {
+        info!("Storing in add-on store {}", defaults::PODMAN_ADDON_STORE);
+        engine::setup_podman_addon_store_call()
+    } else {
+        engine::setup_podman_call(usermode)
+    }
+}
+
+fn prune(usermode: bool, use_addon_store: bool) {
+    /*!
+    Prune old images after an image was stored
+
+    The add-on store is not pruned. A podman call operating on it
+    does not know the containers in the graphroot, it would delete
+    an old image a container of a flake was created from
+    !*/
+    if use_addon_store {
+        return
+    }
+    info!("podman prune");
+    engine::prune(usermode);
 }
 
 pub fn export(

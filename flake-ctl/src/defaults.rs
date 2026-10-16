@@ -138,6 +138,9 @@ pub const FLAKE_SHOW_ID_LEN: usize =
 // engine is shared with podman-pilot and is therefore
 // maintained in the common area
 pub use flakes::defaults::PODMAN_ID_EXTENSION;
+// Additional image store of the system wide podman setup, the
+// common podman calls write into it
+pub use flakes::defaults::PODMAN_ADDON_STORE;
 // Location of the storage volumes and name of the vsock sockets
 // firecracker-pilot creates for VM instances, shared with
 // firecracker-pilot and therefore maintained in the common area

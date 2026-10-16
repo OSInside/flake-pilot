@@ -70,6 +70,25 @@ pub fn setup_podman_call(usermode: bool) -> Command {
     call
 }
 
+pub fn setup_podman_addon_store_call() -> Command {
+    /*!
+    Create the podman call which writes into the additional image
+    store of the system wide setup
+
+    The add-on store is used as the storage root of the call, this
+    way all image data including the layer records is stored in it
+    and nothing is written to the graphroot. The --imagestore option
+    of podman is not used because it keeps the layer records in the
+    graphroot. The storage options are reset because they configure
+    the add-on store as additional read-only image store, which
+    cannot be the storage root of the same call at the same time
+    !*/
+    let mut call = setup_podman_call(false);
+    call.arg("--root").arg(defaults::PODMAN_ADDON_STORE)
+        .arg("--storage-opt").arg("");
+    call
+}
+
 pub fn init_cid_dir(user: User) -> Result<String, FlakeError> {
     /*!
     Create meta data directory structure and return the private

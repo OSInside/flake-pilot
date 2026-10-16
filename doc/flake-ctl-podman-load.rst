@@ -12,10 +12,11 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl podman load --oci <OCI>
+       flake-ctl podman load --oci <OCI> [OPTIONS]
 
    OPTIONS:
        --oci <OCI>
+       --use-addon-store
 
 
 DESCRIPTION
@@ -39,12 +40,26 @@ OPTIONS
   container must be in the OCI tar format like it is produced
   when exporting containers from registries via **podman export**
 
+--use-addon-store
+
+  Store the image in the additional read-only image store
+  /usr/lib/podman/storage instead of the local podman registry
+  /var/lib/podman/storage. No data is written to the local podman
+  registry in this case. The add-on store is configured in
+  /etc/flakes/storage.conf, the containers of the flakes are
+  created from its images but are stored in the local podman
+  registry. Old images in the add-on store are not pruned because
+  a container of a flake might still use them. The option is only
+  supported as root
+
 EXAMPLE
 -------
 
 .. code:: bash
 
    $ flake-ctl podman load --oci SOME.docker.tar
+
+   $ flake-ctl podman load --oci SOME.docker.tar --use-addon-store
 
 AUTHOR
 ------

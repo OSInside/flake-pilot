@@ -40,3 +40,5 @@ sudo
 systemd
 toolchain
 vsock
+appstore
+boxbuild

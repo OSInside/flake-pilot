@@ -12,10 +12,11 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl podman pull --uri <URI>
+       flake-ctl podman pull --uri <URI> [OPTIONS]
 
    OPTIONS:
        --uri <URI>
+       --use-addon-store
 
 DESCRIPTION
 -----------
@@ -36,12 +37,26 @@ OPTIONS
   Pull from URI into local podman registry. Consult the
   podman pull documentation for details on the URI format
 
+--use-addon-store
+
+  Store the image in the additional read-only image store
+  /usr/lib/podman/storage instead of the local podman registry
+  /var/lib/podman/storage. No data is written to the local podman
+  registry in this case. The add-on store is configured in
+  /etc/flakes/storage.conf, the containers of the flakes are
+  created from its images but are stored in the local podman
+  registry. Old images in the add-on store are not pruned because
+  a container of a flake might still use them. The option is only
+  supported as root
+
 EXAMPLE
 -------
 
 .. code:: bash
 
    $ flake-ctl podman pull --uri opensuse/tumbleweed
+
+   $ flake-ctl podman pull --uri opensuse/tumbleweed --use-addon-store
 
 AUTHOR
 ------

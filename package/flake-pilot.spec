@@ -290,6 +290,8 @@ fi
 %dir /var/lib/podman
 %dir %attr(0700,root,root) /var/lib/podman/storage
 %endif
+%dir /usr/lib/podman
+%dir %attr(0700,root,root) /usr/lib/podman/storage
 %{_bindir}/podman-pilot
 /usr/sbin/flake-registry
 %doc %{_mandir}/man8/flake-ctl-podman-export.8.gz

@@ -127,7 +127,7 @@ such an image into a program on your host:
 
    flake-ctl podman register \
        --container gcr.io/google.com/cloudsdktool/google-cloud-cli:stable \
-       --app $HOME/bin/gcloud --target /usr/bin/gcloud
+       --app $HOME/bin/gcloud --target /usr/lib/google-cloud-sdk/bin/gcloud
 
    gcloud version
 

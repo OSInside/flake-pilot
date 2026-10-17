@@ -1,0 +1,638 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3. Privileges and Trust &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=1da9b6e9" />
+
+  
+    <link rel="shortcut icon" href="_static/flake-pilot-logo.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=84e44b8a"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="4. Getting Started" href="getting_started.html" />
+    <link rel="prev" title="2. Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+              <img src="_static/flake-pilot-logo.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">3. Privileges and Trust</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#how-flake-pilot-gets-its-privileges">3.1. How Flake Pilot Gets Its Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-helper-checks">3.2. What the Helper Checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-each-feature-needs">3.3. What Each Feature Needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-this-means-in-practice">3.4. What This Means in Practice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-reference-policy">3.5. The Reference Policy</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">4. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">4.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">4.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">4.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">4.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">4.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">5. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">5.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">5.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">5.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">5.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">5.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">5.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">5.7. Pilot Options as Part of the Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#updating-the-container-image">5.8. Updating the Container Image</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">6. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">6.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">6.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">6.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">6.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">7. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">7.1. The Concept</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#the-firewall-setup">7.1.1. The Firewall Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">7.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">7.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">7.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">7.2.3. Disconnect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#delete-the-host-setup">7.2.4. Delete the Host Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">7.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">8. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">8.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">8.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">8.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">8.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">8.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="sandbox_apps.html">9. Applications From a Sandbox</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#providing-a-root-filesystem-tree">9.1. Providing a Root Filesystem Tree</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="sandbox_apps.html#the-host-root-as-the-tree">9.1.1. The Host Root as the Tree</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#a-shell-as-a-sandbox-app">9.2. A Shell as a Sandbox App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#adding-paths-from-the-host">9.3. Adding Paths from the Host</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#where-written-data-is-kept">9.4. Where Written Data Is Kept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#registration-options-in-short">9.5. Registration Options in Short</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#calling-a-registered-sandbox-app">9.6. Calling a Registered Sandbox App</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">10. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">10.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">10.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">10.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">10.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">11. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#building-with-podman-only">11.1. Building With Podman Only</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="building_images.html#building-container-images">11.1.1. Building Container Images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="building_images.html#building-vm-images">11.1.2. Building VM Images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#delta-containers">11.2. Delta Containers</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">12. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">12.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">12.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">12.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">12.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">12.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">12.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">3. </span>Privileges and Trust</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="installation.html" class="btn btn-neutral float-left" title="2. Installation" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="getting_started.html" class="btn btn-neutral float-right" title="4. Getting Started" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="privileges-and-trust">
+<span id="privileges"></span><h1><span class="section-number">3. </span>Privileges and Trust<a class="headerlink" href="#privileges-and-trust" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter explains which features of Flake Pilot need root
+privileges and how they get them: through one program, the
+Flake Pilot helper, which is called through <code class="docutils literal notranslate"><span class="pre">sudo</span></code>. It describes
+what the helper checks, what a <code class="docutils literal notranslate"><span class="pre">sudo</span></code> rule for it grants and
+introduces the reference <code class="docutils literal notranslate"><span class="pre">sudoers</span></code> policy which comes with the
+<code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> package.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>A sudo rule for the helper is not a root shell, but it is
+trust.</strong></p>
+<p>The helper provides a fixed set of commands and checks every
+argument and the authority of the calling user. A user with a
+<code class="docutils literal notranslate"><span class="pre">sudo</span></code> rule for it cannot run arbitrary commands as root. The
+rules do let the user change the network setup of the host for
+the firecracker VMs, and run every podman flake registered system
+wide, as root, with what its registration grants on the host.</p>
+</div>
+<section id="how-flake-pilot-gets-its-privileges">
+<h2><span class="section-number">3.1. </span>How Flake Pilot Gets Its Privileges<a class="headerlink" href="#how-flake-pilot-gets-its-privileges" title="Link to this heading"></a></h2>
+<p>Flake Pilot does not install any setuid binary. Every action which
+needs more privileges than the calling user has is performed by the
+helper:</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>/usr/libexec/flake-pilot/flake-pilot-helper
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span></code>, <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> and <code class="docutils literal notranslate"><span class="pre">bubblewrap-pilot</span></code> call it
+through <code class="docutils literal notranslate"><span class="pre">sudo</span></code>. It is the only program Flake Pilot calls through
+<code class="docutils literal notranslate"><span class="pre">sudo</span></code>. A caller who is <code class="docutils literal notranslate"><span class="pre">root</span></code> already runs it directly. Every
+other program, <code class="docutils literal notranslate"><span class="pre">podman</span></code> included, is called with the privileges of
+the process that calls it.</p>
+<p>The helper belongs to root and refuses to run as a setuid program,
+it has to be called through <code class="docutils literal notranslate"><span class="pre">sudo</span></code> or by <code class="docutils literal notranslate"><span class="pre">root</span></code>. It takes the
+calling user from <code class="docutils literal notranslate"><span class="pre">sudo</span></code> and clears its environment before it does
+anything else. Every command checks its arguments against a strict
+pattern before they become part of a path, a device name or a
+program argument, and it checks the authority of the caller against
+data which belongs to root. <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">flake-pilot-helper</span></code> lists the
+commands.</p>
+</section>
+<section id="what-the-helper-checks">
+<h2><span class="section-number">3.2. </span>What the Helper Checks<a class="headerlink" href="#what-the-helper-checks" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>The network setup of the firecracker VMs</dt><dd><p>The private network of the VMs has to be one of the networks Flake
+Pilot selects from and must not collide with a network of the host.
+The outgoing interface has to exist. Both are recorded in the
+network state, <code class="docutils literal notranslate"><span class="pre">/var/lib/firecracker/network-state.yaml</span></code>, which
+belongs to root. The address of a VM, the route to it and its
+firewall rules are only ever created within the recorded network.
+The TAP device of a VM is created for the caller, only root can
+create it for another user. The flake configuration which
+identifies the VM has to belong to the caller or to the system wide
+registry. See <a class="reference internal" href="firecracker_networking.html#firecracker-networking"><span class="std std-ref">Firecracker Networking</span></a>.</p>
+</dd>
+<dt>NFS exports</dt><dd><p>A directory can only be exported by its owner, or by root for a
+user other than root. It is exported to exactly the VM the network
+state records for the flake instance. Every access of the VM is
+mapped to the owner of the directory. Only that owner and root can
+release the export. See <a class="reference internal" href="firecracker_volumes.html#firecracker-volumes"><span class="std std-ref">Firecracker Volumes</span></a>.</p>
+</dd>
+<dt>The root filesystem of a bubblewrap sandbox</dt><dd><p>All paths are derived from the caller and the instance name. The
+directories of the setup have to belong to the caller and are
+opened without following a symbolic link. The tmpfs and the
+overlay are mounted nosuid and nodev onto these opened directories.
+The tree of the sandbox and the layers a flake stacks on top of it
+are the read only layers of the overlay, access to their content
+through the overlay is checked against their own permissions. The
+writable layer is a tmpfs of the caller which is kept until the
+caller discards it or the host is rebooted, it uses memory of the
+host meanwhile. Its size is limited by <code class="docutils literal notranslate"><span class="pre">sandbox_tmpfs_size</span></code> in
+<code class="docutils literal notranslate"><span class="pre">/etc/flakes.yml</span></code>, a caller can only ask for less. See
+<a class="reference internal" href="sandbox_apps.html#sandbox-apps"><span class="std std-ref">Applications From a Sandbox</span></a>.</p>
+</dd>
+<dt>System wide podman flakes</dt><dd><p>The application has to be a link to <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> which belongs
+to root, and its registration has to belong to root. The helper
+starts <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> as root for the caller with a fresh
+environment. The container and its runtime options are taken from
+the registration. A <code class="docutils literal notranslate"><span class="pre">%VAR</span></code> reference in the runtime options, e.g
+<code class="docutils literal notranslate"><span class="pre">%HOME</span></code>, resolves to the value of the user database for the
+caller, not to a value the caller set. The meta data of the
+instances is kept in a directory which belongs to root. See
+<a class="reference internal" href="container_apps.html#container-apps"><span class="std std-ref">Applications From a Container</span></a>.</p>
+</dd>
+</dl>
+</section>
+<section id="what-each-feature-needs">
+<h2><span class="section-number">3.3. </span>What Each Feature Needs<a class="headerlink" href="#what-each-feature-needs" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 35.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Privileges</p></th>
+<th class="head"><p>Grants</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>podman flake from the user registry, <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> and
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span></code></p></td>
+<td><p>none, rootless podman of the calling user</p></td>
+<td><p>nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p>podman flake from the system registry, <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code></p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> command</p></td>
+<td><p>what the registration grants, see below</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span></code> for the system registry</p></td>
+<td><p>must be called by root</p></td>
+<td><p>n/a</p></td>
+</tr>
+<tr class="row-odd"><td><p>firecracker flake, <code class="docutils literal notranslate"><span class="pre">firecracker-pilot</span></code>, from either registry</p></td>
+<td><p>none</p></td>
+<td><p>nothing</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">pull</span></code></p></td>
+<td><p>none for the user registry, root for the system registry</p></td>
+<td><p>nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">network</span> <span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">cleanup</span></code></p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">network-init</span></code> and <code class="docutils literal notranslate"><span class="pre">network-cleanup</span></code> commands</p></td>
+<td><p>the network setup of the host</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">network</span> <span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">remove</span></code></p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">network-connect</span></code> and <code class="docutils literal notranslate"><span class="pre">network-disconnect</span></code> commands</p></td>
+<td><p>the VMs of the caller</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">volume</span> <span class="pre">export</span></code>, <code class="docutils literal notranslate"><span class="pre">release</span></code></p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">volume-export</span></code> and <code class="docutils literal notranslate"><span class="pre">volume-release</span></code> commands</p></td>
+<td><p>the directories of the caller</p></td>
+</tr>
+<tr class="row-even"><td><p>bubblewrap flake, <code class="docutils literal notranslate"><span class="pre">bubblewrap-pilot</span></code>, from either registry</p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">sandbox-mount</span></code> and <code class="docutils literal notranslate"><span class="pre">sandbox-umount</span></code> commands</p></td>
+<td><p>the sandboxes of the caller</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">init</span></code> on a host without the meta data directory</p></td>
+<td><p>helper, <code class="docutils literal notranslate"><span class="pre">meta-dirs-init</span></code> command</p></td>
+<td><p>nothing</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">volume</span> <span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">remove</span></code> only change the
+flake configuration and need no privileges.</p>
+</section>
+<section id="what-this-means-in-practice">
+<h2><span class="section-number">3.4. </span>What This Means in Practice<a class="headerlink" href="#what-this-means-in-practice" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Flakes of the calling user and firecracker flakes need no rule.</dt><dd><p>Podman flakes from the user registry run in the rootless podman
+setup of the user, firecracker flakes run the VM as the calling
+user. Neither of them calls the helper.</p>
+</dd>
+<dt>A system wide podman flake is granted to every user with the rule.</dt><dd><p>The flake runs as root in the podman setup of root, with the
+container and the runtime options of its registration. Whatever
+the flake can do on the host, e.g through the host directories its
+registration mounts into the container, every user with the rule
+can do through it. Register a podman flake system wide only if all
+of these users may use it this way.</p>
+</dd>
+<dt>The content of a system wide flake is trusted as well.</dt><dd><p>A delta container may ship a <code class="docutils literal notranslate"><span class="pre">/systemfiles</span></code> script which collects
+the files to provision from the host. <code class="docutils literal notranslate"><span class="pre">podman-pilot</span></code> runs it on
+the host in a bash process of the user who calls the flake, with
+the privileges of that user only, the files it lists are copied
+into the container as root. The script runs with the privileges of
+every user who calls the flake and decides which host files end up
+in a container of root. Register only containers and images whose
+authors you trust with that.</p>
+</dd>
+<dt>The network setup is host wide.</dt><dd><p>A user with the rule for it picks the private network of the VMs,
+the interface their traffic leaves the host through and the
+services of the host they may reach. Deleting the setup disconnects
+the VMs of all users. Consider creating the host setup as root and
+granting only the rules for the per flake commands.</p>
+</dd>
+<dt>The metadata directory is provided by root, not by the pilots.</dt><dd><p>All pilots keep the state of their instances in a private
+directory of the calling user below a metadata directory shared
+by all users, <code class="docutils literal notranslate"><span class="pre">/tmp/flakes</span></code> by default. The owner of that
+directory can delete and replace the private directories of all
+other users. It therefore has to belong to root and to have the
+permissions <code class="docutils literal notranslate"><span class="pre">1777</span></code>, like <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>. No pilot creates it. A pilot
+refuses to run if it does not exist or is set up differently, and
+tells how to fix it. The <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> package lets
+<code class="docutils literal notranslate"><span class="pre">systemd-tmpfiles</span></code> create it at boot and when the package is
+installed, see <code class="docutils literal notranslate"><span class="pre">/usr/lib/tmpfiles.d/flake-pilot.conf</span></code>. On a host
+without <code class="docutils literal notranslate"><span class="pre">systemd</span></code>, or with a metadata directory other than
+<code class="docutils literal notranslate"><span class="pre">/tmp/flakes</span></code> configured in <code class="docutils literal notranslate"><span class="pre">/etc/flakes.yml</span></code>, call
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">init</span></code> once after every boot instead. It creates the
+directory through the helper.</p>
+</dd>
+<dt>A user can block the flakes of another user.</dt><dd><p>The private directory of a user is named after the ID of that
+user, e.g <code class="docutils literal notranslate"><span class="pre">/tmp/flakes/1000</span></code>. Another user can create it first,
+or a symbolic link or file in its place. The pilots of the user it
+is named after then refuse to run and name the user who owns the
+entry along with the call to remove it, which only root can do.
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">init</span></code> called as root reports all such entries.</p>
+</dd>
+<dt>A password limits who uses the rule.</dt><dd><p><code class="docutils literal notranslate"><span class="pre">sudo</span></code> asks for the password of the calling user and caches it
+for a few minutes. <code class="docutils literal notranslate"><span class="pre">NOPASSWD</span></code> gives the user no further
+privilege, but it allows every process running under their
+account, e.g a malicious build script, to use the helper without
+any interaction. The reference policy does not use it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sudo</span></code> logs every call.</dt><dd><p>The calls of the helper show up in the system journal, e.g with
+<code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">_COMM=sudo</span></code>. The helper logs the user it acts for
+with every change of the host network setup.</p>
+</dd>
+</dl>
+</section>
+<section id="the-reference-policy">
+<span id="sudoers-reference"></span><h2><span class="section-number">3.5. </span>The Reference Policy<a class="headerlink" href="#the-reference-policy" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> package ships a reference policy as
+documentation, e.g in
+<code class="docutils literal notranslate"><span class="pre">/usr/share/doc/packages/flake-pilot/flake-pilot.sudoers</span></code>. In the
+source tree it is located in <code class="docutils literal notranslate"><span class="pre">doc/sudoers/flake-pilot.sudoers</span></code>.</p>
+<p>The policy grants the members of the <code class="docutils literal notranslate"><span class="pre">flake-pilot</span></code> group the use
+of the helper, one rule per feature, and states what each rule
+grants. The first argument of the helper is the command to perform,
+each rule is limited to the commands of its feature.</p>
+<p><code class="docutils literal notranslate"><span class="pre">sudo</span></code> ignores files in <code class="docutils literal notranslate"><span class="pre">/etc/sudoers.d</span></code> whose name contains a
+dot. Copied there under its original name, the policy therefore
+stays inactive. To activate it:</p>
+<ol class="arabic">
+<li><p>Edit a copy of the file and delete the rules of the features you
+do not want to grant.</p></li>
+<li><p>Create the group:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>groupadd<span class="w"> </span>--system<span class="w"> </span>flake-pilot
+</pre></div>
+</div>
+</li>
+<li><p>Check the edited copy and install it without a dot in its name:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>visudo<span class="w"> </span>--check<span class="w"> </span>--file<span class="w"> </span>./flake-pilot.sudoers
+install<span class="w"> </span>-m<span class="w"> </span><span class="m">0440</span><span class="w"> </span>-o<span class="w"> </span>root<span class="w"> </span>-g<span class="w"> </span>root<span class="w"> </span>./flake-pilot.sudoers<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>/etc/sudoers.d/flake-pilot
+</pre></div>
+</div>
+</li>
+<li><p>Add the users to the group who may use the features listed
+above:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>usermod<span class="w"> </span>--append<span class="w"> </span>--groups<span class="w"> </span>flake-pilot<span class="w"> </span>USER
+</pre></div>
+</div>
+</li>
+</ol>
+<p>The complete policy:</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>#
+# Reference sudoers policy for flake-pilot
+# ========================================
+#
+# flake-pilot performs every action which needs root privileges
+# through one program, the flake-pilot helper:
+#
+#   /usr/libexec/flake-pilot/flake-pilot-helper
+#
+# It is the only program flake-pilot runs through sudo. The helper
+# belongs to root and provides a fixed set of commands. It checks
+# every argument and the authority of the calling user, which it
+# takes from sudo, against data which belongs to root. It never
+# passes an argument of the user on to a program unchecked.
+#
+# What the rule grants
+# --------------------
+# Unlike a rule for general purpose programs like mount, iptables or
+# podman, the rules for the helper do not let a user run arbitrary
+# commands as root. A user with the rules can:
+#
+#   * Prepare and delete the network setup of the firecracker VMs:
+#     IP forwarding, the firewall chains of the setup and the TAP
+#     devices of the VMs. This is host wide: the user picks the
+#     private network of the VMs out of the networks flake-pilot
+#     selects from, the interface their traffic leaves the host
+#     through and the services of the host they may use. Deleting
+#     the setup disconnects the VMs of all users.
+#
+#   * Connect and disconnect the VMs of its own flakes and of the
+#     system wide flakes. Only root can do this for another user.
+#
+#   * Export a directory it owns through NFS to such a VM, and
+#     release the exports of its own directories. Every access of
+#     the VM is mapped to the owner of the directory.
+#
+#   * Mount and unmount the root filesystem of its own bubblewrap
+#     sandboxes: an overlay of directory trees, mounted nosuid and
+#     nodev below its own directory in /var/tmp. The trees are only
+#     read, the overlay grants no access the user does not have on
+#     the trees themselves. The writable layer is a tmpfs, kept
+#     until the user discards it or the host is rebooted, which uses
+#     memory of the host meanwhile. Set sandbox_tmpfs_size in
+#     /etc/flakes.yml to limit it, users can only ask for less.
+#
+#   * Run the podman flakes registered system wide, as root, in the
+#     podman setup of root. The container and its runtime options
+#     are taken from the registration, which only root can write.
+#     Whatever such a flake can do on the host, e.g through the host
+#     directories mounted into its container, every user with this
+#     rule can do through it. A delta container runs its
+#     /systemfiles script on the host, as the user who calls the
+#     flake, and the host files the script lists are copied into the
+#     container as root. Registering a flake system wide therefore
+#     means granting it to every user with this rule, and trusting
+#     the author of its container with the accounts of these users
+#     and with the host files the script lists.
+#
+#   * Create the meta data directories of the pilots configured in
+#     /etc/flakes.yml.
+#
+# Flakes registered by the calling user and run in its rootless
+# podman setup, as well as firecracker flakes, need no rule at all.
+#
+# The rules below are grouped by feature. The first argument of the
+# helper is the command to perform, a rule can therefore be limited
+# to the commands of a feature. Delete the groups of the features you
+# do not want to grant, e.g the host network setup if root creates it.
+#
+# Not active as shipped
+# ---------------------
+# sudo ignores files in /etc/sudoers.d whose name contains a dot.
+# This file therefore stays inactive even when copied there under its
+# original name. To activate it:
+#
+#   1. Edit a copy and delete the groups of the features you do
+#      not want to grant
+#   2. groupadd --system flake-pilot
+#   3. visudo --check --file ./flake-pilot.sudoers
+#   4. install -m 0440 -o root -g root ./flake-pilot.sudoers \
+#          /etc/sudoers.d/flake-pilot
+#   5. usermod --append --groups flake-pilot USER
+#
+# Passwords
+# ---------
+# The rules ask for the password of the calling user, which is the
+# sudo default. sudo caches it for a few minutes, as configured by
+# timestamp_timeout. A user who runs system wide podman flakes or
+# bubblewrap sandboxes is asked for it when the cache expires.
+# NOPASSWD does not give the user any additional privilege, but it
+# allows every process running under the account of the user, e.g a
+# malicious build script, to use the helper without any interaction.
+# Weigh this against the system wide flakes the helper runs before
+# using it.
+#
+# The log messages of the helper are only shown if PILOT_DEBUG is
+# set for the caller, which passes --debug after the command then.
+# The rules for commands without other arguments list that form.
+#
+# The helper is given by its absolute path, the way flake-pilot
+# passes it to sudo. The helper refuses to run setuid, it has to be
+# called through sudo or by root.
+#
+
+#
+# podman flakes registered system wide, /usr/share/flakes
+# -------------------------------------------------------------------
+# Used by: podman-pilot
+# GRANTS:  every system wide podman flake as root, see above
+#
+Cmnd_Alias FLAKE_HELPER_PODMAN = \
+    /usr/libexec/flake-pilot/flake-pilot-helper podman-pilot *
+
+%flake-pilot ALL = (root) FLAKE_HELPER_PODMAN
+
+#
+# bubblewrap flakes
+# -------------------------------------------------------------------
+# Used by: bubblewrap-pilot, for system wide flakes as well as for
+#          flakes registered by the calling user
+# GRANTS:  the root filesystem mounts of the sandboxes of the caller
+#
+Cmnd_Alias FLAKE_HELPER_SANDBOX = \
+    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-mount *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-umount *
+
+%flake-pilot ALL = (root) FLAKE_HELPER_SANDBOX
+
+#
+# flake-ctl firecracker network add, remove, volume export, release
+# -------------------------------------------------------------------
+# GRANTS:  the network connection of the VMs of the caller and the
+#          NFS exports of the directories of the caller
+#
+Cmnd_Alias FLAKE_HELPER_VM = \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-connect *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-disconnect *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper volume-export *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper volume-release *
+
+%flake-pilot ALL = (root) FLAKE_HELPER_VM
+
+#
+# flake-ctl firecracker network init, cleanup and flake-ctl init
+# -------------------------------------------------------------------
+# GRANTS:  the network setup of the host for the VMs of all users,
+#          the meta data directories of the pilots
+#
+# The network setup changes the host, not a single flake. Consider
+# creating it as root instead of granting this rule.
+#
+Cmnd_Alias FLAKE_HELPER_HOST = \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-init *, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-cleanup, \
+    /usr/libexec/flake-pilot/flake-pilot-helper network-cleanup --debug, \
+    /usr/libexec/flake-pilot/flake-pilot-helper meta-dirs-init, \
+    /usr/libexec/flake-pilot/flake-pilot-helper meta-dirs-init --debug
+
+%flake-pilot ALL = (root) FLAKE_HELPER_HOST
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="2. Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="getting_started.html" class="btn btn-neutral float-right" title="4. Getting Started" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on October 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

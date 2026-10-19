@@ -88,6 +88,10 @@ pub const TAP_DEVICE_PREFIX: &str = "tap-";
 pub const FIREWALL_NAT_CHAIN: &str = "FLAKE_PILOT_NAT";
 pub const FIREWALL_FORWARD_CHAIN: &str = "FLAKE_PILOT_FORWARD";
 pub const FIREWALL_INPUT_CHAIN: &str = "FLAKE_PILOT_INPUT";
+// Chain of the egress policy of the VM network. The traffic of the
+// VMs to the outside world passes it before it is forwarded, see
+// NETWORK_EGRESS_PRESETS
+pub const FIREWALL_EGRESS_CHAIN: &str = "FLAKE_PILOT_EGRESS";
 // Max. size of a network interface name including the
 // terminating zero byte as defined by IFNAMSIZ in linux/if.h
 pub const IFNAMSIZ: usize = 16;
@@ -209,6 +213,21 @@ pub const NETWORK_HOST_PREFIX_LEN: u8 =
 // a resolver on the host, which the VMs use through their gateway
 pub const NETWORK_DNS: &str =
     "8.8.8.8";
+// Named sets of networks the egress policy of the VM network can
+// deny, see 'flake-ctl firecracker network init --egress-deny'.
+// The traffic of the VMs to them is dropped instead of being
+// forwarded to the outgoing interface:
+//
+// link-local: the link local network, which provides the metadata
+//   service of the cloud the host runs in at 169.254.169.254.
+//   Without the policy a VM reaches it with the identity of the
+//   host
+// private: the private networks of RFC 1918, e.g the local
+//   network of the host and the services in it
+pub const NETWORK_EGRESS_PRESETS: &[(&str, &[&str])] = &[
+    ("link-local", &["169.254.0.0/16"]),
+    ("private", &["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"])
+];
 // Directory the overlay setups of the bubblewrap sandboxes are
 // created in. The directories are created by bubblewrap-pilot and
 // mounted by the helper. It is shared

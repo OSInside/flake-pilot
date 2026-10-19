@@ -23,8 +23,9 @@
 //
 use flakes::helper::helper_call;
 use flakes::network::{
-    get_default_route_interface, get_free_network, get_nameserver,
-    get_network_config_file, get_preferred_network, get_tap_name,
+    get_default_route_interface, get_egress_networks, get_free_network,
+    get_nameserver, get_network_config_file, get_preferred_network,
+    get_tap_name,
     lock_network_state, network_collides, read_network_config,
     read_network_state, tap_exists, HostServices, Ipv4Network, NetworkConfig,
     NetworkState
@@ -44,7 +45,8 @@ use crate::app_config::{
 use crate::defaults;
 
 pub fn init(
-    outgoing_interface: Option<&str>, services: HostServices, usermode: bool
+    outgoing_interface: Option<&str>, services: HostServices,
+    egress_deny: &[String], usermode: bool
 ) -> bool {
     /*!
     Prepare the host for NAT based VM networking
@@ -60,9 +62,10 @@ pub fn init(
     The private network of the VMs is selected here, the setup
     itself is created by the helper, see its network-init command.
     The helper checks the network and the interface again and
-    records them along with the given services of the host in the
-    network state. The setup of the single flakes, done by add(),
-    uses what is recorded there.
+    records them along with the given services of the host and the
+    networks of the given egress policy in the network state. The
+    setup of the single flakes, done by add(), uses what is
+    recorded there.
 
     The setup is also recorded in the network configuration file,
     which the pilot reads to check the firewall setup.
@@ -73,6 +76,13 @@ pub fn init(
     firewall is managed by another tool, the rules have to be
     created with that tool instead
     !*/
+    let egress_networks = match get_egress_networks(egress_deny) {
+        Ok(egress_networks) => egress_networks,
+        Err(error) => {
+            error!("{error}");
+            return false
+        }
+    };
     let outgoing_interface = match select_outgoing_interface(
         outgoing_interface
     ) {
@@ -92,6 +102,9 @@ pub fn init(
     if services.dhcp {
         call.arg("--host-dhcp");
     }
+    for egress_network in &egress_networks {
+        call.arg("--egress-deny").arg(egress_network.to_string());
+    }
     if ! run_helper(&mut call, "prepare the host network") {
         return false
     }
@@ -109,6 +122,15 @@ pub fn init(
         "  DHCP server of the host: {}",
         if services.dhcp { "yes" } else { "no" }
     );
+    if egress_networks.is_empty() {
+        info!("  egress denied: none");
+    } else {
+        info!(
+            "  egress denied: {}",
+            egress_networks.iter()
+                .map(ToString::to_string).collect::<Vec<_>>().join(", ")
+        );
+    }
     true
 }
 

@@ -160,7 +160,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     match &command {
                         // init
                         cli::Network::Init {
-                            outgoing_interface, host_resolver, host_dhcp
+                            outgoing_interface, host_resolver, host_dhcp,
+                            egress_deny
                         } => {
                             if ! network::init(
                                 outgoing_interface.as_deref(),
@@ -168,6 +169,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     resolver: *host_resolver,
                                     dhcp: *host_dhcp
                                 },
+                                egress_deny,
                                 user
                             ) {
                                 return Ok(ExitCode::FAILURE)

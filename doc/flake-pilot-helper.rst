@@ -15,7 +15,7 @@ SYNOPSIS
        sudo /usr/libexec/flake-pilot/flake-pilot-helper <SUBCOMMAND> [--debug]
 
    SUBCOMMANDS:
-       network-init --network <NETWORK> --outgoing-interface <IF> [--host-resolver] [--host-dhcp]
+       network-init --network <NETWORK> --outgoing-interface <IF> [--host-resolver] [--host-dhcp] [--egress-deny <NET>]...
        network-cleanup
        network-connect --config-file <FILE> [--instance <NAME>] [--uid <UID>] [--prefer <ADDR>] [--exclude <ADDR>]...
        network-disconnect --config-file <FILE> [--instance <NAME>] [--uid <UID>]
@@ -68,7 +68,8 @@ network-init
   network has to be one of the private networks flake-pilot selects
   from and must not collide with a network of the host, the
   interface has to exist. Both are recorded in the network state
-  along with the services of the host the VMs use. Called by
+  along with the services of the host the VMs use and the networks
+  of the egress policy, which only adds drop rules. Called by
   **flake-ctl-firecracker-network-init**\(8)
 
 network-cleanup

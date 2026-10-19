@@ -38,10 +38,10 @@ use tempfile::NamedTempFile;
 
 use flakes::defaults;
 use flakes::network::{
-    get_free_address, get_network_candidates, get_tap_name,
-    is_flake_tap_device, is_vm_address, lock_network_state, network_collides,
-    read_network_config, read_network_state, tap_exists, Allocation,
-    Ipv4Network, NetworkState
+    get_egress_networks, get_free_address, get_network_candidates,
+    get_tap_name, is_flake_tap_device, is_vm_address, lock_network_state,
+    network_collides, read_network_config, read_network_state, tap_exists,
+    Allocation, Ipv4Network, NetworkState
 };
 
 use crate::caller::Caller;
@@ -69,7 +69,7 @@ pub struct VmInstance<'a> {
 
 pub fn init(
     caller: &Caller, network: &str, outgoing_interface: &str,
-    host_resolver: bool, host_dhcp: bool
+    host_resolver: bool, host_dhcp: bool, egress_deny: &[String]
 ) -> bool {
     /*!
     Prepare the host for NAT based VM networking
@@ -85,9 +85,11 @@ pub fn init(
     selects from, and it must not collide with a network the host
     is connected to. The outgoing interface has to exist. Both are
     recorded in the network state along with the services of the
-    host the VMs use. connect() takes them from there and nowhere
-    else: the address of a VM, the route to it and its firewall
-    rules are only ever created within the recorded network.
+    host the VMs use and the networks of the egress policy, see
+    flakes::network::get_egress_networks(). connect() takes them
+    from there and nowhere else: the address of a VM, the route to
+    it and its firewall rules are only ever created within the
+    recorded network.
 
     If IP forwarding was switched off, the state records that
     flake-pilot switched it on, cleanup() switches it off again
@@ -103,6 +105,13 @@ pub fn init(
         error!("{error}");
         return false
     }
+    let egress_deny = match get_egress_networks(egress_deny) {
+        Ok(egress_deny) => egress_deny,
+        Err(error) => {
+            error!("{error}");
+            return false
+        }
+    };
     let _lock = match lock_network_state(true) {
         Some(lock) => lock,
         None => return false
@@ -132,10 +141,13 @@ pub fn init(
     state.outgoing_interface = Some(outgoing_interface.to_string());
     state.host_resolver = host_resolver;
     state.host_dhcp = host_dhcp;
+    state.egress_deny = egress_deny.iter()
+        .map(ToString::to_string)
+        .collect();
     if ! write_network_state(&state) {
         return false
     }
-    if ! setup_firewall(&network, outgoing_interface) {
+    if ! setup_firewall(&network, outgoing_interface, &egress_deny) {
         return false
     }
     delete_legacy_rules(outgoing_interface);
@@ -238,7 +250,17 @@ pub fn connect(
         }
     };
     let services = state.get_services();
-    if ! firewall_is_active() {
+    let egress_deny = match state.get_egress_deny() {
+        Some(egress_deny) => egress_deny,
+        None => {
+            error!("The recorded egress policy is invalid");
+            error!("Please run 'flake-ctl firecracker network init' again");
+            return false
+        }
+    };
+    let outgoing_interface = state.outgoing_interface.as_deref()
+        .unwrap_or_default();
+    if ! firewall_is_active(&network, outgoing_interface, &egress_deny) {
         error!("The firewall setup of the host is not active");
         error!(
             "Please run 'flake-ctl firecracker network init' first, \

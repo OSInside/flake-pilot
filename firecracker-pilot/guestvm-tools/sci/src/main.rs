@@ -1878,7 +1878,7 @@ fn setup_logger() {
     !*/
     let env = Env::default()
         .filter_or("FLAKE_LOG_LEVEL", "trace")
-        .write_style_or("FLAKE_LOG_STYLE", "always");
+        .write_style_or("FLAKE_LOG_STYLE", "never");
 
     env_logger::init_from_env(env);
 }

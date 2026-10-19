@@ -43,9 +43,9 @@ pub async fn fetch_file(
             &format!(
                 "{}\n{} [{}] [{}] {}/{} ({}, {})",
                 "{msg}",
-                "{spinner:.green}",
+                "{spinner}",
                 "{elapsed_precise}",
-                "{wide_bar:.cyan/blue}",
+                "{wide_bar}",
                 "{bytes}",
                 "{total_bytes}",
                 "{bytes_per_sec}",

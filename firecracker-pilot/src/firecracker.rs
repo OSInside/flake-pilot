@@ -34,7 +34,7 @@ use flakes::network::{
     read_network_config, get_jump_rules, get_masquerade_rule, FirewallRule,
     NetworkConfig
 };
-use spinoff::{Spinner, spinners, Color};
+use spinoff::{Spinner, spinners};
 use ubyte::ByteUnit;
 use std::path::Path;
 use std::process::{Stdio, id};
@@ -252,7 +252,7 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         spinner = Some(
             Spinner::new_with_stream(
                 spinners::Line, "Launching flake...",
-                Color::Yellow, spinoff::Streams::Stderr
+                None, spinoff::Streams::Stderr
             )
         );
     }
@@ -260,13 +260,13 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
     match run_creation(&vm_id_file_path, program_name, engine_section) {
         Ok(result) => {
             if let Some(spinner) = spinner {
-                spinner.success("Launching flake");
+                spinner.stop_and_persist("✓", "Launching flake");
             }
             Ok(result)
         },
         Err(error) => {
             if let Some(spinner) = spinner {
-                spinner.fail("Flake launch has failed");
+                spinner.stop_and_persist("✗", "Flake launch has failed");
             }
             Err(error)
         },

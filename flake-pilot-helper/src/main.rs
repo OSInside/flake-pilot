@@ -139,10 +139,10 @@ fn setup_logger(debug: bool) {
 
     The log messages are only shown in debug mode, see PILOT_DEBUG.
     Errors are always shown, they tell the caller why a command
-    was refused or failed
+    was refused or failed. The messages are written without color
     !*/
     Builder::new()
         .filter_level(if debug { LevelFilter::Debug } else { LevelFilter::Error })
-        .write_style(WriteStyle::Always)
+        .write_style(WriteStyle::Never)
         .init();
 }

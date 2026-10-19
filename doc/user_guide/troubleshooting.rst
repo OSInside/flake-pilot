@@ -28,15 +28,18 @@ call also shows the complete list of mounts the application is given,
 which is usually what a missing file inside the sandbox comes down
 to.
 
-The styling of the log output is controlled by the following
-environment variable:
+The log output is written without color by default. Colors are
+enabled with the following environment variable:
 
 .. code-block:: bash
 
    FLAKE_LOG_STYLE=always myapp
 
-Accepted values are ``always`` (default), ``never`` and ``auto``.
-An unrecognized value falls back to ``auto``.
+Accepted values are ``never`` (default), ``always`` and ``auto``.
+An unrecognized value falls back to ``auto``. The variable applies
+to the pilots and to flake-ctl. flake-pilot-helper does not see the
+environment of its caller and always writes its messages without
+color.
 
 Known Issues
 ============

@@ -49,7 +49,7 @@ use std::os::unix::process::CommandExt;
 use std::io::Seek;
 use std::io::SeekFrom;
 
-use spinoff::{Spinner, spinners, Color};
+use spinoff::{Spinner, spinners};
 use tempfile::tempfile;
 use tempfile::NamedTempFile;
 use regex::Regex;
@@ -339,7 +339,7 @@ pub fn create(
         spinner = Some(
             Spinner::new_with_stream(
                 spinners::Line, "Launching flake...",
-                Color::Yellow, spinoff::Streams::Stderr
+                None, spinoff::Streams::Stderr
             )
         );
     }
@@ -354,13 +354,13 @@ pub fn create(
     ) {
         Ok(cid) => {
             if let Some(spinner) = spinner {
-                spinner.success("Launching flake");
+                spinner.stop_and_persist("✓", "Launching flake");
             }
             Ok((cid, container_cid_file))
         },
         Err(err) => {
             if let Some(spinner) = spinner {
-                spinner.fail("Flake launch has failed");
+                spinner.stop_and_persist("✗", "Flake launch has failed");
             }
             Err(err)
         },

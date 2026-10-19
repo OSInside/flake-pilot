@@ -23,7 +23,6 @@
 //
 use std::collections::HashMap;
 use std::env;
-use std::fs;
 
 use crate::flakelog::FlakeLog;
 
@@ -137,14 +136,11 @@ impl Lookup {
     }
 
     pub fn which(command: &str) -> bool {
-        if let Ok(path) = env::var("PATH") {
-            for path_entry in path.split(':') {
-                let abs_command = format!("{path_entry}/{command}");
-                if fs::metadata(abs_command).is_ok() {
-                    return true;
-                }
-            }
-        }
-        false
+        /*!
+        Check if the given command can be called. A command given
+        without a path is searched in $PATH the same way it is
+        found when it gets called. Only executable files count
+        !*/
+        which::which(command).is_ok()
     }
 }

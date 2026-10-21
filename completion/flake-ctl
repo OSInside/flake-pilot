@@ -117,7 +117,7 @@ __flake_ctl_list() {
 }
 
 __flake_ctl_podman_pull() {
-    __comp_reply_unused "--uri --help"
+    __comp_reply_unused "--uri --use-addon-store --help"
 }
 
 __flake_ctl_podman_help() {
@@ -153,7 +153,7 @@ __flake_ctl_podman_show() {
 }
 
 __flake_ctl_podman_load() {
-    __comp_reply_unused "--oci --help"
+    __comp_reply_unused "--oci --use-addon-store --help"
 }
 
 __flake_ctl_podman_export() {

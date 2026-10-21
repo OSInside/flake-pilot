@@ -359,12 +359,18 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             init_flakes_dir(user)?;
             match &command {
                 // pull
-                cli::Podman::Pull { uri } => {
-                    exit(podman::pull(uri, user));
+                cli::Podman::Pull { uri, use_addon_store } => {
+                    if ! addon_store_allowed(*use_addon_store, user) {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                    exit(podman::pull(uri, user, *use_addon_store));
                 },
                 // load
-                cli::Podman::Load { oci } => {
-                    exit(podman::load(oci, user));
+                cli::Podman::Load { oci, use_addon_store } => {
+                    if ! addon_store_allowed(*use_addon_store, user) {
+                        return Ok(ExitCode::FAILURE)
+                    }
+                    exit(podman::load(oci, user, *use_addon_store));
                 },
                 // export
                 cli::Podman::Export { container, oci, directory, force } => {
@@ -496,6 +502,18 @@ fn usermode() -> bool {
     operates on its own registry in rootless mode
     !*/
     get_current_uid() != 0
+}
+
+fn addon_store_allowed(use_addon_store: bool, usermode: bool) -> bool {
+    /*!
+    Check if the add-on store can be used. It is the additional
+    image store of the system wide podman setup and belongs to root
+    !*/
+    if use_addon_store && usermode {
+        error!("The add-on store can only be used as root");
+        return false
+    }
+    true
 }
 
 fn init_flakes_dir(usermode: bool) -> Result<(), Box<dyn std::error::Error>> {

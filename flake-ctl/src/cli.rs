@@ -488,12 +488,24 @@ pub enum Podman {
         /// OCI image to pull from remote registry into local podman registry
         #[clap(long)]
         uri: String,
+
+        /// Store the image in the additional read-only image
+        /// store /usr/lib/podman/storage instead of the local
+        /// podman registry. Only supported as root
+        #[clap(long)]
+        use_addon_store: bool,
     },
     /// Load container
     Load {
         /// OCI image to load into local podman registry
         #[clap(long)]
         oci: String,
+
+        /// Store the image in the additional read-only image
+        /// store /usr/lib/podman/storage instead of the local
+        /// podman registry. Only supported as root
+        #[clap(long)]
+        use_addon_store: bool,
     },
     /// Export container or OCI tarball to directory
     #[clap(group(

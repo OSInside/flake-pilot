@@ -42,6 +42,10 @@ pub const META_DIR_MODE: &str = "1777";
 pub const META_DIR_TMPFILES_CONF: &str =
     "/usr/lib/tmpfiles.d/flake-pilot.conf";
 pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
+// Additional read-only image store of the system wide podman
+// setup, see additionalimagestores in PODMAN_STORAGE_CONF. Images
+// are only written into it on request of flake-ctl
+pub const PODMAN_ADDON_STORE: &str = "/usr/lib/podman/storage";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
 // The helper performs every action of flake-pilot which needs
 // root privileges. It belongs to root, provides a fixed set of

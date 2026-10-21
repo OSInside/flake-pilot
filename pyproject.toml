@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flake-pilot"
-version = "3.2.8"
+version = "3.2.9"
 description = "flake-pilot - Application Isolation"
 license = "MIT"
 readme = "README.rst"

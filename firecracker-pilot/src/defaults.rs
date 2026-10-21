@@ -93,6 +93,16 @@ pub const EXIT_STATUS_PORT: u32 = 54;
 // Time to wait for the exit status of a command called through a
 // vsock once its output has ended
 pub const EXIT_STATUS_TIMEOUT_MSEC: u64 = 1000;
+// If standard output and standard error of the caller are not the
+// same terminal, the standard error of the command is received on
+// a port of its own. It is the port of the command's session with
+// this bit set. The console of the instance uses TERM_CONSOLE_PORT
+// for this. Session ports which already have the bit set, e.g one
+// chosen through %port, get no such channel
+pub const STDERR_PORT_FLAG: u32 = 0x8000_0000;
+// Time to wait for more data on the standard error channel of a
+// command once its session is over
+pub const STDERR_DRAIN_TIMEOUT_MSEC: u64 = 1000;
 // Interval to check the window size of the caller's terminal for
 pub const TERM_RESIZE_POLL_MSEC: u64 = 250;
 // Time to wait for the instance to take the new window size

@@ -89,6 +89,11 @@ pub const TERM_CONSOLE_PORT: u32 = 0;
 // vsock sends its exit status to the port the caller listens on
 // for this command
 pub const EXIT_STATUS_PORT: u32 = 54;
+// The caller receives the standard error of a command on a port of
+// its own if it keeps standard output and standard error apart. It
+// is the port of the command's session with this bit set. Ports of
+// the caller which already have it set get no such channel
+pub const STDERR_PORT_FLAG: u32 = 0x8000_0000;
 pub const VM_PORT: u32 = 52;
 pub const GUEST_CID: u32 = 3;
 // The host is the only vsock peer sci accepts connections from

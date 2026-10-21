@@ -39,6 +39,8 @@ use ubyte::ByteUnit;
 use std::path::Path;
 use std::process::{ExitCode, Stdio, id};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::env;
 use std::fs;
 use std::fs::DirBuilder;
@@ -405,6 +407,13 @@ pub fn call_instance(
     } else {
         None
     };
+    // Its standard error is received on a channel of its own if
+    // the caller keeps it apart from the standard output
+    let stderr_relay = if is_blocking {
+        stderr_listener(&vsock_uds_path, defaults::TERM_CONSOLE_PORT)?
+    } else {
+        None
+    };
     let mut firecracker = Command::new(defaults::FIRECRACKER);
     firecracker
         .arg("--no-api")
@@ -440,6 +449,9 @@ pub fn call_instance(
         // shuts down the instance. Thus it is available now if
         // it was sent
         exit_status = exit_status_receiver.try_recv().ok();
+    }
+    if let Some(stderr_relay) = stderr_relay {
+        stderr_relay.finish()
     }
     Ok(exit_status)
 }
@@ -542,6 +554,160 @@ pub fn accept_exit_status(listener: &UnixListener) -> Option<i32> {
                     debug!("No exit status received: {error}");
                 }
                 return None
+            }
+        }
+    }
+}
+
+pub fn has_separate_stderr() -> bool {
+    /*!
+    Tell whether the standard error of the caller is kept apart
+    from its standard output
+
+    This is the case unless both are terminals, e.g if one of
+    them is redirected into a file or a pipe
+    !*/
+    let is_terminal = |fd| unsafe { libc::isatty(fd) } == 1;
+    ! (is_terminal(libc::STDOUT_FILENO) && is_terminal(libc::STDERR_FILENO))
+}
+
+pub fn get_stderr_port(port: u32) -> Option<u32> {
+    /*!
+    Provide the port the standard error of the command is
+    received on for the session of the given port
+    !*/
+    if port & defaults::STDERR_PORT_FLAG != 0 {
+        return None
+    }
+    Some(port | defaults::STDERR_PORT_FLAG)
+}
+
+pub struct StderrRelay {
+    socket_path: String,
+    session_over: Arc<AtomicBool>,
+    thread: thread::JoinHandle<()>
+}
+
+impl StderrRelay {
+    pub fn finish(self) {
+        /*!
+        Pass on what is left of the standard error of the command
+        once its session is over
+        !*/
+        self.session_over.store(true, Ordering::SeqCst);
+        let _ = self.thread.join();
+        delete_file(&self.socket_path);
+    }
+}
+
+pub fn stderr_listener(
+    vsock_uds_path: &str, port: u32
+) -> Result<Option<StderrRelay>, FlakeError> {
+    /*!
+    Listen for the standard error of the command run in the
+    session of the given port and pass it on to the standard
+    error of the caller
+
+    This is only done if the caller keeps standard output and
+    standard error apart. Otherwise sci passes on the standard
+    error together with the standard output
+    !*/
+    if ! has_separate_stderr() {
+        return Ok(None)
+    }
+    let stderr_port = match get_stderr_port(port) {
+        Some(stderr_port) => stderr_port,
+        None => {
+            if Lookup::is_debug() {
+                debug!("No standard error channel for port {port}");
+            }
+            return Ok(None)
+        }
+    };
+    let socket_path = format!("{vsock_uds_path}_{stderr_port}");
+    IO::no_symlink(&socket_path)?;
+    if Path::new(&socket_path).exists() {
+        delete_file(&socket_path);
+    }
+    let listener = UnixListener::bind(&socket_path)?;
+    listener.set_nonblocking(true)?;
+    let session_over = Arc::new(AtomicBool::new(false));
+    let thread = thread::spawn({
+        let session_over = Arc::clone(&session_over);
+        move || relay_stderr(&listener, &session_over, &mut io::stderr())
+    });
+    Ok(Some(StderrRelay { socket_path, session_over, thread }))
+}
+
+pub fn relay_stderr(
+    listener: &UnixListener, session_over: &AtomicBool, output: &mut impl Write
+) {
+    /*!
+    Pass on the standard error sci sends for a command to the
+    given output
+
+    sci connects for it before the command runs, an sci which
+    does not support it never connects. Once the session is over
+    only the data which is still on its way is passed on, the
+    relay ends if nothing arrived for STDERR_DRAIN_TIMEOUT_MSEC.
+    Thus a process in the instance which inherited the standard
+    error of the command, e.g a background process, does not
+    keep the caller waiting
+    !*/
+    let mut stream = loop {
+        // A connection made before the session got over is
+        // already queued, thus it is taken by the accept below
+        let is_session_over = session_over.load(Ordering::SeqCst);
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if is_session_over {
+                    return
+                }
+                thread::sleep(time::Duration::from_millis(10));
+            },
+            Err(error) => {
+                if Lookup::is_debug() {
+                    debug!("Standard error connection failed: {error}");
+                }
+                return
+            }
+        }
+    };
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(time::Duration::from_millis(
+        defaults::STDERR_DRAIN_TIMEOUT_MSEC
+    )));
+    let mut buffer = [0_u8; 4096];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(sz_r) => {
+                if output.write_all(&buffer[0..sz_r]).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stderr");
+                    }
+                    break
+                }
+                let _ = output.flush();
+            },
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => { },
+            Err(error) if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ) => {
+                if session_over.load(Ordering::SeqCst) {
+                    if Lookup::is_debug() {
+                        debug!("Standard error still open after the session");
+                    }
+                    break
+                }
+            },
+            Err(error) => {
+                if Lookup::is_debug() {
+                    debug!("read failure on standard error stream: {error}");
+                }
+                break
             }
         }
     }
@@ -736,6 +902,10 @@ pub fn execute_command_at_instance(
     IO::no_symlink(command_socket)?;
     let thread_handle = stream_listener(command_socket);
 
+    // receive the standard error of the command on a channel of its
+    // own if the caller keeps it apart from the standard output
+    let stderr_relay = stderr_listener(&vsock_uds_path, exec_port)?;
+
     // follow the window size of the caller's terminal. The size
     // the instance was booted with does not apply to a session
     // in a terminal which was resized or which is not the one
@@ -745,13 +915,20 @@ pub fn execute_command_at_instance(
     if send_command_to_instance(
         program_name, &vsock_uds_path, exec_port
     ) != 0 {
-        // nobody connects to the listener, don't wait for it
+        // nobody connects to the listeners, don't wait for them
+        if let Some(stderr_relay) = stderr_relay {
+            stderr_relay.finish()
+        }
         return Err(
             FlakeError::OperationError(OperationError::MaxTriesExceeded)
         )
     }
 
-    Ok(thread_handle.join().ok().flatten())
+    let exit_status = thread_handle.join().ok().flatten();
+    if let Some(stderr_relay) = stderr_relay {
+        stderr_relay.finish()
+    }
+    Ok(exit_status)
 }
 
 pub fn get_terminal_boot_args() -> Vec<String> {

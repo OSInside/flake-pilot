@@ -18,9 +18,8 @@ tooling of that tree instead of the ones installed on the host. The
 tree is mounted as the read only layer of an overlay, thus the
 application can write anywhere in its root filesystem without the tree
 on the host being modified. The data written this way is kept in
-memory, separately for every instance of the application, and is still
-there on the next call until it is discarded or the host is rebooted,
-see :ref:`sandbox-written-data`.
+memory, separately for every sandbox, and is gone when the application
+terminates, see :ref:`sandbox-written-data`.
 
 Unlike the other engines this one has no image registry. There is
 nothing to pull and nothing to delete, the registration refers to the
@@ -66,9 +65,17 @@ the bash shell on the host itself. Everything looks familiar, ``ls``,
 the home directory and the installed tooling are all there, and a
 write anywhere in the tree succeeds but lands in the overlay of the
 sandbox. Installing a package or deleting a file leaves the host as
-it is. The change is kept in the overlay though, and it is still in
-place when ``protected-shell`` is called again, until it is
-discarded, see :ref:`sandbox-written-data`.
+it is. The change only lives in the overlay of this call, the next
+call of ``protected-shell`` starts from the unmodified host again,
+see :ref:`sandbox-written-data`.
+
+Unlike a tree of its own, the host root has further mount points
+below it, e.g ``/proc`` or the subvolumes of a ``btrfs`` root
+filesystem. Such a tree cannot be provided by the launcher in a user
+namespace, its overlay is mounted by the Flake Pilot helper instead.
+``protected-shell`` therefore needs a ``sudo`` rule for the helper,
+and a caller which is not ``root`` is asked for its ``sudo``
+password, see :ref:`sandbox-written-data` and :ref:`privileges`.
 
 This is useful to try out a command which is supposed to modify the
 system, or to hand a directory to a program which should read it but
@@ -107,11 +114,11 @@ A Shell as a Sandbox App
 This registers an app named ``leapshell`` to the system. Once called,
 ``bwrap`` creates a sandbox whose root filesystem is the ``leap`` tree
 and drops you into the bash shell of that tree. ``bwrap`` itself
-creates the sandbox through user namespaces and needs no privileges,
-the overlay of the tree is mounted on the host prior to the call and
-does need them. The overlay is mounted by the helper, see
-:ref:`privileges`. A caller which is not ``root`` is asked for its
-``sudo`` password at that point.
+creates the sandbox through user namespaces and needs no privileges.
+The overlay of the tree is mounted prior to the call, in a user and
+mount namespace the launcher creates for the sandbox, and needs no
+privileges either. As long as the tree has no mount points below it,
+no ``sudo`` rule is involved, see :ref:`privileges`.
 
 Nothing on the host is visible inside except for the pseudo
 filesystems, which is the point of the separate root. The paths the
@@ -168,13 +175,13 @@ any other setting, see :ref:`application-setup`.
 The option which mounts the root filesystem of the sandbox is not
 part of that list. It is always added by the launcher, ahead of every
 other option, because it refers to the overlay it creates for the
-called instance. The root of the sandbox as it exists on the host is
-available to the other options as ``%OVERLAYROOT``.
+sandbox. The root of the sandbox is available to the other options
+as ``%OVERLAYROOT``.
 
 An ``--overlay-src`` option of your own adds a directory to that
 root instead of mounting it at a path of its own. Such an option is
 not passed to ``bwrap``, the directory becomes a layer of the overlay
-created on the host and is stacked on top of the rootfs:
+and is stacked on top of the rootfs:
 
 .. code-block:: bash
 
@@ -198,47 +205,62 @@ not modified by the application.
 Where Written Data Is Kept
 ==========================
 
-The overlay of the tree is created below ``/var/tmp``, in a directory
-named after the ID of the calling user, e.g ``/var/tmp/bwrap_1000``.
-Only that user has access to it. Everything the application writes
-to its root filesystem ends up in a tmpfs of its instance, nothing of
-it is written to disk:
+Everything the application writes to its root filesystem ends up in a
+tmpfs, nothing of it is written to disk. The tmpfs and the overlay are
+not mounted on the host. Prior to the call of ``bwrap`` the launcher
+moves into a user and mount namespace of its own, which maps only
+your user and group, and mounts them there. ``bwrap`` creates the
+sandbox in that namespace. The tmpfs is mounted on a directory below
+``/var/tmp`` which is named after the ID of the calling user, e.g
+``/var/tmp/bwrap_1000``. Only that user has access to the directory,
+and on the host it stays empty. Nobody on the host can see or access
+the mounts, and every sandbox has a namespace of its own, two
+sandboxes of the same user do not share them although they are
+mounted on the same directory.
 
-.. code-block:: text
-
-   /var/tmp/bwrap_1000/leapshell_overlay
-
-The tmpfs is not deleted when the application terminates. The next
-call of the same instance starts with the root filesystem as the
-former call has left it. An application called with an ``@NAME``
-selector, e.g ``leapshell @one``, uses a tmpfs of its own, e.g
-``leapshell@one_overlay``.
+When the application terminates, the mounts are gone along with
+everything written to them. The next call starts from the unmodified
+tree again, whether it is called with an ``@NAME`` selector or not.
 
 There are two exceptions. Data written below ``/tmp`` with the
 default options is kept in a tmpfs created by ``bwrap`` and is gone
-when the application terminates. Data written to a path which is
-bound writable from the host changes that path on the host.
+when the application terminates as well. Data written to a path
+which is bound writable from the host changes that path on the host
+and is kept.
 
-The tmpfs uses memory of the host for as long as it exists. A reboot
-of the host deletes it, and so does a call of the application with
-the ``%discard`` pilot option. The written data is then discarded when
-the application terminates, and the next call starts from the
-unmodified tree again:
+The namespace needs a host which allows unprivileged user namespaces,
+which ``bwrap`` without the setuid bit needs anyway, and a kernel
+which allows overlay mounts in a user namespace, Linux 5.11 or newer.
 
-.. code-block:: bash
+A tree, or a directory added with ``--overlay-src``, which has mount
+points below it cannot be used this way, e.g the host root. The
+mounts of the host are locked in a user namespace, and the kernel
+refuses an overlay which would reveal what they cover. The launcher
+checks for such mount points, a mount on the directory itself does
+not count. If it finds one, it calls the ``sandbox-run`` command of
+the Flake Pilot helper through ``sudo`` instead:
 
-   leapshell %discard
+* The helper moves into a mount namespace of its own whose mounts
+  are private, nothing is mounted on the host in this case either.
 
-Registered as pilot option, ``%discard`` lets every call start from
-the unmodified tree:
+* It opens the tree and the layers with your identity, a tree you
+  cannot reach yourself is refused, and mounts the same setup as
+  described above on your directory below ``/var/tmp``.
 
-.. code-block:: bash
+* It then drops its privileges to yours for good, makes sure that no
+  program in the namespace can gain privileges, e.g through a setuid
+  program, and replaces itself by ``bwrap``.
 
-   flake-ctl bubblewrap register --rootfs ~/.local/share/rootfs/leap \
-       --app $HOME/bin/leapshell --target /bin/bash \
-       --pilot-option "%discard"
+``bwrap`` is started with a fresh environment which only contains
+``PATH``, your ``HOME``, ``USER`` and ``LOGNAME`` and ``TERM``. With
+the default ``--clearenv`` option the application gets the same
+variables as in any other sandbox, see the standard options above.
+Without it the application only sees that fresh environment. A
+sandbox created this way is shown by ``flake-ctl bubblewrap show``
+with the process of ``sudo``. It needs a ``sudo`` rule for the
+helper, see :ref:`privileges`.
 
-The administrator limits the size of the tmpfs with the
+The administrator sets the size of the tmpfs with the
 ``sandbox_tmpfs_size`` setting in ``/etc/flakes.yml``, e.g:
 
 .. code-block:: yaml
@@ -257,13 +279,22 @@ above the limit is refused:
 
    leapshell %tmpfs_size:512M
 
-A tmpfs kept from a former call is resized to the new size. If it
-holds more data than fits, the call fails and the instance has to be
-called with ``%discard`` first.
+For a sandbox the launcher mounts itself the limit is applied by the
+launcher. As you create the tmpfs in a namespace of your own, it is a
+default of the system there rather than a privilege boundary. The
+memory of the tmpfs is accounted to your processes and is released
+when the sandbox terminates. For a sandbox mounted by the helper the
+limit is enforced by the helper.
 
-Former versions kept the written data on disk, in the directories
-``leapshell_rw`` and ``leapshell_work``. They are not used anymore.
-A call with ``%discard`` deletes them as well.
+Former versions kept the written data across calls, on disk in the
+directories ``leapshell_rw`` and ``leapshell_work`` or in tmpfs
+mounts on the host, ``leapshell_overlay`` and ``leapshell_merged``,
+below ``/var/tmp/bwrap_1000``. They are not used anymore. A tmpfs
+mount left on the host by a former version stays until the host is
+rebooted or ``root`` removes it, the remaining directories can be
+deleted by you. The ``%discard`` pilot option of former versions is
+gone as well. A pilot option which is unknown is ignored, a flake
+registered with it keeps working.
 
 Registration Options in Short
 =============================

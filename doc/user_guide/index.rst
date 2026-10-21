@@ -50,10 +50,11 @@ the ones you registered applications for are needed.
 
 .. warning::
 
-   Bubblewrap flakes and system wide podman flakes need a ``sudo``
-   rule for the Flake Pilot helper. A system wide podman flake then
-   runs as root for every user with the rule, with what its
-   registration grants on the host. See :ref:`privileges` for which
+   System wide podman flakes and bubblewrap flakes with mount points
+   below their tree, e.g the root of the host, need a ``sudo`` rule
+   for the Flake Pilot helper. A system wide podman flake then runs
+   as root for every user with the rule, with what its registration
+   grants on the host. See :ref:`privileges` for which
    flakes run without the rule before granting it to anyone.
 
 Next, prepare your user environment. Applications registered as a
@@ -157,10 +158,12 @@ included, as the read only layer of an overlay:
 Inside of ``protected-shell`` the host looks and behaves as usual,
 packages can be installed and files can be added or overwritten, but
 all of it is written to the overlay of the sandbox instead of the
-host. The written data is kept in memory and is still in place on the
-next call of the application, until it is discarded with the
-``%discard`` pilot option or the host is rebooted. Paths you want to
-change on the host are bound into the sandbox explicitly.
+host. The written data is kept in memory and is gone when the
+application terminates, every call starts from the unmodified host
+again. Paths you want to change on the host are bound into the
+sandbox explicitly. As the host root has further mount points below
+it, its overlay is mounted by the Flake Pilot helper, which needs a
+``sudo`` rule, see :ref:`privileges`.
 :ref:`sandbox-apps` describes the tree, the overlay and the options to
 share data with the host.
 

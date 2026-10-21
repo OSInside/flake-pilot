@@ -145,12 +145,11 @@ pub enum Commands {
         #[clap(long, requires = "config-file")]
         instance: Option<String>,
     },
-    /// Mount the root filesystem of a bubblewrap sandbox of the caller
-    SandboxMount {
-        /// Name of the sandbox instance, e.g myapp@one
-        #[clap(long)]
-        instance: String,
-
+    /// Run bwrap for the caller in a mount namespace with the root
+    /// filesystem of the sandbox. Used for a rootfs with mount
+    /// points below it, which bubblewrap-pilot cannot overlay in
+    /// a user namespace
+    SandboxRun {
         /// Directory tree which is the lowest layer of the overlay
         #[clap(long)]
         rootfs: String,
@@ -167,17 +166,14 @@ pub enum Commands {
         /// default size
         #[clap(long)]
         size: Option<String>,
-    },
-    /// Delete the overlay of a bubblewrap sandbox of the caller
-    SandboxUmount {
-        /// Name of the sandbox instance, e.g myapp@one
-        #[clap(long)]
-        instance: String,
 
-        /// Delete the writable layer of the instance as well, along
-        /// with everything written in its sandboxes
+        /// Terminal type of the caller
         #[clap(long)]
-        discard: bool,
+        term: Option<String>,
+
+        /// Arguments of bwrap
+        #[clap(last = true)]
+        args: Vec<String>,
     },
     /// Create the meta data base directories of the pilots, as
     /// configured system wide

@@ -68,12 +68,14 @@ FILES
        podman_storage_conf: /etc/flakes/storage.conf
 
        # Size limit of the tmpfs which keeps what is written in
-       # a bubblewrap sandbox, in the notation of the tmpfs size
-       # option, e.g 2G or 25% of the memory. It is the default
-       # size of the tmpfs and the maximum a flake may request
-       # with the %tmpfs_size pilot option. Only read from
-       # /etc/flakes.yml. Without it the tmpfs may use up to half
-       # of the memory of the host, see bubblewrap-pilot
+       # a bubblewrap sandbox while it runs, in the notation of
+       # the tmpfs size option, e.g 2G or 25% of the memory. It
+       # is the default size of the tmpfs and the maximum a flake
+       # may request with the %tmpfs_size pilot option, applied
+       # by bubblewrap-pilot or, for a sandbox it mounts, by the
+       # helper. Only read from /etc/flakes.yml.
+       # Without it the tmpfs may use up to half of the memory of
+       # the host, see bubblewrap-pilot
        sandbox_tmpfs_size: 2G
 
   The user specific configuration for running flake applications

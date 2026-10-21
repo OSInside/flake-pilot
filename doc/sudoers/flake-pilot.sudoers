@@ -11,7 +11,9 @@
 # belongs to root and provides a fixed set of commands. It checks
 # every argument and the authority of the calling user, which it
 # takes from sudo, against data which belongs to root. It never
-# passes an argument of the user on to a program unchecked.
+# passes an argument of the user on to a program unchecked, except
+# for the bwrap arguments of a sandbox, which bwrap evaluates after
+# the helper has dropped its privileges to the ones of the user.
 #
 # What the rule grants
 # --------------------
@@ -34,13 +36,15 @@
 #     release the exports of its own directories. Every access of
 #     the VM is mapped to the owner of the directory.
 #
-#   * Mount and unmount the root filesystem of its own bubblewrap
-#     sandboxes: an overlay of directory trees, mounted nosuid and
-#     nodev below its own directory in /var/tmp. The trees are only
-#     read, the overlay grants no access the user does not have on
-#     the trees themselves. The writable layer is a tmpfs, kept
-#     until the user discards it or the host is rebooted, which uses
-#     memory of the host meanwhile. Set sandbox_tmpfs_size in
+#   * Mount the root filesystem of its own bubblewrap sandboxes with
+#     mount points below their trees, e.g the root of the host: an
+#     overlay of directory trees, mounted nosuid and nodev in a
+#     private mount namespace only, nothing is mounted on the host.
+#     The trees are opened as the user and only read, the overlay
+#     grants no access the user does not have on the trees
+#     themselves. bwrap then runs in the namespace as the user, with
+#     no_new_privs set. The writable layer is a tmpfs which is gone
+#     along with the sandbox. Set sandbox_tmpfs_size in
 #     /etc/flakes.yml to limit it, users can only ask for less.
 #
 #   * Run the podman flakes registered system wide, as root, in the
@@ -61,6 +65,8 @@
 #
 # Flakes registered by the calling user and run in its rootless
 # podman setup, as well as firecracker flakes, need no rule at all.
+# Neither do bubblewrap flakes, unless their root filesystem tree or
+# a layer of it has mount points below it.
 #
 # The rules below are grouped by feature. The first argument of the
 # helper is the command to perform, a rule can therefore be limited
@@ -86,7 +92,8 @@
 # The rules ask for the password of the calling user, which is the
 # sudo default. sudo caches it for a few minutes, as configured by
 # timestamp_timeout. A user who runs system wide podman flakes or
-# bubblewrap sandboxes is asked for it when the cache expires.
+# bubblewrap flakes with mount points below their root filesystem is
+# asked for it when the cache expires.
 # NOPASSWD does not give the user any additional privilege, but it
 # allows every process running under the account of the user, e.g a
 # malicious build script, to use the helper without any interaction.
@@ -114,15 +121,15 @@ Cmnd_Alias FLAKE_HELPER_PODMAN = \
 %flake-pilot ALL = (root) FLAKE_HELPER_PODMAN
 
 #
-# bubblewrap flakes
+# bubblewrap flakes with mount points below their root filesystem
 # -------------------------------------------------------------------
-# Used by: bubblewrap-pilot, for system wide flakes as well as for
-#          flakes registered by the calling user
-# GRANTS:  the root filesystem mounts of the sandboxes of the caller
+# Used by: bubblewrap-pilot, for a rootfs or layer with mount points
+#          below it, e.g the root of the host
+# GRANTS:  a mount namespace with the root filesystem of the sandbox,
+#          in which bwrap runs with the privileges of the caller
 #
 Cmnd_Alias FLAKE_HELPER_SANDBOX = \
-    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-mount *, \
-    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-umount *
+    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-run *
 
 %flake-pilot ALL = (root) FLAKE_HELPER_SANDBOX
 

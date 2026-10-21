@@ -29,7 +29,10 @@
 //! None of them passes an argument of the caller on to a program
 //! unchecked: every argument is validated, and the authority of
 //! the caller over the resource a command operates on is checked
-//! against data which belongs to root. A sudo rule for the helper
+//! against data which belongs to root. The only exception are the
+//! arguments of bwrap, see the sandbox-run command, which are only
+//! passed on after the helper has dropped its privileges for good
+//! and turned into the caller. A sudo rule for the helper
 //! therefore does not make a user equivalent to root, unlike a
 //! rule for the general purpose programs the helper calls.
 //!
@@ -101,11 +104,10 @@ fn main() -> ExitCode {
                 &caller, path, config_file.as_deref(), instance.as_deref()
             )
         },
-        cli::Commands::SandboxMount { instance, rootfs, layers, size } => {
-            sandbox::mount(&caller, instance, rootfs, layers, size.as_deref())
-        },
-        cli::Commands::SandboxUmount { instance, discard } => {
-            sandbox::umount(&caller, instance, *discard)
+        cli::Commands::SandboxRun { rootfs, layers, size, term, args } => {
+            sandbox::run(
+                &caller, rootfs, layers, size.as_deref(), term.as_deref(), args
+            )
         },
         cli::Commands::PodmanPilot { app, term, args } => {
             podman::run_pilot(&caller, app, debug, term.as_deref(), args)

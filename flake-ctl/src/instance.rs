@@ -585,9 +585,13 @@ fn sandbox_status(sandbox_id: &str) -> String {
     Provide the status of the sandbox with the given sandbox ID
 
     The sandbox ID file contains the process ID of the bwrap
-    process
+    process, or of the sudo process the helper runs in for a
+    sandbox it creates
     !*/
-    process_status(sandbox_id, &[defaults::BUBBLEWRAP_PROCESS_NAME])
+    process_status(
+        sandbox_id,
+        &[defaults::BUBBLEWRAP_PROCESS_NAME, defaults::SUDO_PROCESS_NAME]
+    )
 }
 
 fn process_status(id: &str, process_names: &[&str]) -> String {

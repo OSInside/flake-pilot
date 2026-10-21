@@ -24,11 +24,12 @@
 use crate::bubblewrap::get_instance_name;
 use crate::bubblewrap::{get_engine_arguments, get_sandbox_options};
 use crate::config::config_from_str;
-use crate::overlay::{get_dir, get_user_dir};
+use crate::overlay::{get_dir, get_user_dir, mounts_below};
 
 use uzers::get_current_uid;
 
 use std::env;
+use std::path::Path;
 
 fn sandbox_setup(
     options: Option<Vec<&str>>, workdir: &str
@@ -38,15 +39,16 @@ fn sandbox_setup(
     myapp
 
     The root of the sandbox is the overlay mount of the rootfs
-    on the host. All tests refer to the same one, thus they
-    can set the variable which provides it in parallel
+    in the namespace of the sandbox. All tests refer to the same
+    one, thus they can set the variable which provides it in
+    parallel
     !*/
-    env::set_var("OVERLAYROOT", get_dir("myapp", "merged"));
+    env::set_var("OVERLAYROOT", get_dir("merged"));
     let (layers, engine_arguments) = get_engine_arguments(options).unwrap();
     (
         layers,
         get_sandbox_options(
-            &get_dir("myapp", "merged"), engine_arguments, workdir
+            &get_dir("merged"), engine_arguments, workdir
         )
     )
 }
@@ -75,7 +77,7 @@ fn sandbox_root_options() -> Vec<String> {
     bind the overlay of the rootfs writable, which lives in the
     overlay directory of the calling user
     !*/
-    vec!["--bind".to_string(), get_dir("myapp", "merged"), "/".to_string()]
+    vec!["--bind".to_string(), get_dir("merged"), "/".to_string()]
 }
 
 #[test]
@@ -308,8 +310,8 @@ fn test_instance_name() {
 
 #[test]
 fn test_overlay_user_dir() {
-    // the overlay setups of a user are created in a directory
-    // of their own, named after the ID of that user
+    // the overlay setup of a user is mounted on a directory of
+    // its own, named after the ID of that user
     assert_eq!(
         format!("/var/tmp/bwrap_{}", get_current_uid()), get_user_dir()
     );
@@ -317,11 +319,26 @@ fn test_overlay_user_dir() {
 
 #[test]
 fn test_overlay_dir() {
-    // all directories of the overlay setup are named after the
-    // instance they belong to and live in the overlay directory
-    // of the calling user
-    assert_eq!(
-        format!("{}/myapp@one_merged", get_user_dir()),
-        get_dir("myapp@one", "merged")
-    );
+    // all directories of the overlay setup live in the tmpfs
+    // mounted on the directory of the calling user
+    assert_eq!(format!("{}/merged", get_user_dir()), get_dir("merged"));
+}
+
+#[test]
+fn test_mounts_below() {
+    let mountinfo = "\
+        22 1 0:21 / / rw,relatime shared:1 - btrfs /dev/vda2 rw\n\
+        23 22 0:5 / /proc rw shared:2 - proc proc rw\n\
+        24 22 0:22 / /srv/rootfs rw shared:3 - btrfs /dev/vda2 rw\n\
+        25 22 0:23 / /data/my\\040tree/proc rw shared:4 - proc proc rw\n";
+    // the root of the host has mount points below it
+    assert!(mounts_below(Path::new("/"), mountinfo));
+    // a mount on the directory itself does not count
+    assert!(! mounts_below(Path::new("/srv/rootfs"), mountinfo));
+    assert!(! mounts_below(Path::new("/srv/other"), mountinfo));
+    // a path prefix is no parent directory
+    assert!(! mounts_below(Path::new("/pro"), mountinfo));
+    // escaped mount points are resolved
+    assert!(mounts_below(Path::new("/data/my tree"), mountinfo));
+    assert!(! mounts_below(Path::new("/data/my"), mountinfo));
 }

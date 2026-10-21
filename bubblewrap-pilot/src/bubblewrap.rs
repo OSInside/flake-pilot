@@ -37,7 +37,7 @@ use uzers::get_current_username;
 
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
@@ -93,17 +93,6 @@ pub fn create(program_name: &str) -> Result<String, FlakeError> {
     name of the meta data file which represents the instance is
     returned by this method
     !*/
-    // The sandbox is created by the bwrap program
-    if ! Lookup::which(defaults::BWRAP) {
-        return Err(FlakeError::IOError {
-            kind: "Sandbox engine not found".to_string(),
-            message: format!(
-                "{} is required to run this flake, please install it",
-                defaults::BWRAP
-            )
-        })
-    }
-
     // A sandbox provides no entry point like a container image
     // does. The command to call in it has to be known
     if get_target_app_path(program_name) == "/" {
@@ -251,7 +240,20 @@ fn run_sandbox(
     if spawned.is_err() {
         delete_sandbox_id_file(sandbox_id_file);
     }
-    let mut child = spawned?;
+    let mut child = match spawned {
+        Ok(child) => child,
+        // The sandbox is created by the bwrap program
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(FlakeError::IOError {
+                kind: "Sandbox engine not found".to_string(),
+                message: format!(
+                    "{} is required to run this flake, please install it",
+                    defaults::BWRAP_PATH
+                )
+            })
+        },
+        Err(error) => return Err(error.into())
+    };
 
     let pid = child.id();
     if Lookup::is_debug() {

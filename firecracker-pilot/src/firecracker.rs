@@ -475,12 +475,18 @@ pub fn exit_status_listener(
 pub fn read_exit_status(stream: &mut UnixStream) -> Option<i32> {
     /*!
     Read the exit status sci sends for an app
+
+    The exit status is a single line. Only this line is read
+    because sci keeps the connection open until the pilot closes
+    it. Firecracker does not pass the shutdown of the sending
+    side of sci on to the pilot, waiting for the end of the
+    stream would therefore run into the timeout
     !*/
     let _ = stream.set_read_timeout(
         Some(time::Duration::from_millis(defaults::EXIT_STATUS_TIMEOUT_MSEC))
     );
     let mut message = String::new();
-    if let Err(error) = stream.read_to_string(&mut message) {
+    if let Err(error) = io::BufReader::new(stream).read_line(&mut message) {
         if Lookup::is_debug() {
             debug!("Failed to read exit status: {error}");
         }

@@ -398,6 +398,11 @@ fn test_read_exit_status() {
     assert_eq!(read(b"137\n"), Some(137));
     assert_eq!(read(b""), None);
     assert_eq!(read(b"failed\n"), None);
+    // through firecracker the connection stays open until the
+    // pilot closes it, the exit status line must be enough
+    let (mut sci, mut pilot) = UnixStream::pair().unwrap();
+    sci.write_all(b"3\n").unwrap();
+    assert_eq!(read_exit_status(&mut pilot), Some(3));
 }
 
 #[test]

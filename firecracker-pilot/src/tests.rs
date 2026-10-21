@@ -31,6 +31,13 @@ use crate::firecracker::get_nfsd_threads;
 use crate::firecracker::has_network_setup;
 use crate::firecracker::nfsd_is_running;
 use crate::firecracker::tap_device_exists;
+use crate::firecracker::{
+    accept_exit_status, exit_status_listener, get_exit_code, read_exit_status
+};
+use std::io::{Read, Write};
+use std::net::Shutdown;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::process::ExitCode;
 use flakes::network::get_valid_interface_name;
 
 #[test]
@@ -367,4 +374,57 @@ fn test_is_sci_mode_boot_arg() {
     ] {
         assert!(! is_sci_mode_boot_arg(boot_arg), "{}", boot_arg);
     }
+}
+
+#[test]
+fn test_get_exit_code() {
+    assert_eq!(get_exit_code(Some(0)), ExitCode::from(0));
+    assert_eq!(get_exit_code(Some(3)), ExitCode::from(3));
+    // only the lower 8 bits are used
+    assert_eq!(get_exit_code(Some(258)), ExitCode::from(2));
+    // no exit status reported
+    assert_eq!(get_exit_code(None), ExitCode::SUCCESS);
+}
+
+#[test]
+fn test_read_exit_status() {
+    let read = |message: &[u8]| {
+        let (mut sci, mut pilot) = UnixStream::pair().unwrap();
+        sci.write_all(message).unwrap();
+        sci.shutdown(Shutdown::Write).unwrap();
+        read_exit_status(&mut pilot)
+    };
+    assert_eq!(read(b"0\n"), Some(0));
+    assert_eq!(read(b"137\n"), Some(137));
+    assert_eq!(read(b""), None);
+    assert_eq!(read(b"failed\n"), None);
+}
+
+#[test]
+fn test_accept_exit_status() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("exit_status.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    // nobody sends an exit status
+    assert_eq!(accept_exit_status(&listener), None);
+    let mut sci = UnixStream::connect(&socket_path).unwrap();
+    sci.write_all(b"42\n").unwrap();
+    sci.shutdown(Shutdown::Write).unwrap();
+    assert_eq!(accept_exit_status(&listener), Some(42));
+}
+
+#[test]
+fn test_exit_status_listener() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("exit_status.sock");
+    // a left over socket from a former call is replaced
+    std::fs::write(&socket_path, "").unwrap();
+    let receiver = exit_status_listener(socket_path.to_str().unwrap()).unwrap();
+    let mut sci = UnixStream::connect(&socket_path).unwrap();
+    sci.write_all(b"5\n").unwrap();
+    sci.shutdown(Shutdown::Write).unwrap();
+    // like sci, wait for the pilot to close the connection
+    let mut answer = Vec::new();
+    sci.read_to_end(&mut answer).unwrap();
+    assert_eq!(receiver.try_recv(), Ok(5));
 }

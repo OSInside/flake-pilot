@@ -79,6 +79,11 @@ pub const TERM_RESIZE_PORT: u32 = 53;
 // The console is not connected through a vsock and therefore
 // has no port of its own
 pub const TERM_CONSOLE_PORT: u32 = 0;
+// Port of the caller which receives the exit status of the command
+// run on the console of the instance. A command called through a
+// vsock sends its exit status to the port the caller listens on
+// for this command
+pub const EXIT_STATUS_PORT: u32 = 54;
 pub const VM_PORT: u32 = 52;
 pub const GUEST_CID: u32 = 3;
 // The host is the only vsock peer sci accepts connections from

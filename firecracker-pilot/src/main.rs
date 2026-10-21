@@ -48,7 +48,7 @@ fn main() -> ExitCode {
     let result = run();
 
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(exit_code) => exit_code,
         Err(err) => {
             error!("{err}");
             err.report()
@@ -56,7 +56,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), FlakeError> {
+fn run() -> Result<ExitCode, FlakeError> {
     let program_name = registration::program_name();
 
     let identifier = firecracker::create(&program_name)?;

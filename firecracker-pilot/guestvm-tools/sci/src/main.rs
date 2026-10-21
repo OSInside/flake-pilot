@@ -32,7 +32,7 @@ use std::env;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
 use std::process::Command;
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use system_shutdown::force_reboot;
 use std::fs;
 use sys_mount::{Mount, MountFlags};
@@ -456,9 +456,16 @@ fn main() {
                                             defaults::HOST_CID, exec_port_num
                                         ) {
                                             Ok(vsock_stream) => {
-                                                redirect_command(
+                                                let exit_code = redirect_command(
                                                     &exec_cmd, vsock_stream,
                                                     exec_port_num
+                                                );
+                                                // The stream of the command
+                                                // is closed at this point,
+                                                // the caller now waits for
+                                                // the exit status
+                                                send_exit_status(
+                                                    exec_port_num, exit_code
                                                 );
                                                 break
                                             },
@@ -521,17 +528,29 @@ fn main() {
                 start_terminal_resize_listener();
             }
         }
-        if do_exec {
-            // replace ourselves
+        let exit_code = if do_exec {
+            // replace ourselves, this only returns if the
+            // command could not be called
             debug(&format!("EXEC: {} -> {:?}", args[0], call.get_args()));
-            let _ = call.exec();
+            let error = call.exec();
+            debug(&format!("SCI guest command failed with: {error}"));
+            get_call_error_code(&error)
         } else {
             // call a command and keep control
             debug(&format!(
                 "SCI CALL: {} -> {:?}", args[0], call.get_args()
             ));
-            let _ = run_child(&mut call);
-        }
+            match run_child(&mut call) {
+                Ok(status) => get_exit_code(&status),
+                Err(error) => {
+                    debug(&format!("SCI guest command failed with: {error}"));
+                    get_call_error_code(&error)
+                }
+            }
+        };
+        // hand over the exit status of the command to the caller
+        load_vhost_transport();
+        send_exit_status(defaults::EXIT_STATUS_PORT, exit_code);
     }
     // Close firecracker session
     do_reboot(ok)
@@ -883,9 +902,89 @@ fn is_owned_child(pid: i32) -> bool {
     lock_owned_children().contains(&pid)
 }
 
+fn wait_child(pid: i32) -> i32 {
+    /*!
+    Wait for the given child process to terminate and
+    provide its exit code
+    !*/
+    let mut status = 0;
+    loop {
+        if unsafe { libc::waitpid(pid, &mut status, 0) } == pid {
+            return get_exit_code(&ExitStatus::from_raw(status))
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            debug(&format!("Waiting for process {pid} failed: {error}"));
+            return 1
+        }
+    }
+}
+
+fn get_exit_code(status: &ExitStatus) -> i32 {
+    /*!
+    Provide the exit code of a terminated command
+
+    Like a shell does it, a command terminated by a signal
+    is reported with 128 plus the number of the signal
+    !*/
+    match status.code() {
+        Some(code) => code,
+        None => 128 + status.signal().unwrap_or_default()
+    }
+}
+
+fn get_call_error_code(error: &std::io::Error) -> i32 {
+    /*!
+    Provide the exit code of a command which could not be called
+
+    The codes are the ones a shell reports in this case
+    !*/
+    match error.kind() {
+        std::io::ErrorKind::NotFound => 127,
+        std::io::ErrorKind::PermissionDenied => 126,
+        _ => 1
+    }
+}
+
+fn send_exit_status(port: u32, exit_code: i32) {
+    /*!
+    Send the exit code of a command to the caller
+
+    The caller listens on the given port and closes the connection
+    once it has read the exit code. sci waits for this to happen
+    because a reboot of the instance right after the send could
+    otherwise lose the data on its way to the caller
+    !*/
+    debug(&format!("Sending exit code {exit_code} to port={port}"));
+    match VsockStream::connect_with_cid_port(defaults::HOST_CID, port) {
+        Ok(mut stream) => {
+            if let Err(error) = stream.write_all(
+                format!("{exit_code}\n").as_bytes()
+            ) {
+                debug(&format!("Failed to send exit code: {error}"));
+                return
+            }
+            let _ = stream.shutdown(Shutdown::Write);
+            let _ = stream.set_read_timeout(
+                Some(time::Duration::from_millis(
+                    defaults::VM_WAIT_TIMEOUT_MSEC
+                ))
+            );
+            let mut answer = Vec::new();
+            let _ = stream.read_to_end(&mut answer);
+        },
+        Err(error) => {
+            // The caller does not wait for the exit status
+            debug(&format!(
+                "Failed to connect for exit code transfer: {error}"
+            ));
+        }
+    }
+}
+
 fn redirect_command(
     command: &[String], stream: vsock::VsockStream, port: u32
-) {
+) -> i32 {
     // start the given command as a child process in a new PTY
     // or on raw channels if no pseudo terminal can be allocated
     // connect its standard channels to the stream
@@ -911,10 +1010,11 @@ fn redirect_command(
             debug(&format!(
                 "Terminal allocation failed, using raw channels: {error:?}"
             ));
-            redirect_command_to_raw_channels(command, stream);
+            let exit_code = redirect_command_to_raw_channels(command, stream);
             // there is no terminal in this session, drop a window
             // size which arrived for it
-            unregister_terminal_session(port)
+            unregister_terminal_session(port);
+            exit_code
         }
     }
 }
@@ -1127,12 +1227,12 @@ fn get_echo_data(data: &[u8]) -> Vec<u8> {
 
 fn redirect_command_to_raw_channels(
     command: &[String], mut stream: vsock::VsockStream
-) {
+) -> i32 {
     let (program, call_args) = match command.split_first() {
         Some(call) => call,
         None => {
             debug("No command to execute specified");
-            return
+            return 1
         }
     };
     let mut call = Command::new(program);
@@ -1247,13 +1347,23 @@ fn redirect_command_to_raw_channels(
                     }
                 }
             }
-            let _ = child.wait();
+            let status = child.wait();
             disown_child(child.id() as i32);
+            match status {
+                Ok(status) => get_exit_code(&status),
+                Err(error) => {
+                    debug(&format!(
+                        "Waiting for SCI guest command failed with: {error}"
+                    ));
+                    1
+                }
+            }
         },
         Err(error) => {
             debug(&format!(
                 "SCI guest command failed with: {error}"
             ));
+            get_call_error_code(&error)
         }
     }
 }
@@ -1261,7 +1371,7 @@ fn redirect_command_to_raw_channels(
 fn redirect_command_to_pty(
     command: &[String], mut stream: vsock::VsockStream, pty_fork: Fork,
     port: u32
-) {
+) -> i32 {
     if let Ok(mut master) = pty_fork.is_parent() {
         let mut child_pid = -1;
         if let Fork::Parent(pid, _) = &pty_fork {
@@ -1343,29 +1453,34 @@ fn redirect_command_to_pty(
         }
         // The terminal is about to be closed, no longer resize it
         unregister_terminal_session(port);
-        let _ = pty_fork.wait();
+        // The wait of the terminal fork does not provide
+        // the exit status, thus wait for the child here
+        let exit_code = wait_child(child_pid);
         disown_child(child_pid);
+        exit_code
     } else {
-        let (program, call_args) = match command.split_first() {
-            Some(call) => call,
-            None => {
-                debug("No command to execute specified");
-                return
-            }
-        };
-        let mut call = Command::new(program);
-        call.args(call_args);
-        debug(&format!(
-            "SCI CALL: {} -> {:?}", program, call.get_args()
-        ));
-        match call.status() {
-            Ok(_) => { },
-            Err(error) => {
+        // This is the child process in the new terminal. It turns
+        // into the command such that the exit status of this process
+        // is the one of the command
+        let exit_code = match command.split_first() {
+            Some((program, call_args)) => {
+                let mut call = Command::new(program);
+                call.args(call_args);
+                debug(&format!(
+                    "SCI CALL: {} -> {:?}", program, call.get_args()
+                ));
+                let error = call.exec();
                 debug(&format!(
                     "SCI guest command failed with: {error}"
                 ));
+                get_call_error_code(&error)
+            },
+            None => {
+                debug("No command to execute specified");
+                1
             }
-        }
+        };
+        unsafe { libc::_exit(exit_code) }
     }
 }
 
@@ -1892,6 +2007,10 @@ mod tests {
     use sys_mount::MountFlags;
     use super::get_resize_request;
     use super::get_kvm_module;
+    use super::{get_exit_code, get_call_error_code};
+    use std::io::{Error, ErrorKind};
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
 
     #[test]
     fn test_is_host_peer() {
@@ -2016,5 +2135,23 @@ mod tests {
             get_kvm_module("processor\t: 0\nFeatures\t: fp asimd\n"), "kvm"
         );
         assert_eq!(get_kvm_module(""), "kvm");
+    }
+
+    #[test]
+    fn test_get_exit_code() {
+        // the raw wait status provides the exit code in the second byte
+        assert_eq!(get_exit_code(&ExitStatus::from_raw(0)), 0);
+        assert_eq!(get_exit_code(&ExitStatus::from_raw(3 << 8)), 3);
+        // terminated by SIGKILL
+        assert_eq!(get_exit_code(&ExitStatus::from_raw(9)), 137);
+    }
+
+    #[test]
+    fn test_get_call_error_code() {
+        assert_eq!(get_call_error_code(&Error::from(ErrorKind::NotFound)), 127);
+        assert_eq!(
+            get_call_error_code(&Error::from(ErrorKind::PermissionDenied)), 126
+        );
+        assert_eq!(get_call_error_code(&Error::from(ErrorKind::Other)), 1);
     }
 }

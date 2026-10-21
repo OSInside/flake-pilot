@@ -81,6 +81,14 @@ pub const TERM_RESIZE_PORT: u32 = 53;
 // the instance. The console is not connected through a vsock and
 // therefore has no port of its own
 pub const TERM_CONSOLE_PORT: u32 = 0;
+// Port the instance sends the exit status of the command to, which
+// was run on the console of the instance. A command called through
+// a vsock sends its exit status to the port the pilot listens on
+// for this command
+pub const EXIT_STATUS_PORT: u32 = 54;
+// Time to wait for the exit status of a command called through a
+// vsock once its output has ended
+pub const EXIT_STATUS_TIMEOUT_MSEC: u64 = 1000;
 // Interval to check the window size of the caller's terminal for
 pub const TERM_RESIZE_POLL_MSEC: u64 = 250;
 // Time to wait for the instance to take the new window size

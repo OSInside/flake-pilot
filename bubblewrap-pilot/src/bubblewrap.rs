@@ -30,6 +30,7 @@ use flakes::lookup::Lookup;
 use flakes::io::IO;
 use flakes::error::FlakeError;
 use flakes::config::get_bubblewrap_ids_dir;
+use flakes::helper::helper_call;
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -163,67 +164,91 @@ pub fn start(
     Create the sandbox and call the application inside of it
 
     The root filesystem of the sandbox is provided as an overlay
-    of the rootfs on the host. The overlay only exists as long as
-    the application and is deleted with it. What the application
-    writes is kept in the tmpfs of the instance for the next
-    sandbox of the instance, unless the %discard pilot option is
-    given, see overlay::umount()
-    !*/
-    let instance = get_instance_name(program_name);
+    of the rootfs on the host. The overlay and the tmpfs which keeps
+    what the application writes are mounted in the namespace of the
+    sandbox, they are not visible on the host and are gone along
+    with the application.
 
+    The pilot mounts them itself in a user namespace of its own,
+    see overlay::mount(). A rootfs or a layer with mount points
+    below it cannot be overlaid in a user namespace, e.g the root
+    of the host. The helper creates the mount namespace of such a
+    sandbox, mounts the overlay in it and calls bwrap there with
+    the privileges of the caller, see overlay::has_mounts_below()
+    !*/
     // The root of the sandbox is referenced as %OVERLAYROOT in
     // the options which create it
     env::set_var(
         defaults::OVERLAY_ROOT_VAR,
-        overlay::get_dir(&instance, defaults::OVERLAY_MERGED_NAME)
+        overlay::get_dir(defaults::OVERLAY_MERGED_NAME)
     );
-    let RuntimeSection { bubblewrap, .. } = config().runtime();
-    let (layers, engine_arguments) = match get_engine_arguments(bubblewrap) {
-        Ok(arguments) => arguments,
-        Err(error) => {
-            delete_sandbox_id_file(sandbox_id_file);
-            return Err(error)
-        }
-    };
-
-    let overlay_root = match overlay::mount(
-        &instance, config().sandbox.name, &layers,
-        get_tmpfs_size().as_deref(), get_sandbox_user()
-    ) {
-        Ok(overlay_root) => overlay_root,
+    match prepare_sandbox() {
+        Ok((call, engine_arguments)) => run_sandbox(
+            program_name, sandbox_id_file, call, engine_arguments
+        ),
         Err(error) => {
             // Without a root filesystem there is no sandbox and
             // therefore also no instance of it
             delete_sandbox_id_file(sandbox_id_file);
-            return Err(error)
+            Err(error)
         }
-    };
+    }
+}
 
-    let result = run_sandbox(
-        program_name, sandbox_id_file, &overlay_root, engine_arguments
-    );
+fn prepare_sandbox() -> Result<(Command, Vec<String>), FlakeError> {
+    /*!
+    Provide the root filesystem of the sandbox and the call which
+    creates the sandbox on it, along with the bwrap options which
+    are not consumed for the root filesystem
+    !*/
+    let RuntimeSection { bubblewrap, .. } = config().runtime();
+    let (layers, engine_arguments) = get_engine_arguments(bubblewrap)?;
+    let rootfs = config().sandbox.name;
+    let tmpfs_size = get_tmpfs_size();
 
-    // The overlay of the rootfs exists as long as the sandbox
-    overlay::umount(&instance, discard_requested());
-
-    result
+    if ! overlay::has_mounts_below(rootfs, &layers)? {
+        overlay::mount(
+            rootfs, &layers, tmpfs_size.as_deref(), get_sandbox_user()
+        )?;
+        return Ok((Command::new(defaults::BWRAP_PATH), engine_arguments))
+    }
+    if Lookup::is_debug() {
+        debug!("Mount points below the root filesystem, using the helper");
+    }
+    overlay::create_user_dir(get_sandbox_user())?;
+    let mut call = helper_call("sandbox-run");
+    call.arg("--rootfs").arg(rootfs);
+    for layer in &layers {
+        call.arg("--layer").arg(layer);
+    }
+    if let Some(size) = tmpfs_size {
+        call.arg("--size").arg(size);
+    }
+    if let Ok(term) = env::var("TERM") {
+        call.arg("--term").arg(term);
+    }
+    // The bwrap arguments follow
+    call.arg("--");
+    Ok((call, engine_arguments))
 }
 
 fn run_sandbox(
-    program_name: &str, sandbox_id_file: &str, overlay_root: &str,
+    program_name: &str, sandbox_id_file: &str, mut call: Command,
     engine_arguments: Vec<String>
 ) -> Result<ExitCode, FlakeError> {
     /*!
     Call the application in the sandbox
 
-    bwrap sets up the new root system and replaces itself with
-    the application. The process recorded as the instance of the
-    flake is therefore the application running in the sandbox.
-    Its exit code becomes the exit code of the pilot
+    The given call creates the sandbox, it is completed by the bwrap
+    options. bwrap sets up the new root system and replaces itself
+    with the application. The process recorded as the instance of
+    the flake is therefore the application running in the sandbox,
+    or the sudo process the helper runs in. The exit code of the
+    application becomes the exit code of the pilot
     !*/
-    let mut call = Command::new(defaults::BWRAP_PATH);
     let sandbox_options = get_sandbox_options(
-        overlay_root, engine_arguments, &get_sandbox_workdir()
+        &overlay::get_dir(defaults::OVERLAY_MERGED_NAME), engine_arguments,
+        &get_sandbox_workdir()
     );
     for option in sandbox_options {
         call.arg(option);
@@ -248,7 +273,7 @@ fn run_sandbox(
                 kind: "Sandbox engine not found".to_string(),
                 message: format!(
                     "{} is required to run this flake, please install it",
-                    defaults::BWRAP_PATH
+                    call.get_program().to_string_lossy()
                 )
             })
         },
@@ -305,7 +330,7 @@ pub fn get_engine_arguments(
 
     A source configured with --overlay-src is a layer stacked on
     top of the rootfs, in the order the sources are given. The
-    layers are part of the overlay created on the host, see
+    layers are part of the overlay created by the pilot, see
     overlay::mount(), they are provided apart from the options
     which are passed to bwrap
     !*/
@@ -367,7 +392,7 @@ pub fn get_sandbox_options(
     Construct the bwrap options which create the sandbox
 
     The root of the new root system is always the overlay of the
-    rootfs created on the host for the instance, mounted writable.
+    rootfs created by the pilot for the sandbox, mounted writable.
     The other options, see get_engine_arguments(), are added after
     it. The given workdir is the directory the application is
     called in, unless the flake configures one
@@ -450,22 +475,13 @@ fn get_sandbox_workdir() -> String {
 fn get_tmpfs_size() -> Option<String> {
     /*!
     Provide the size of the tmpfs which keeps the writable layer of
-    the instance, as requested with the %tmpfs_size pilot option.
+    the sandbox, as requested with the %tmpfs_size pilot option.
     Without it the limit configured system wide applies, if any
     !*/
     Lookup::get_pilot_run_options(config().pilot_options())
         .get(defaults::PILOT_TMPFS_SIZE_OPTION)
         .filter(|size| ! size.is_empty())
         .cloned()
-}
-
-fn discard_requested() -> bool {
-    /*!
-    Check if the writable layer of the instance is discarded when
-    the sandbox ends, see the %discard pilot option
-    !*/
-    Lookup::get_pilot_run_options(config().pilot_options())
-        .contains_key(defaults::PILOT_DISCARD_OPTION)
 }
 
 pub fn sandbox_running(sandbox_id_file: &str) -> Result<bool, FlakeError> {
@@ -487,7 +503,8 @@ fn process_running(sandbox_id: &str) -> bool {
 
     The name of the process is checked too, to not report a
     process which just reuses the ID of an already terminated
-    sandbox as running
+    sandbox as running. A sandbox created through the helper is
+    recorded with the sudo process the helper runs in
     !*/
     let pid = match sandbox_id.parse::<u32>() {
         Ok(pid) => pid,
@@ -501,6 +518,7 @@ fn process_running(sandbox_id: &str) -> bool {
         Ok(process_name) => {
             let process_name = process_name.trim();
             process_name == defaults::BWRAP
+                || process_name == defaults::SUDO_PROCESS_NAME
         },
         Err(_) => false
     }
@@ -536,9 +554,7 @@ pub fn get_instance_name(program_name: &str) -> String {
 
     The name is the name of the flake command, extended by the
     @NAME arguments the application was called with, e.g
-    myapp@one. All data which belongs to one instance, its meta
-    data file as well as the directories of its root filesystem,
-    is named after it
+    myapp@one. The meta data file of the instance is named after it
     !*/
     format!("{}{}", program_name, Lookup::get_instance_name())
 }

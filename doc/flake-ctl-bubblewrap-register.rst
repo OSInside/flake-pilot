@@ -90,11 +90,11 @@ OPTIONS
   pilot. As the root filesystem of the sandbox is an overlay of the
   given tree, this is the place to provide the paths on the host the
   application needs in addition. Data written to the root filesystem
-  does not change the given tree, it is kept in a tmpfs across calls
-  of the application until it is discarded with the %discard pilot
-  option or the host is rebooted, see the **bubblewrap-pilot**
-  manual page. See the example section for further details. An option which starts with a
-  dash has to be escaped with a backslash to not be read as an
+  does not change the given tree, it is kept in a tmpfs which is
+  gone when the sandbox terminates, every call starts from the
+  unmodified tree, see the **bubblewrap-pilot** manual page. See
+  the example section for further details. An option which starts
+  with a dash has to be escaped with a backslash to not be read as an
   option of the register command itself. For details on bwrap
   options please consult the **bwrap** manual page.
 
@@ -114,7 +114,9 @@ OPTIONS
   An absolute path to the root filesystem tree on the host. The
   tree is mounted as the read only layer of an overlay which
   becomes the root filesystem of the sandbox the application
-  runs in
+  runs in. The overlay of a tree with mount points below it, e.g
+  the root of the host, is mounted by the flake-pilot helper, which
+  needs a sudo rule, see the **bubblewrap-pilot** manual page
 
 --target <TARGET>
 

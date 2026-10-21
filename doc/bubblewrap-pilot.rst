@@ -80,8 +80,8 @@ can be set for the sandbox engine:
      # root filesystem of the sandbox. The tree is the read only
      # layer of an overlay and stays untouched. Everything the
      # application writes to its root filesystem is kept in a tmpfs
-     # across calls until it is discarded or the host is rebooted,
-     # see the description of the overlay below
+     # until the sandbox terminates, see the description of the
+     # overlay below
      name: path/to/rootfs/on/host
 
      # Path of the program to call inside of the sandbox (target)
@@ -125,31 +125,81 @@ can be set for the sandbox engine:
 
 After reading of the app configuration information the sandbox is
 created and the application is called inside of it. Prior to the
-call of bwrap the pilot mounts the rootfs of the flake as an
-overlay filesystem on the host. The rootfs is the lowest, read only
-layer of that overlay, its upper and work directory live in a
-tmpfs which is created for the instance. The directories of the
-setup are created below `/var/tmp`, in a directory which is named
-after the ID of the calling user. Thus two users running the same
-flake do not use the same paths. The directories are created with
-the permissions 700, nobody but the user of the sandbox can access
-them. For an instance named `myapp@one` of the user with the ID
-1000 the following setup is used:
+call of bwrap the pilot moves into a user and mount namespace of
+its own, in which bwrap then creates the sandbox. The namespace
+maps only the user and the group of the caller, as themselves, and
+all mounts in it are private to it. In the namespace the pilot
+mounts the rootfs of the flake as an overlay filesystem. The rootfs
+is the lowest, read only layer of that overlay, its upper and work
+directory live in a tmpfs. The tmpfs is mounted with the
+permissions 700 on a directory below `/var/tmp` which is named
+after the ID of the calling user. The pilot creates that directory
+with the permissions 700. On the host it stays empty, it only
+serves as the mount point. All mounts of the setup are created
+nosuid and nodev. For the user with the ID 1000 the following setup
+is used in the namespace:
 
 .. code:: bash
 
-   /var/tmp/bwrap_1000/
-       ├── myapp@one_merged   <- overlay mount of the rootfs
-       └── myapp@one_overlay  <- tmpfs with the upper/work dirs
+   /var/tmp/bwrap_1000/   <- tmpfs
+       ├── merged         <- overlay mount of the rootfs
+       ├── upper          <- upper directory of the overlay
+       └── work           <- work directory of the overlay
 
-Creating and deleting these mounts is not allowed for a standard
-user. The pilot creates the directories, the mounts are created and
-deleted by the helper, see **flake-pilot-helper**\(8), called through
-**sudo** for a caller who is not root. The helper derives all paths
-from the caller and the instance name, does not follow a symbolic
-link and mounts the tmpfs and the overlay nosuid and nodev. The
-sudo rule for the helper is described in the reference policy
+None of these mounts exists on the host. Nobody on the host can see
+or access them, and they are gone along with everything written to
+them when the sandbox and the pilot have terminated. Each sandbox
+has a namespace of its own, two sandboxes of the same user
+therefore do not share the setup although it is mounted on the same
+directory. The instance name, see @NAME, does not change these
+paths.
+
+Mounting in a namespace of its own needs no privileges, the user of
+the sandbox creates the mounts itself. Neither sudo nor
+**flake-pilot-helper**\(8) is involved. It requires a host which
+allows unprivileged user namespaces, which bwrap without the setuid
+bit needs anyway, and a kernel which allows overlay mounts in a
+user namespace, Linux 5.11 or newer.
+
+This does not work for a rootfs or a layer, see **--overlay-src**
+below, with mount points below it, e.g the root filesystem of the
+host. The mounts of the host are locked in a user namespace, and
+the kernel refuses an overlay which would reveal what such a mount
+covers. The pilot therefore checks `/proc/self/mountinfo` for mount
+points below the rootfs and the layers, a mount on the directory
+itself does not count. If there is one, the setup is created by the
+helper, see **flake-pilot-helper**\(8), called through **sudo** for
+a caller who is not root:
+
+.. code:: bash
+
+   sudo /usr/libexec/flake-pilot/flake-pilot-helper sandbox-run \
+       --rootfs DIR [--layer DIR]... [--size SIZE] [--term TERM] \
+       -- BWRAP_ARGUMENTS
+
+The helper moves into a new mount namespace and makes all of its
+mounts private, nothing propagates to or from the host. It opens
+the directory of the user below `/var/tmp` without following a
+symbolic link, the directory has to belong to the caller and must
+not be writable for others. The rootfs and the layers are opened
+with the identity of the caller, a tree the caller cannot reach is
+refused. The helper mounts the same setup as described above, the
+tmpfs belongs to the caller. Then it drops its privileges for good,
+to the groups, the group and the user ID of the caller, and sets
+the no_new_privs flag, which keeps every program in the namespace
+from gaining privileges, e.g through a setuid program. Finally it
+replaces itself by bwrap. The bwrap arguments are passed on as they
+are, they are evaluated with the privileges of the caller only.
+Nothing is mounted on the host in this case either. The sudo rule
+for the helper is described in the reference policy
 flake-pilot.sudoers shipped with the flake-pilot package.
+
+The helper starts bwrap with a fresh environment: PATH is set to
+`/usr/sbin:/usr/bin:/sbin:/bin`, HOME, USER and LOGNAME to the
+values of the user database for the caller, and TERM to the one of
+the caller if it is valid. Other variables of the caller only reach
+the application through bwrap options, see the **--clearenv**
+default below.
 
 The merged directory of the overlay becomes the root filesystem of
 the sandbox. It is bound writable as the root of the sandbox, which
@@ -159,14 +209,15 @@ is always the first option of the sandbox:
 
    --bind %OVERLAYROOT /
 
-The variable **%OVERLAYROOT** resolves to the merged directory of
-the instance, `/var/tmp/bwrap_1000/myapp@one_merged` in the above
-example. It can also be referenced in the bwrap runtime arguments
-of the flake to access the root filesystem of the sandbox as it
-exists on the host.
+The variable **%OVERLAYROOT** resolves to the merged directory,
+`/var/tmp/bwrap_1000/merged` in the above example. The path is only
+valid in the namespace of the sandbox, which is where bwrap
+evaluates its options. It can also be referenced in the bwrap
+runtime arguments of the flake to access the root filesystem of the
+sandbox.
 
 Everything the application writes to its root filesystem ends up
-in the tmpfs of the instance, nothing of it is written to disk.
+in the tmpfs of the sandbox, nothing of it is written to disk.
 Exceptions are paths covered by mounts of their own inside of the
 sandbox: data written below `/tmp` with the default options, see
 below, is kept in a tmpfs created by bwrap, and data written to a
@@ -175,8 +226,8 @@ the host.
 
 A flake can provide further directories for the root of the
 sandbox by configuring **--overlay-src** options. They are not
-passed to bwrap, the directories become layers of the overlay on the
-host instead. They are stacked on top of the rootfs in the order they
+passed to bwrap, the directories become layers of the overlay
+instead. They are stacked on top of the rootfs in the order they
 are configured, the last one of them wins for a path which exists in
 more than one layer. Like the rootfs they are read only. All other
 options, the ones from the flake configuration as well as the
@@ -189,34 +240,48 @@ configuration:
      - --overlay-src /data/tools
      - --unshare-pid
 
-the overlay on the host stacks `/data/tools` on top of the rootfs
-and the sandbox is created with:
+the overlay stacks `/data/tools` on top of the rootfs and the
+sandbox is created with:
 
 .. code:: bash
 
-   --bind /var/tmp/bwrap_1000/myapp@one_merged /
+   --bind /var/tmp/bwrap_1000/merged /
    --unshare-pid
 
-When the application has terminated the overlay mount is deleted.
-The tmpfs below it is kept, the data written by the application is
-therefore still there with the next call of the same instance, the
-same flake called with the same @NAME selectors. Different instances
-use a tmpfs of their own. The tmpfs uses memory of the host as long
-as it exists. It is deleted with a reboot of the host, or when the
-application is called with the **%discard** option, see OPTIONS. To
-start an instance from the unmodified rootfs every time, register
-the flake with **%discard** as pilot option.
+If layers are configured, the rootfs is provided to the overlay
+through a read only overlay of its own, mounted on the directory
+`lower` of the tmpfs and stacked on the empty directory `empty`.
+Layers are mostly part of the rootfs, and an overlay refuses lower
+directories of which one contains another.
+
+When the sandbox has terminated its mounts are gone, the data the
+application has written to its root filesystem is not kept. Every
+call starts from the unmodified rootfs. Data which should outlast
+the call has to be written to a path which is bound writable from
+the host.
 
 The size of the tmpfs is limited by the **sandbox_tmpfs_size**
 setting in `/etc/flakes.yml`, which only root can write. It is the
-size of every tmpfs and the largest size a flake can request with
-the **%tmpfs_size** option, see OPTIONS. Without the setting the
-kernel default applies, half of the memory of the host.
+size of the tmpfs of every sandbox and the largest size a flake can
+request with the **%tmpfs_size** option, see OPTIONS. Without the
+setting the kernel default applies, half of the memory of the host.
+For a sandbox the pilot mounts itself the limit is applied by
+bubblewrap-pilot. As the user creates the tmpfs in a namespace of
+its own, the limit is a default of the system there, not a
+privilege boundary. The memory of the tmpfs is accounted to the
+processes of the user and is released when the sandbox terminates.
+For a sandbox mounted by the helper the limit is enforced by the
+helper.
 
 Former versions kept the written data on disk, in the directories
-`myapp@one_rw` and `myapp@one_work` next to the ones above. They are
-not used anymore and are deleted along with the tmpfs when the
-instance is called with **%discard**.
+`myapp@one_rw` and `myapp@one_work`, or in tmpfs mounts on the
+host, `myapp@one_overlay` and `myapp@one_merged`, below
+`/var/tmp/bwrap_1000`. They are not used anymore. A tmpfs mount a
+former version has left on the host stays until the host is
+rebooted or root unmounts it, the remaining directories can be
+deleted by the user. The **%discard** option of former versions is
+gone as well. A pilot option which is unknown is ignored, a flake
+registered with it keeps working.
 
 If no bwrap runtime arguments exists, the following defaults will
 apply:
@@ -238,11 +303,13 @@ variables PATH, HOME, USER, LOGNAME, TERM, LANG, LC_ALL and TZ are
 set again with the values of the caller, as far as they are set for
 the caller. This applies to every sandbox whose options contain
 **--clearenv**, a variable the options set with **--setenv** keeps
-the configured value. Configuring runtime arguments replaces
-these defaults, they have to be listed along with the custom
-options if they should stay in effect. A registration created with
-**flake-ctl bubblewrap register** lists them in the configuration
-file and adds the options of the registration to them.
+the configured value. Without **--clearenv** the application of a
+sandbox created by the helper only sees the fresh environment the
+helper starts bwrap with, see above. Configuring runtime arguments
+replaces these defaults, they have to be listed along with the
+custom options if they should stay in effect. A registration created
+with **flake-ctl bubblewrap register** lists them in the
+configuration file and adds the options of the registration to them.
 
 Unless a working directory is configured, the application is
 called in the root directory of the sandbox. This is because the
@@ -268,10 +335,11 @@ is one sandbox per registered flake command or, if the application
 is called with @NAME arguments, per command instance. Calling the
 same instance twice at the same time is refused. For each instance
 the pilot writes a meta data file which contains the process ID of
-the sandbox. The files are stored below `/tmp/flakes` in a private
-directory of the user the instance belongs to, e.g
-`/tmp/flakes/1000/myapp@one.bwrapid` and are deleted when the
-application terminates. They can be listed with
+the sandbox, for a sandbox created by the helper the one of the
+sudo process the helper runs in. The files are stored below
+`/tmp/flakes` in a private directory of the user the instance
+belongs to, e.g `/tmp/flakes/1000/myapp@one.bwrapid` and are
+deleted when the application terminates. They can be listed with
 **flake-ctl bubblewrap show**.
 
 The exit code of the application in the sandbox becomes the exit
@@ -302,26 +370,13 @@ OPTIONS
   as a bwrap option of the flake, **--chdir**, takes precedence
   over this option
 
-%discard
-
-  Discard the writable layer of the instance when the application
-  has terminated: the tmpfs which keeps what was written to the root
-  filesystem of the sandbox in this and in former calls is deleted.
-  The next call starts from the unmodified rootfs. The directories
-  former versions kept the written data in on disk are deleted as
-  well. Configured as pilot option of the flake, every call starts
-  from the unmodified rootfs
-
 %tmpfs_size:SIZE
 
-  Limit the tmpfs which keeps the writable layer of the instance to
+  Limit the tmpfs which keeps the writable layer of the sandbox to
   the given size: a number of bytes with an optional k, m, g or t
   suffix, e.g 512M, or a percentage of the memory of the host, e.g
   10%. The size must not exceed the **sandbox_tmpfs_size** limit of
-  `/etc/flakes.yml`, the limit is the default. A tmpfs kept from a
-  former call is resized. This fails if it holds more data than the
-  new size allows, the instance has to be called with **%discard**
-  then
+  `/etc/flakes.yml`, the limit is the default
 
 DEBUGGING
 ---------
@@ -340,12 +395,13 @@ FILES
 * $HOME/.config/flakes
 * /tmp/flakes
 * /var/tmp/bwrap_USERID
+* /usr/libexec/flake-pilot/flake-pilot-helper
 * /etc/flakes.yml
 
 SEE ALSO
 --------
 
-flake-ctl-bubblewrap-register(8), flake-ctl-bubblewrap-remove(8), flake-ctl-bubblewrap-show(8), bwrap(1)
+flake-ctl-bubblewrap-register(8), flake-ctl-bubblewrap-remove(8), flake-ctl-bubblewrap-show(8), flake-pilot-helper(8), bwrap(1)
 
 AUTHOR
 ------

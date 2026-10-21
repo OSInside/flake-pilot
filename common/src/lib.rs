@@ -38,3 +38,4 @@ pub mod openat;
 pub mod network;
 pub mod podman;
 pub mod helper;
+pub mod tmpfs;

@@ -90,9 +90,9 @@ Privileges
 ==========
 
 Flake Pilot does not install any setuid binary. Actions which need
-more privileges than the calling user has, like mounting the root
-filesystem of a sandbox or creating a network device, are performed
-by the Flake Pilot helper, which is called through the ``sudo``
+more privileges than the calling user has, like creating a network
+device or running a system wide podman flake, are performed by the
+Flake Pilot helper, which is called through the ``sudo``
 binary of the system. The packages do not install a ``sudo`` policy.
 
 .. note::

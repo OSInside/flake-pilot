@@ -74,18 +74,24 @@ NFS exports
   release the export. See :ref:`firecracker-volumes`.
 
 The root filesystem of a bubblewrap sandbox
-  All paths are derived from the caller and the instance name. The
-  directories of the setup have to belong to the caller and are
-  opened without following a symbolic link. The tmpfs and the
-  overlay are mounted nosuid and nodev onto these opened directories.
-  The tree of the sandbox and the layers a flake stacks on top of it
-  are the read only layers of the overlay, access to their content
-  through the overlay is checked against their own permissions. The
-  writable layer is a tmpfs of the caller which is kept until the
-  caller discards it or the host is rebooted, it uses memory of the
-  host meanwhile. Its size is limited by ``sandbox_tmpfs_size`` in
-  ``/etc/flakes.yml``, a caller can only ask for less. See
-  :ref:`sandbox-apps`.
+  Only used for a tree of the sandbox, or a layer a flake stacks on
+  top of it, with mount points below it, e.g the root of the host.
+  The helper moves into a new mount namespace whose mounts are
+  private, nothing is mounted on the host. The directory of the
+  caller below ``/var/tmp`` is opened without following a symbolic
+  link, it has to belong to the caller and must not be writable for
+  others. The tree and the layers are opened with the identity of
+  the caller, a tree the caller cannot reach is refused. They are
+  the read only layers of the overlay, the writable layer is a tmpfs
+  of the caller which is gone along with the sandbox. The tmpfs and
+  the overlay are mounted nosuid and nodev. The size of the tmpfs is
+  limited by ``sandbox_tmpfs_size`` in ``/etc/flakes.yml``, a caller
+  can only ask for less. The helper then drops its privileges to the
+  ones of the caller for good, sets ``no_new_privs``, which keeps
+  every program in the namespace from gaining privileges, e.g
+  through a setuid program, and replaces itself by ``bwrap``. The
+  ``bwrap`` arguments are passed on as they are and are evaluated
+  with the privileges of the caller only. See :ref:`sandbox-apps`.
 
 System wide podman flakes
   The application has to be a link to ``podman-pilot`` which belongs
@@ -134,7 +140,11 @@ What Each Feature Needs
      - helper, ``volume-export`` and ``volume-release`` commands
      - the directories of the caller
    * - bubblewrap flake, ``bubblewrap-pilot``, from either registry
-     - helper, ``sandbox-mount`` and ``sandbox-umount`` commands
+     - none
+     - nothing
+   * - bubblewrap flake whose tree or layer has mount points below
+       it, e.g ``--rootfs /``
+     - helper, ``sandbox-run`` command
      - the sandboxes of the caller
    * - ``flake-ctl init`` on a host without the meta data directory
      - helper, ``meta-dirs-init`` command
@@ -146,10 +156,15 @@ flake configuration and need no privileges.
 What This Means in Practice
 ===========================
 
-Flakes of the calling user and firecracker flakes need no rule.
+User podman, firecracker and most bubblewrap flakes need no rule.
   Podman flakes from the user registry run in the rootless podman
   setup of the user, firecracker flakes run the VM as the calling
-  user. Neither of them calls the helper.
+  user. Bubblewrap flakes mount the root filesystem of the sandbox
+  in a user and mount namespace of the calling user. None of them
+  calls the helper. The exception is a bubblewrap flake whose tree
+  or one of its layers has mount points below it, e.g the root of
+  the host. A user namespace cannot provide such a tree, the helper
+  mounts it, see above.
 
 A system wide podman flake is granted to every user with the rule.
   The flake runs as root in the podman setup of root, with the

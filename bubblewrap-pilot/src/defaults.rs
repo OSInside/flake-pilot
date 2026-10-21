@@ -24,7 +24,10 @@
 pub const VAR_EXPANSION_LIMIT: i32 = 10;
 // Name and path of the program which creates the sandbox
 pub const BWRAP: &str = "bwrap";
-pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
+pub use flakes::defaults::BWRAP_PATH;
+// Name of the process of a sandbox which is created through the
+// helper, see overlay::has_mounts_below()
+pub use flakes::defaults::SUDO_PROCESS_NAME;
 pub const PROC_DIR: &str = "/proc";
 // File name extension of the meta data files the pilot
 // creates for its instances
@@ -33,13 +36,14 @@ pub const SANDBOX_ID_EXTENSION: &str = "bwrapid";
 // created but is not started yet
 pub const SANDBOX_NOT_STARTED: &str = "0";
 // Option which mounts the root filesystem of the sandbox. The root
-// is the overlay of the rootfs created on the host, it is writable
-// and keeps what is written to it in the tmpfs of the instance
+// is the overlay of the rootfs created in the namespace of the
+// sandbox, it is writable and keeps what is written to it in a
+// tmpfs which is gone along with the sandbox
 pub const BWRAP_BIND_OPTION: &str = "--bind";
 // Option which stacks another layer on top of the rootfs. A flake
 // can configure it to add layers to the root of the sandbox. The
-// layers are part of the overlay created on the host and are not
-// passed to bwrap
+// layers are part of the overlay created by the pilot or the
+// helper and are not passed to bwrap
 pub const BWRAP_OVERLAY_SRC_OPTION: &str = "--overlay-src";
 // Option which selects the working directory in the sandbox
 pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
@@ -47,27 +51,32 @@ pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
 pub const SANDBOX_ROOT: &str = "/";
 // Name of the variable which provides the root filesystem of
 // the sandbox. It resolves to the overlay mount of the rootfs
-// on the host and can be referenced as %OVERLAYROOT in the
-// options of the flake configuration
+// in the namespace of the sandbox and can be referenced as
+// %OVERLAYROOT in the options of the flake configuration
 pub const OVERLAY_ROOT_VAR: &str = "OVERLAYROOT";
-// Directories of the overlay setups of the sandboxes. The setup
-// is mounted by the helper and is therefore maintained along with
-// it in the common area
+// Directories of the overlay setup of the sandboxes. The setup is
+// mounted by the helper for a rootfs with mount points below it
+// and is therefore maintained along with it in the common area
 pub use flakes::defaults::{
     OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME, OVERLAY_MERGED_NAME,
-    OVERLAY_TMPFS_NAME, OVERLAY_RW_NAME, OVERLAY_WORK_NAME,
-    OVERLAY_UPPER_NAME
+    OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME, OVERLAY_LOWER_NAME,
+    OVERLAY_EMPTY_NAME
 };
 // Permissions of the directories of the overlay setup. Nobody but
 // the user of the sandbox has access to them
 pub const OVERLAY_DIR_MODE: &str = "700";
-// Pilot option which discards the writable layer of the instance
-// when the sandbox ends. Without it the layer is kept for the next
-// sandbox of the instance until the host is rebooted
-pub const PILOT_DISCARD_OPTION: &str = "%discard";
+// Filesystem types of the overlay setup
+pub const TMPFS_TYPE: &str = "tmpfs";
+pub const OVERLAY_TYPE: &str = "overlay";
+// Files to setup the user namespace of the sandbox with
+pub const PROC_SETGROUPS: &str = "/proc/self/setgroups";
+pub const PROC_UID_MAP: &str = "/proc/self/uid_map";
+pub const PROC_GID_MAP: &str = "/proc/self/gid_map";
+// Mount table of the pilot, to find mount points below the rootfs
+pub const PROC_MOUNTINFO: &str = "/proc/self/mountinfo";
 // Pilot option which requests the size of the tmpfs which keeps the
-// writable layer of the instance, e.g %tmpfs_size:2G. The helper
-// refuses a size above the limit configured in /etc/flakes.yml
+// writable layer of the sandbox, e.g %tmpfs_size:2G. A size above
+// the limit configured in /etc/flakes.yml is refused
 pub const PILOT_TMPFS_SIZE_OPTION: &str = "%tmpfs_size";
 // Pilot option which selects the working directory of the
 // application in the sandbox

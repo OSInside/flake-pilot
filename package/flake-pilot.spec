@@ -93,7 +93,7 @@ Summary:        Bubblewrap pilot
 Group:          System/Management
 Requires:       bubblewrap
 Requires:       sudo
-# the helper mounts the root filesystem of the sandboxes
+# the helper mounts a root filesystem with mount points below it
 Requires:       flake-pilot = %{version}-%{release}
 
 %description -n flake-pilot-bubblewrap

@@ -21,47 +21,66 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-//! The root filesystem of the bubblewrap sandboxes
+//! The bubblewrap sandboxes with mount points below their root
 //!
 //! A sandbox runs on an overlay of a directory tree of the host,
-//! see bubblewrap-pilot. The setup of an instance lives in the
-//! directory of its user below OVERLAY_BASE_DIR, e.g
+//! see bubblewrap-pilot. The pilot mounts the overlay itself, in a
+//! user and mount namespace of its own. The mounts of the host are
+//! locked in such a namespace and the kernel refuses an overlay of
+//! a tree with mount points below it, e.g the root of the host.
+//! For such a tree the helper creates the mount namespace of the
+//! sandbox instead.
 //!
-//! /var/tmp/bwrap_1000/
-//!    ├── myapp@one_merged   <- overlay mount of the rootfs
-//!    └── myapp@one_overlay  <- tmpfs with the upper/work dirs
+//! The helper moves into a new mount namespace, in which no mount
+//! propagates to the host, and mounts the setup of the sandbox on
+//! the directory of the caller below OVERLAY_BASE_DIR, e.g
 //!
-//! The overlay is the root filesystem of the sandbox and the tmpfs
-//! keeps everything written to it. The overlay exists as long as
-//! the sandbox. The tmpfs is kept for the next sandbox of the same
-//! instance until it is discarded or the host is rebooted, nothing
-//! written in the sandbox ends up on disk.
+//! /var/tmp/bwrap_1000/  <- tmpfs
+//!    ├── merged         <- overlay mount of the rootfs
+//!    ├── upper          <- upper directory of the overlay
+//!    ├── work           <- work directory of the overlay
+//!    ├── lower          <- read only overlay of the rootfs
+//!    └── empty          <- second layer of the read only overlay
 //!
-//! Layers stacked on top of the rootfs are mostly part of it.
-//! An overlay refuses lower directories of which one contains
-//! another. The rootfs is therefore provided to the overlay
-//! through a read only overlay of its own if layers are stacked
-//! on top of it, which is mounted on a directory in the tmpfs
-//! while the overlay is created.
+//! Then it drops its privileges for good, turns into the caller
+//! and replaces itself with bwrap, which creates the sandbox in
+//! that namespace. Nothing is mounted on the host, the mounts are
+//! gone along with everything written to them once the sandbox has
+//! terminated. The read only overlay of the rootfs is only created
+//! with layers on top of the rootfs. Layers are mostly part of the
+//! rootfs and an overlay refuses lower directories of which one
+//! contains another.
 //!
-//! The directories belong to the user, the mounts can only be
-//! created by root. A user can rename and replace the entries of
-//! a directory of its own at any time. Every directory is therefore
-//! opened without following a symbolic link and its owner is
-//! checked on the open descriptor. The mounts are created detached
-//! with the file descriptor based mount API, prepared, and then
-//! attached to these descriptors. No path is resolved twice.
+//! The rootfs and the layers are opened with the identity of the
+//! caller, a tree the caller cannot reach is refused. The overlay
+//! grants no access the caller does not have on the trees: access
+//! to their content through the overlay is checked against their
+//! own permissions. All mounts are created nosuid and nodev.
+//!
+//! The directory of the caller belongs to the caller. It is opened
+//! without following a symbolic link and its owner is checked on
+//! the open descriptor. The mounts are created detached with the
+//! file descriptor based mount API, prepared, and then attached to
+//! these descriptors. No path is resolved twice. Apart from these
+//! mounts the namespace provides the mounts of the host unchanged.
+//! bwrap and everything it calls run with the no_new_privs flag,
+//! no program run in the namespace can gain privileges. The
+//! arguments of bwrap are passed on as they are, they are evaluated
+//! with the privileges of the caller only.
 //!
 use std::ffi::CString;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 
 use flakes::config::get_sandbox_tmpfs_size;
 use flakes::defaults::{
-    FLAKES_CONFIG, OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME,
-    OVERLAY_MERGED_NAME, OVERLAY_TMPFS_NAME, OVERLAY_UPPER_NAME,
-    OVERLAY_WORK_NAME
+    BWRAP_PATH, OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME,
+    OVERLAY_MERGED_NAME, OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME,
+    OVERLAY_LOWER_NAME, OVERLAY_EMPTY_NAME
 };
+use flakes::tmpfs::{get_tmpfs_size, host_memory};
 
 use crate::caller::Caller;
 use crate::validate;
@@ -70,100 +89,73 @@ use crate::validate;
 const FSOPEN_CLOEXEC: libc::c_uint = 0x1;
 const FSCONFIG_SET_STRING: libc::c_uint = 1;
 const FSCONFIG_CMD_CREATE: libc::c_uint = 6;
-const FSCONFIG_CMD_RECONFIGURE: libc::c_uint = 7;
-const FSPICK_CLOEXEC: libc::c_uint = 0x1;
-const FSPICK_EMPTY_PATH: libc::c_uint = 0x8;
 const FSMOUNT_CLOEXEC: libc::c_uint = 0x1;
 const MOUNT_ATTR_NOSUID: libc::c_uint = 0x2;
 const MOUNT_ATTR_NODEV: libc::c_uint = 0x4;
 const MOVE_MOUNT_F_EMPTY_PATH: libc::c_uint = 0x4;
 const MOVE_MOUNT_T_EMPTY_PATH: libc::c_uint = 0x40;
 
-// Filesystem types of the setup and their magic numbers as
-// reported by statfs(2)
+// Filesystem types of the setup
 const TMPFS_TYPE: &str = "tmpfs";
-const TMPFS_MAGIC: i64 = 0x0102_1994;
 const OVERLAY_TYPE: &str = "overlay";
-const OVERLAY_MAGIC: i64 = 0x794c_7630;
 
-// Permissions of the upper and the work directory of the overlay
+// Permissions of the directories of the setup
 const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 
 // Max. number of layers a flake can stack on top of its rootfs
 const MAX_LAYERS: usize = 16;
 
-// Memory information of the kernel, the base of a tmpfs size given
-// as percentage
-const PROC_MEMINFO: &str = "/proc/meminfo";
-
-// Directories in the tmpfs of an instance for the read only overlay
-// of the rootfs: its mount point, and the empty directory stacked on
-// top of the rootfs, a read only overlay needs two lower directories
-const ROOTFS_OVERLAY_NAME: &str = "lower";
-const ROOTFS_OVERLAY_EMPTY_NAME: &str = "empty";
-
-// Directories created in the tmpfs of an instance
-const TMPFS_DIR_NAMES: [&str; 4] = [
-    OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME,
-    ROOTFS_OVERLAY_NAME, ROOTFS_OVERLAY_EMPTY_NAME
-];
-
-pub fn mount(
-    caller: &Caller, instance: &str, rootfs: &str, layers: &[String],
-    size: Option<&str>
+pub fn run(
+    caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>,
+    term: Option<&str>, args: &[String]
 ) -> bool {
     /*!
-    Create the overlay of the given rootfs for the given sandbox
-    instance of the caller
+    Mount the root filesystem of a sandbox of the caller in a new
+    mount namespace and replace the helper by bwrap, called with the
+    given arguments and the privileges of the caller
 
-    The rootfs is the lowest, read only layer. The given layers are
-    stacked on top of it in the given order, read only as well. The
-    upper and the work directory live in a tmpfs which belongs to
-    the caller. A tmpfs which is left from a former sandbox of the
-    instance is used again, it keeps what was written in that
-    sandbox. Both mounts are created with nosuid and nodev. The
-    layers are only read: access to their content through the
-    overlay is checked against their own permissions, the overlay
-    grants no access the caller does not have on the layers.
+    The rootfs is the lowest, read only layer of the overlay. The
+    given layers are stacked on top of it in the given order, read
+    only as well. The upper and the work directory live in a tmpfs
+    of the given size, see flakes::tmpfs::get_tmpfs_size().
 
-    The size of the tmpfs is the given size or the limit configured
-    system wide, see get_tmpfs_size()
+    bwrap gets a fresh environment, like the pilots the helper
+    calls. The variables of the caller are provided to the
+    application through the bwrap options
     !*/
-    match mount_overlay(caller, instance, rootfs, layers, size) {
+    if let Err(error) = mount_root(caller, rootfs, layers, size) {
+        error!("{error}");
+        return false
+    }
+    if let Err(error) = drop_privileges(caller) {
+        error!("{error}");
+        return false
+    }
+    let term = term.filter(|term| match validate::terminal_type(term) {
         Ok(()) => true,
         Err(error) => {
-            error!("{error}");
+            warn!("{error}, not passed on");
             false
         }
+    });
+    let mut call = Command::new(BWRAP_PATH);
+    call.args(args)
+        .env_clear()
+        .env("PATH", crate::HELPER_PATH)
+        .env("HOME", &caller.home)
+        .env("USER", &caller.name)
+        .env("LOGNAME", &caller.name);
+    if let Some(term) = term {
+        call.env("TERM", term);
     }
+    let error = call.exec();
+    error!("Failed to execute {BWRAP_PATH}: {error}");
+    false
 }
 
-pub fn umount(caller: &Caller, instance: &str, discard: bool) -> bool {
-    /*!
-    Delete the overlay of the given sandbox instance of the caller
-
-    The tmpfs is kept for the next sandbox of the instance. With
-    discard it is deleted as well, along with everything that was
-    written in the sandboxes of the instance. A directory which is
-    no mount of the expected type is left alone
-    !*/
-    let result = validate::sandbox_instance(instance)
-        .and_then(|_| open_user_dir(caller))
-        .map(|user_dir| release_mounts(&user_dir, instance, discard));
-    match result {
-        Ok(ok) => ok,
-        Err(error) => {
-            error!("{error}");
-            false
-        }
-    }
-}
-
-fn mount_overlay(
-    caller: &Caller, instance: &str, rootfs: &str, layers: &[String],
-    size: Option<&str>
+fn mount_root(
+    caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>
 ) -> Result<(), String> {
-    validate::sandbox_instance(instance)?;
     let size = get_tmpfs_size(
         size, get_sandbox_tmpfs_size().as_deref(), host_memory()?
     )?;
@@ -173,60 +165,154 @@ fn mount_overlay(
         ))
     }
     validate::absolute_path(rootfs)?;
+    for layer in layers {
+        validate::absolute_path(layer)?;
+    }
+
+    // Everything below happens in the namespace of the sandbox. An
+    // overlay refuses layers of the mounts of another namespace, the
+    // directories are therefore opened in it
+    enter_mount_namespace()?;
+    let user_dir = open_user_dir(caller)?;
+    let (rootfs_dir, layer_dirs) = open_layers_as(caller, rootfs, layers)?;
+
+    // 1. The tmpfs, created along with its directories before it
+    //    becomes visible
+    let tmpfs = create_tmpfs(caller, size.as_deref(), ! layer_dirs.is_empty())
+        .map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
+    attach_mount(&tmpfs, &user_dir).map_err(
+        |error| format!("Failed to mount the tmpfs: {error}")
+    )?;
+
+    // 2. The overlay of the layers
+    let merged_dir = open_dir(tmpfs.as_raw_fd(), OVERLAY_MERGED_NAME, false)
+        .map_err(|error| format!("Failed to open {OVERLAY_MERGED_NAME}: {error}"))?;
+    mount_layers(&tmpfs, &merged_dir, &layer_dirs, &rootfs_dir).map_err(
+        |error| format!("Failed to mount the overlay of {rootfs}: {error}")
+    )
+}
+
+fn enter_mount_namespace() -> Result<(), String> {
+    /*!
+    Move the helper into a new mount namespace and make all of its
+    mounts private. No mount created in it propagates to the host
+    and no mount of the host propagates into it
+    !*/
+    if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
+        return Err(format!(
+            "Failed to create the mount namespace of the sandbox: {}",
+            io::Error::last_os_error()
+        ))
+    }
+    let root = to_c_string("/").map_err(|error| error.to_string())?;
+    if unsafe {
+        libc::mount(
+            std::ptr::null(), root.as_ptr(), std::ptr::null(),
+            libc::MS_REC | libc::MS_PRIVATE, std::ptr::null()
+        )
+    } != 0 {
+        return Err(format!(
+            "Failed to make the mounts of the namespace private: {}",
+            io::Error::last_os_error()
+        ))
+    }
+    Ok(())
+}
+
+fn open_layers_as(
+    caller: &Caller, rootfs: &str, layers: &[String]
+) -> Result<(OwnedFd, Vec<OwnedFd>), String> {
+    /*!
+    Open the rootfs and the layers with the identity of the caller.
+    The caller has to be able to reach them itself. The topmost
+    layer is the first one of the returned layers
+    !*/
+    let groups = caller_groups(caller)?;
+    let switched = unsafe {
+        libc::setgroups(groups.len(), groups.as_ptr()) == 0
+            && libc::setegid(caller.gid) == 0
+            && libc::seteuid(caller.uid) == 0
+    };
+    let result = if switched {
+        open_layers(rootfs, layers)
+    } else {
+        Err(format!(
+            "Failed to switch to the caller: {}", io::Error::last_os_error()
+        ))
+    };
+    if unsafe { libc::seteuid(0) != 0 || libc::setegid(0) != 0 } {
+        return Err(format!(
+            "Failed to switch back from the caller: {}",
+            io::Error::last_os_error()
+        ))
+    }
+    result
+}
+
+fn open_layers(
+    rootfs: &str, layers: &[String]
+) -> Result<(OwnedFd, Vec<OwnedFd>), String> {
     let rootfs_dir = open_dir(libc::AT_FDCWD, rootfs, true).map_err(
         |error| format!("Failed to open rootfs {rootfs}: {error}")
     )?;
-    // The topmost layer is the first one of the lower directories
     let mut layer_dirs: Vec<OwnedFd> = Vec::new();
     for layer in layers.iter().rev() {
-        validate::absolute_path(layer)?;
         layer_dirs.push(open_dir(libc::AT_FDCWD, layer, true).map_err(
             |error| format!("Failed to open layer {layer}: {error}")
         )?);
     }
-    let user_dir = open_user_dir(caller)?;
+    Ok((rootfs_dir, layer_dirs))
+}
 
-    // An overlay left behind by a sandbox which did not end
-    // properly, e.g because its pilot got killed, is released
-    // first. There is only one sandbox per instance
-    release_mounts(&user_dir, instance, false);
-    let merged_dir = open_setup_dir(
-        &user_dir, caller, instance, OVERLAY_MERGED_NAME
-    )?;
-
-    // 1. The tmpfs of the instance, kept from a former sandbox or
-    //    created along with its directories before it becomes visible
-    let (tmpfs, created) = match open_kept_tmpfs(&user_dir, caller, instance)? {
-        Some(tmpfs) => {
-            info!("Using the writable layer kept for {instance}");
-            if let Some(size) = &size {
-                resize_tmpfs(&tmpfs, size).map_err(|error| format!(
-                    "Failed to resize the writable layer of {instance} to \
-                    {size}: {error}. It may hold more data already, discard \
-                    it with the %discard pilot option"
-                ))?;
-            }
-            (tmpfs, false)
-        },
-        None => {
-            let tmpfs = create_tmpfs(
-                &user_dir, caller, instance, size.as_deref()
-            )?;
-            (tmpfs, true)
-        }
+fn drop_privileges(caller: &Caller) -> Result<(), String> {
+    /*!
+    Turn into the caller for good: its groups, its group and its
+    user ID, with no way back. The no_new_privs flag keeps every
+    program called from now on from gaining privileges, e.g
+    through a setuid program
+    !*/
+    let groups = caller_groups(caller)?;
+    let dropped = unsafe {
+        libc::setgroups(groups.len(), groups.as_ptr()) == 0
+            && libc::setresgid(caller.gid, caller.gid, caller.gid) == 0
+            && libc::setresuid(caller.uid, caller.uid, caller.uid) == 0
+            && libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0
     };
-
-    // 2. The overlay of the layers
-    let overlay = mount_layers(&tmpfs, &merged_dir, &layer_dirs, &rootfs_dir);
-    if let Err(error) = overlay {
-        if created {
-            detach_mount(&tmpfs);
-        }
+    if ! dropped {
         return Err(format!(
-            "Failed to mount the overlay of {rootfs} for {instance}: {error}"
+            "Failed to drop the privileges: {}", io::Error::last_os_error()
         ))
     }
+    if ! caller.is_root() && unsafe { libc::setuid(0) } == 0 {
+        return Err("The privileges could not be dropped".to_string())
+    }
     Ok(())
+}
+
+fn caller_groups(caller: &Caller) -> Result<Vec<libc::gid_t>, String> {
+    /*!
+    Provide the groups the caller is a member of, as listed in the
+    group database, along with its primary group
+    !*/
+    let name = to_c_string(&caller.name).map_err(|error| error.to_string())?;
+    let mut count: libc::c_int = 32;
+    loop {
+        let mut groups: Vec<libc::gid_t> = vec![0; count as usize];
+        let mut found = count;
+        if unsafe {
+            libc::getgrouplist(
+                name.as_ptr(), caller.gid, groups.as_mut_ptr(), &mut found
+            )
+        } >= 0 {
+            groups.truncate(found as usize);
+            return Ok(groups)
+        }
+        // The list was too short, found tells the required length
+        if found <= count {
+            return Err(format!("Failed to read the groups of {}", caller.name))
+        }
+        count = found;
+    }
 }
 
 fn mount_layers(
@@ -269,16 +355,11 @@ fn mount_rootfs_overlay(
 ) -> io::Result<OwnedFd> {
     /*!
     Mount a read only overlay of the given rootfs on its directory
-    in the given tmpfs and provide its root. An overlay left on the
-    directory, e.g by a helper which got killed, is released first
+    in the given tmpfs and provide its root
     !*/
     let tmpfs_fd = tmpfs.as_raw_fd();
-    let mut mount_point = open_dir(tmpfs_fd, ROOTFS_OVERLAY_NAME, false)?;
-    if is_mount_root_of(tmpfs, &mount_point, OVERLAY_MAGIC)? {
-        detach_mount(&mount_point);
-        mount_point = open_dir(tmpfs_fd, ROOTFS_OVERLAY_NAME, false)?;
-    }
-    let empty_dir = open_dir(tmpfs_fd, ROOTFS_OVERLAY_EMPTY_NAME, false)?;
+    let mount_point = open_dir(tmpfs_fd, OVERLAY_LOWER_NAME, false)?;
+    let empty_dir = open_dir(tmpfs_fd, OVERLAY_EMPTY_NAME, false)?;
     let overlay = create_mount(OVERLAY_TYPE, &[(
         "lowerdir",
         &format!("{}:{}", fd_path(&empty_dir), fd_path(rootfs_dir))
@@ -287,54 +368,14 @@ fn mount_rootfs_overlay(
     Ok(overlay)
 }
 
-fn open_kept_tmpfs(
-    user_dir: &OwnedFd, caller: &Caller, instance: &str
-) -> Result<Option<OwnedFd>, String> {
-    /*!
-    Provide the root of the tmpfs a former sandbox of the instance
-    left, None if there is none. It has to belong to the caller.
-    The directories in it are created if they are gone
-    !*/
-    let entry = format!("{instance}_{OVERLAY_TMPFS_NAME}");
-    let directory = match open_dir(user_dir.as_raw_fd(), &entry, false) {
-        Ok(directory) => directory,
-        Err(_) => return Ok(None)
-    };
-    if ! is_mount_root_of(user_dir, &directory, TMPFS_MAGIC)
-        .map_err(|error| format!("Failed to inspect {entry}: {error}"))?
-    {
-        return Ok(None)
-    }
-    let attributes = fstat(&directory).map_err(|error| error.to_string())?;
-    if attributes.st_uid != caller.uid || attributes.st_mode & 0o077 != 0 {
-        return Err(format!(
-            "The tmpfs on {entry} does not belong to the caller or is \
-            accessible for others"
-        ))
-    }
-    for name in TMPFS_DIR_NAMES {
-        match make_dir_for(&directory, name, caller) {
-            Ok(()) => { },
-            Err(error) if error.raw_os_error() == Some(libc::EEXIST) => { },
-            Err(error) => return Err(
-                format!("Failed to create {name} in the tmpfs: {error}")
-            )
-        }
-    }
-    Ok(Some(directory))
-}
-
 fn create_tmpfs(
-    user_dir: &OwnedFd, caller: &Caller, instance: &str, size: Option<&str>
-) -> Result<OwnedFd, String> {
+    caller: &Caller, size: Option<&str>, with_layers: bool
+) -> io::Result<OwnedFd> {
     /*!
-    Create the tmpfs of the instance, of the given size if any, with
+    Create the tmpfs of the sandbox, of the given size if any, with
     its directories created before it becomes visible, and provide
     its root
     !*/
-    let tmpfs_dir = open_setup_dir(
-        user_dir, caller, instance, OVERLAY_TMPFS_NAME
-    )?;
     let uid = caller.uid.to_string();
     let gid = caller.gid.to_string();
     let mut options = vec![
@@ -343,60 +384,18 @@ fn create_tmpfs(
     if let Some(size) = size {
         options.push(("size", size));
     }
-    let tmpfs = create_mount(TMPFS_TYPE, &options)
-        .map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
-    for name in TMPFS_DIR_NAMES {
-        make_dir_for(&tmpfs, name, caller).map_err(
-            |error| format!("Failed to create {name} in the tmpfs: {error}")
-        )?;
+    let tmpfs = create_mount(TMPFS_TYPE, &options)?;
+    let mut dir_names = vec![
+        OVERLAY_MERGED_NAME, OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME
+    ];
+    if with_layers {
+        dir_names.push(OVERLAY_LOWER_NAME);
+        dir_names.push(OVERLAY_EMPTY_NAME);
     }
-    attach_mount(&tmpfs, &tmpfs_dir).map_err(
-        |error| format!("Failed to mount the tmpfs of {instance}: {error}")
-    )?;
+    for name in dir_names {
+        make_dir_for(&tmpfs, name, caller)?;
+    }
     Ok(tmpfs)
-}
-
-fn release_mounts(user_dir: &OwnedFd, instance: &str, with_tmpfs: bool) -> bool {
-    /*!
-    Detach the overlay of the given instance if it is mounted, and
-    with with_tmpfs the tmpfs of the instance as well. A setup
-    directory which is no mount root of the expected type is left
-    alone
-    !*/
-    let mut ok = true;
-    let mut mounts = vec![(OVERLAY_MERGED_NAME, OVERLAY_MAGIC)];
-    if with_tmpfs {
-        mounts.push((OVERLAY_TMPFS_NAME, TMPFS_MAGIC));
-    }
-    for (name, magic) in mounts {
-        let entry = format!("{instance}_{name}");
-        let directory = match open_dir(user_dir.as_raw_fd(), &entry, false) {
-            Ok(directory) => directory,
-            // Nothing the helper mounts, which is left to the checks
-            // of the setup directories
-            Err(error) if matches!(
-                error.raw_os_error(),
-                Some(libc::ENOENT | libc::ENOTDIR | libc::ELOOP)
-            ) => continue,
-            Err(error) => {
-                error!("Failed to open {entry}: {error}");
-                ok = false;
-                continue
-            }
-        };
-        match is_mount_root_of(user_dir, &directory, magic) {
-            Ok(true) => {
-                info!("Releasing {name} mount of {instance}");
-                ok &= detach_mount(&directory)
-            },
-            Ok(false) => { },
-            Err(error) => {
-                error!("Failed to inspect {entry}: {error}");
-                ok = false
-            }
-        }
-    }
-    ok
 }
 
 fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
@@ -441,56 +440,6 @@ fn open_root_owned_dir(path: &str) -> Result<OwnedFd, String> {
         }
     }
     Ok(directory)
-}
-
-fn open_setup_dir(
-    user_dir: &OwnedFd, caller: &Caller, instance: &str, name: &str
-) -> Result<OwnedFd, String> {
-    /*!
-    Open the given setup directory of the instance to mount on. It
-    has to belong to the caller and must not be a mount already
-    !*/
-    let entry = format!("{instance}_{name}");
-    let directory = open_dir(user_dir.as_raw_fd(), &entry, false).map_err(
-        |error| match error.raw_os_error() {
-            Some(libc::ENOTDIR | libc::ELOOP) => format!(
-                "{entry} is not a directory, a symbolic link is not followed"
-            ),
-            _ => format!("Failed to open {entry}: {error}")
-        }
-    )?;
-    let attributes = fstat(&directory).map_err(|error| error.to_string())?;
-    let user_dir_attributes = fstat(user_dir).map_err(|error| error.to_string())?;
-    if attributes.st_uid != caller.uid {
-        return Err(format!("{entry} does not belong to the caller"))
-    }
-    if attributes.st_dev != user_dir_attributes.st_dev {
-        return Err(format!("{entry} is mounted already"))
-    }
-    Ok(directory)
-}
-
-fn is_mount_root_of(
-    parent: &OwnedFd, directory: &OwnedFd, magic: i64
-) -> io::Result<bool> {
-    /*!
-    Check if the given directory below the given parent directory,
-    e.g the user directory, is the root of a mount of the filesystem
-    type of the given magic number. The lookup of a mount point
-    provides the root of the filesystem mounted on it, which lives
-    on another device
-    !*/
-    if fstat(directory)?.st_dev == fstat(parent)?.st_dev {
-        return Ok(false)
-    }
-    let mut attributes: libc::statfs = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstatfs(directory.as_raw_fd(), &mut attributes) } != 0 {
-        return Err(io::Error::last_os_error())
-    }
-    // The type of f_type differs between the architectures
-    #[allow(clippy::unnecessary_cast)]
-    let filesystem_type = attributes.f_type as i64;
-    Ok(filesystem_type == magic)
 }
 
 fn open_dir(dirfd: RawFd, name: &str, follow: bool) -> io::Result<OwnedFd> {
@@ -576,84 +525,6 @@ fn create_mount(fstype: &str, options: &[(&str, &str)]) -> io::Result<OwnedFd> {
     })
 }
 
-fn resize_tmpfs(tmpfs: &OwnedFd, size: &str) -> io::Result<()> {
-    /*!
-    Set the size of the given mounted tmpfs, through the descriptor
-    of its root
-    !*/
-    let empty = to_c_string("")?;
-    let context = syscall_fd(unsafe {
-        libc::syscall(
-            libc::SYS_fspick, tmpfs.as_raw_fd(), empty.as_ptr(),
-            FSPICK_CLOEXEC | FSPICK_EMPTY_PATH
-        )
-    })?;
-    let key = to_c_string("size")?;
-    let value = to_c_string(size)?;
-    syscall_ok(unsafe {
-        libc::syscall(
-            libc::SYS_fsconfig, context.as_raw_fd(), FSCONFIG_SET_STRING,
-            key.as_ptr(), value.as_ptr(), 0
-        )
-    })?;
-    syscall_ok(unsafe {
-        libc::syscall(
-            libc::SYS_fsconfig, context.as_raw_fd(), FSCONFIG_CMD_RECONFIGURE,
-            std::ptr::null::<libc::c_char>(),
-            std::ptr::null::<libc::c_char>(), 0
-        )
-    })
-}
-
-fn get_tmpfs_size(
-    requested: Option<&str>, limit: Option<&str>, memory: u64
-) -> Result<Option<String>, String> {
-    /*!
-    Provide the size of the tmpfs of a sandbox
-
-    The size limit is configured by root in the system wide flakes
-    configuration. It is the default size, and a flake may request
-    a size up to it but not more. Without a limit the requested
-    size is used, without either the tmpfs gets the default size of
-    the kernel
-    !*/
-    let limit_bytes = match limit {
-        Some(limit) => Some(validate::tmpfs_size(limit, memory).map_err(
-            |error| format!("{error}, see sandbox_tmpfs_size in {FLAKES_CONFIG}")
-        )?),
-        None => None
-    };
-    let requested = match requested {
-        Some(requested) => requested,
-        None => return Ok(limit.map(ToOwned::to_owned))
-    };
-    let requested_bytes = validate::tmpfs_size(requested, memory)?;
-    if let (Some(limit), Some(limit_bytes)) = (limit, limit_bytes) {
-        if requested_bytes > limit_bytes {
-            return Err(format!(
-                "The requested tmpfs size {requested} exceeds the limit \
-                of {limit} set in {FLAKES_CONFIG}"
-            ))
-        }
-    }
-    Ok(Some(requested.to_string()))
-}
-
-fn host_memory() -> Result<u64, String> {
-    /*!
-    Provide the memory of the host in bytes
-    !*/
-    let meminfo = std::fs::read_to_string(PROC_MEMINFO).map_err(
-        |error| format!("Failed to read {PROC_MEMINFO}: {error}")
-    )?;
-    meminfo.lines()
-        .find_map(|line| line.strip_prefix("MemTotal:"))
-        .and_then(|value| value.trim().strip_suffix("kB"))
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .map(|kib| kib * 1024)
-        .ok_or_else(|| format!("No MemTotal in {PROC_MEMINFO}"))
-}
-
 fn attach_mount(mount: &OwnedFd, target: &OwnedFd) -> io::Result<()> {
     /*!
     Attach the given detached mount to the given directory
@@ -715,41 +586,11 @@ fn syscall_ok(result: libc::c_long) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::os::unix::fs::PermissionsExt;
     use uzers::get_current_uid;
 
     fn caller() -> Caller {
         Caller::from_uid(get_current_uid()).unwrap()
-    }
-
-    #[test]
-    fn test_open_setup_dir() {
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let base = tmp_dir.path();
-        fs::create_dir(base.join("myapp_overlay")).unwrap();
-        symlink("/etc", base.join("myapp_merged")).unwrap();
-        let user_dir = open_dir(
-            libc::AT_FDCWD, base.to_str().unwrap(), false
-        ).unwrap();
-
-        assert!(
-            open_setup_dir(&user_dir, &caller(), "myapp", "overlay").is_ok()
-        );
-        // a symbolic link is never followed
-        assert!(
-            open_setup_dir(&user_dir, &caller(), "myapp", "merged").is_err()
-        );
-        // a directory of another user is refused
-        let mut other = caller();
-        other.uid += 1;
-        assert!(
-            open_setup_dir(&user_dir, &other, "myapp", "overlay").is_err()
-        );
-        // nothing is mounted on it
-        let directory = open_dir(
-            user_dir.as_raw_fd(), "myapp_overlay", false
-        ).unwrap();
-        assert!(! is_mount_root_of(&user_dir, &directory, TMPFS_MAGIC).unwrap());
     }
 
     #[test]
@@ -764,43 +605,20 @@ mod tests {
     }
 
     #[test]
-    fn test_get_tmpfs_size() {
-        let memory = 8 << 30;
-        // neither a request nor a limit, the default of the kernel
-        assert_eq!(Ok(None), get_tmpfs_size(None, None, memory));
-        // the limit is the default size
-        assert_eq!(
-            Ok(Some("2G".to_string())), get_tmpfs_size(None, Some("2G"), memory)
-        );
-        // a request without a limit, and one up to the limit
-        assert_eq!(
-            Ok(Some("4G".to_string())), get_tmpfs_size(Some("4G"), None, memory)
-        );
-        assert_eq!(
-            Ok(Some("512M".to_string())),
-            get_tmpfs_size(Some("512M"), Some("25%"), memory)
-        );
-        // a request above the limit is refused
-        assert!(get_tmpfs_size(Some("3G"), Some("2G"), memory).is_err());
-        assert!(get_tmpfs_size(Some("50%"), Some("2G"), memory).is_err());
-        // as are invalid sizes
-        assert!(get_tmpfs_size(Some("0"), None, memory).is_err());
-        assert!(get_tmpfs_size(None, Some("lots"), memory).is_err());
+    fn test_caller_groups() {
+        let caller = caller();
+        // the primary group is always part of the groups
+        assert!(caller_groups(&caller).unwrap().contains(&caller.gid));
     }
 
     #[test]
-    fn test_host_memory() {
-        assert!(host_memory().unwrap() > 0);
-    }
-
-    #[test]
-    fn test_release_mounts_without_mounts() {
+    fn test_open_layers() {
         let tmp_dir = tempfile::tempdir().unwrap();
-        fs::create_dir(tmp_dir.path().join("myapp_merged")).unwrap();
-        let user_dir = open_dir(
-            libc::AT_FDCWD, tmp_dir.path().to_str().unwrap(), false
-        ).unwrap();
-        // directories which are no mounts and missing ones are fine
-        assert!(release_mounts(&user_dir, "myapp", true));
+        let base = tmp_dir.path().to_str().unwrap();
+        fs::create_dir(format!("{base}/layer")).unwrap();
+        let layers = vec![format!("{base}/layer"), base.to_string()];
+        let (_, layer_dirs) = open_layers(base, &layers).unwrap();
+        assert_eq!(2, layer_dirs.len());
+        assert!(open_layers(&format!("{base}/none"), &[]).is_err());
     }
 }

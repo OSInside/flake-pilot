@@ -142,9 +142,10 @@ pub fn get_sandbox_tmpfs_size() -> Option<String> {
 
     The limit is only read from the system wide configuration,
     which belongs to root. It is the default size of the tmpfs and
-    the maximum size a flake may request, enforced by the helper
-    which mounts it. Without a limit the tmpfs gets the default
-    size of the kernel, half of the memory of the host
+    the maximum size a flake may request, applied by bubblewrap-pilot
+    or the helper, whichever mounts the tmpfs in the namespace of the
+    sandbox, see crate::tmpfs. Without a limit the tmpfs gets the
+    default size of the kernel, half of the memory of the host
     !*/
     let GenericData { sandbox_tmpfs_size, .. } = &flakes_config(false).generic;
     sandbox_tmpfs_size.clone()

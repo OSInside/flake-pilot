@@ -156,9 +156,11 @@ pub const BUBBLEWRAP_ID_EXTENSION:&str =
 pub const FIRECRACKER_PROCESS_NAME:&str =
     "firecracker";
 // Names of the processes a bubblewrap sandbox ID file points to.
-// Name of the process which runs the sandbox
+// Name of the process which runs the sandbox, and of the sudo
+// process the helper runs in for a sandbox it creates
 pub const BUBBLEWRAP_PROCESS_NAME:&str =
     "bwrap";
+pub use flakes::defaults::SUDO_PROCESS_NAME;
 pub const PROC_DIR:&str =
     "/proc";
 pub const INSTANCE_RUNNING:&str =

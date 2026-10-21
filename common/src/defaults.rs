@@ -54,6 +54,12 @@ pub const PODMAN_PATH: &str = "/usr/bin/podman";
 // calls through sudo. See the flake-pilot-helper crate
 pub const HELPER: &str = "/usr/libexec/flake-pilot/flake-pilot-helper";
 pub const SUDO_TOOL: &str = "/usr/bin/sudo";
+// Name of the sudo process. bubblewrap-pilot records it as the
+// process of a sandbox which is created through the helper
+pub const SUDO_PROCESS_NAME: &str = "sudo";
+// Program which creates the bubblewrap sandboxes. The helper runs
+// it for the caller, see its sandbox-run command
+pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
 // The pilots of the engines, called by the helper on behalf of
 // a user, see the podman-pilot command of the helper
 pub const PODMAN_PILOT: &str = "/usr/bin/podman-pilot";
@@ -233,25 +239,28 @@ pub const NETWORK_EGRESS_PRESETS: &[(&str, &[&str])] = &[
     ("private", &["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"])
 ];
 // Directory the overlay setups of the bubblewrap sandboxes are
-// created in. The directories are created by bubblewrap-pilot and
-// mounted by the helper. It is shared
-// between all users of the system, the setup of an instance
-// therefore lives in a directory of its own below it, see
-// OVERLAY_USER_DIR_NAME
+// mounted in. It is shared between all users of the system, the
+// setup of a user is therefore mounted on a directory of its own
+// below it, see OVERLAY_USER_DIR_NAME. The setup is mounted in the
+// mount namespace of the sandbox, by bubblewrap-pilot or by the
+// helper, and is maintained along with the helper in the common
+// area
 pub const OVERLAY_BASE_DIR: &str = "/var/tmp";
-// Name of the directory which keeps the overlay setups of one
-// user. It is suffixed with the ID of that user, which makes
-// the path of a setup unique also if two users run the same
-// flake, e.g /var/tmp/bwrap_1000
+// Name of the directory the tmpfs of the overlay setup of one user
+// is mounted on. It is suffixed with the ID of that user, e.g
+// /var/tmp/bwrap_1000. On the host it stays empty, the tmpfs is
+// only mounted in the namespace of the sandbox
 pub const OVERLAY_USER_DIR_NAME: &str = "bwrap";
-// Names of the directories of the overlay setup. Each of them
-// is prefixed with the name of the instance it belongs to, e.g
-// /var/tmp/bwrap_1000/myapp@one_merged
+// Names of the directories of the overlay setup in the tmpfs, e.g
+// /var/tmp/bwrap_1000/merged. The lower directory is the mount
+// point of the read only overlay of the rootfs, which is stacked
+// on the empty directory. It is only used with layers on top of
+// the rootfs
 pub const OVERLAY_MERGED_NAME: &str = "merged";
-pub const OVERLAY_TMPFS_NAME: &str = "overlay";
-pub const OVERLAY_RW_NAME: &str = "rw";
-pub const OVERLAY_WORK_NAME: &str = "work";
-// Name of the upper directory of the rootfs overlay. It is
-// created in the tmpfs of the instance, next to the work
-// directory of that overlay
 pub const OVERLAY_UPPER_NAME: &str = "upper";
+pub const OVERLAY_WORK_NAME: &str = "work";
+pub const OVERLAY_LOWER_NAME: &str = "lower";
+pub const OVERLAY_EMPTY_NAME: &str = "empty";
+// Memory information of the kernel, the base of a tmpfs size given
+// as percentage
+pub const PROC_MEMINFO: &str = "/proc/meminfo";

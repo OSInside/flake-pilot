@@ -53,6 +53,16 @@ pub const NFS_VOLUME_BOOT_ARG: &str =
     "nfs";
 pub const NFS_VOLUME_DELIMITER: char =
     ',';
+// Kernel commandline options which tell sci inside of the guest to
+// keep the instance running for further commands (resume) and to
+// receive the command through a vsock (force_vsock). The pilot sets
+// them from the runtime section it acts upon. Registrations of
+// former versions of 'flake-ctl firecracker register' also contain
+// them in the boot_args, these are not used
+pub const SCI_RESUME_BOOT_ARG: &str =
+    "sci_resume";
+pub const SCI_FORCE_VSOCK_BOOT_ARG: &str =
+    "sci_force_vsock";
 // Statistics of the NFS server of the kernel. The record shows up
 // when the nfsd module is loaded and provides the number of
 // server threads which is zero as long as no server was started

@@ -365,12 +365,6 @@ impl AppConfig {
         // can be created later on with 'flake-ctl firecracker network add'
         let boot_args = firecracker_section.boot_args.as_mut().unwrap();
         boot_args.retain(|boot_arg| ! boot_arg.starts_with("ip="));
-        if resume {
-            boot_args.push("sci_resume=1".to_string());
-        }
-        if force_vsock {
-            boot_args.push("sci_force_vsock=1".to_string());
-        }
 
         yaml_config.to_file(config_file)
     }

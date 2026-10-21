@@ -1225,6 +1225,17 @@ fn get_echo_data(data: &[u8]) -> Vec<u8> {
     ).cloned().collect()
 }
 
+fn split_at_eof(data: &[u8]) -> (&[u8], bool) {
+    /*!
+    Provide the input data in front of the EOF character and
+    whether the input has ended with it
+    !*/
+    match data.iter().position(|byte| *byte == defaults::TERM_EOF) {
+        Some(eof) => (&data[..eof], true),
+        None => (data, false)
+    }
+}
+
 fn redirect_command_to_raw_channels(
     command: &[String], mut stream: vsock::VsockStream
 ) -> i32 {
@@ -1247,7 +1258,9 @@ fn redirect_command_to_raw_channels(
     match spawn_child(&mut call) {
         Ok(mut child) => {
             // access useful I/O and file descriptors
-            let stdin = child.stdin.as_mut().unwrap();
+            // the input of the command is closed when the caller
+            // signals the end of its input
+            let mut stdin = child.stdin.take();
             let stdout = child.stdout.as_mut().unwrap();
             let stderr = child.stderr.as_mut().unwrap();
 
@@ -1337,9 +1350,17 @@ fn redirect_command_to_raw_channels(
                             debug("write failure on stream");
                             break;
                         }
-                        if stdin.write_all(&buffer[0..sz_r]).is_err() {
-                            debug("write failure on stdin");
-                            break;
+                        let (input, input_ended) = split_at_eof(
+                            &buffer[0..sz_r]
+                        );
+                        if let Some(child_stdin) = stdin.as_mut() {
+                            if child_stdin.write_all(input).is_err() {
+                                debug("write failure on stdin");
+                                break;
+                            }
+                        }
+                        if input_ended && stdin.take().is_some() {
+                            debug("End of input, closing stdin");
                         }
                     } else {
                         debug("read failure on stream");
@@ -2007,7 +2028,7 @@ mod tests {
     use sys_mount::MountFlags;
     use super::get_resize_request;
     use super::get_kvm_module;
-    use super::{get_exit_code, get_call_error_code};
+    use super::{get_exit_code, get_call_error_code, split_at_eof};
     use std::io::{Error, ErrorKind};
     use std::os::unix::process::ExitStatusExt;
     use std::process::ExitStatus;
@@ -2153,5 +2174,13 @@ mod tests {
             get_call_error_code(&Error::from(ErrorKind::PermissionDenied)), 126
         );
         assert_eq!(get_call_error_code(&Error::from(ErrorKind::Other)), 1);
+    }
+
+    #[test]
+    fn test_split_at_eof() {
+        assert_eq!(split_at_eof(b"data"), (&b"data"[..], false));
+        assert_eq!(split_at_eof(b"data\x04more"), (&b"data"[..], true));
+        assert_eq!(split_at_eof(b"\x04"), (&b""[..], true));
+        assert_eq!(split_at_eof(b""), (&b""[..], false));
     }
 }

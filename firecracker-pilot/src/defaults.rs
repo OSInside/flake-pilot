@@ -74,6 +74,10 @@ pub const NFS_SERVER_STAT: &str =
 pub const NFS_SERVER_SERVICE: &str =
     "nfs-server";
 pub const TERM_NAME_MAX_LEN: usize = 32;
+// Character which ends the input of a command in the guest, the
+// EOF character of a terminal (Ctrl-D). It is sent once the input
+// of the caller has ended
+pub const TERM_EOF: u8 = 0x04;
 // Port of the instance the window size of the caller's terminal
 // is sent to whenever it got resized
 pub const TERM_RESIZE_PORT: u32 = 53;

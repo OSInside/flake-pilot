@@ -1720,7 +1720,13 @@ pub fn stream_io(mut stream: UnixStream) {
 
     let stream_fd = stream.as_raw_fd();
     let stdin_fd = libc::STDIN_FILENO;
-    let stdout_fd = stdout.as_raw_fd();
+
+    // The input of the caller can end before the command in the
+    // guest is done, e.g if it is read from a file. The output of
+    // the command is passed on until the guest closes the stream
+    let mut stdin_open = true;
+    // Tell whether the input sent so far ends with a complete line
+    let mut at_line_start = true;
 
     // Switch the caller's terminal into raw mode for the time of
     // the session. Only in raw mode a single key stroke, e.g the
@@ -1740,11 +1746,10 @@ pub fn stream_io(mut stream: UnixStream) {
         let mut max_fd = -1;
         unsafe { libc::FD_ZERO(&mut fdset) };
 
-        unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
-        max_fd = std::cmp::max(max_fd, stdout_fd);
-
-        unsafe { libc::FD_SET(stdin_fd, &mut fdset) };
-        max_fd = std::cmp::max(max_fd, stdout_fd);
+        if stdin_open {
+            unsafe { libc::FD_SET(stdin_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stdin_fd);
+        }
 
         unsafe { libc::FD_SET(stream_fd, &mut fdset) };
         max_fd = std::cmp::max(max_fd, stream_fd);
@@ -1791,13 +1796,30 @@ pub fn stream_io(mut stream: UnixStream) {
                 if Lookup::is_debug() {
                     debug!("EOF detected on stdin");
                 }
-                break;
-            }
-            if stream.write_all(&buffer[0..sz_r as usize]).is_err() {
-                if Lookup::is_debug() {
-                    debug!("write failure on stream");
+                // Closing the stream would also end the output of the
+                // command. Instead, like a terminal does it, end the
+                // input with the EOF character. An incomplete line
+                // needs one of them to be passed on to the command
+                // and another one to end the input
+                stdin_open = false;
+                let eof_count = if at_line_start { 1 } else { 2 };
+                if stream.write_all(
+                    &vec![defaults::TERM_EOF; eof_count]
+                ).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stream");
+                    }
+                    break;
                 }
-                break;
+            } else {
+                let input = &buffer[0..sz_r as usize];
+                if stream.write_all(input).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stream");
+                    }
+                    break;
+                }
+                at_line_start = matches!(input.last(), Some(b'\n' | b'\r'));
             }
             let _ = stdout.flush();
         }

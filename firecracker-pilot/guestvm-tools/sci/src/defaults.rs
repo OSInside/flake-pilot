@@ -70,6 +70,11 @@ pub const TERM_TYPE_FALLBACK: [&str; 3] = ["xterm", "vt100", "linux"];
 pub const TERMINFO_DIRS: [&str; 3] = [
     "/etc/terminfo", "/lib/terminfo", "/usr/share/terminfo"
 ];
+// EOF character of a terminal (Ctrl-D). The caller sends it once its
+// input has ended. On raw channels there is no terminal which turns
+// it into the end of the input, sci closes the input of the command
+// instead
+pub const TERM_EOF: u8 = 0x04;
 pub const TERM_LINES: u16 = 24;
 pub const TERM_COLUMNS: u16 = 80;
 // Port the caller sends the window size of its terminal to

@@ -32,12 +32,15 @@ use crate::firecracker::has_network_setup;
 use crate::firecracker::nfsd_is_running;
 use crate::firecracker::tap_device_exists;
 use crate::firecracker::{
-    accept_exit_status, exit_status_listener, get_exit_code, read_exit_status
+    accept_exit_status, exit_status_listener, get_exit_code, read_exit_status,
+    get_stderr_port, relay_stderr
 };
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
+use std::time::{Duration, Instant};
 use flakes::network::get_valid_interface_name;
 
 #[test]
@@ -432,4 +435,57 @@ fn test_exit_status_listener() {
     let mut answer = Vec::new();
     sci.read_to_end(&mut answer).unwrap();
     assert_eq!(receiver.try_recv(), Ok(5));
+}
+
+#[test]
+fn test_get_stderr_port() {
+    // the console session
+    assert_eq!(get_stderr_port(0), Some(0x8000_0000));
+    assert_eq!(get_stderr_port(49200), Some(0x8000_c030));
+    // a session port with the flag set gets no channel
+    assert_eq!(get_stderr_port(0x8000_0001), None);
+}
+
+#[test]
+fn test_relay_stderr() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("stderr.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    // sci connects before the command runs and the channel ends
+    // with the command, which is before the session got over
+    let mut sci = UnixStream::connect(&socket_path).unwrap();
+    sci.write_all(b"error\n").unwrap();
+    drop(sci);
+    let mut output = Vec::new();
+    relay_stderr(&listener, &AtomicBool::new(true), &mut output);
+    assert_eq!(output, b"error\n");
+}
+
+#[test]
+fn test_relay_stderr_without_connection() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("stderr.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    // an sci which does not support the channel never connects
+    let mut output = Vec::new();
+    relay_stderr(&listener, &AtomicBool::new(true), &mut output);
+    assert!(output.is_empty());
+}
+
+#[test]
+fn test_relay_stderr_kept_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("stderr.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    // a background process in the instance keeps the channel open
+    let mut sci = UnixStream::connect(&socket_path).unwrap();
+    sci.write_all(b"error\n").unwrap();
+    let start = Instant::now();
+    let mut output = Vec::new();
+    relay_stderr(&listener, &AtomicBool::new(true), &mut output);
+    assert_eq!(output, b"error\n");
+    assert!(start.elapsed() < Duration::from_secs(5));
 }

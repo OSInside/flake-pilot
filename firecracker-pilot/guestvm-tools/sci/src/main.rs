@@ -41,13 +41,13 @@ use std::{thread, time};
 use vsock::{VsockAddr, VsockListener, VsockStream};
 use std::io::Read;
 use std::net::Shutdown;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 use std::io::Write;
 use pty::prelude::Fork;
 use termios::*;
 
 use std::sync::{Mutex, MutexGuard};
-use std::process::{Child, ExitStatus};
+use std::process::{Child, ExitStatus, Stdio};
 
 use crate::defaults::debug;
 
@@ -456,8 +456,17 @@ fn main() {
                                             defaults::HOST_CID, exec_port_num
                                         ) {
                                             Ok(vsock_stream) => {
+                                                // connected before the
+                                                // command runs, such that
+                                                // the caller has it once
+                                                // the session is over
+                                                let stderr_stream =
+                                                    connect_stderr_channel(
+                                                        exec_port_num
+                                                    );
                                                 let exit_code = redirect_command(
                                                     &exec_cmd, vsock_stream,
+                                                    stderr_stream,
                                                     exec_port_num
                                                 );
                                                 // The stream of the command
@@ -528,6 +537,14 @@ fn main() {
                 start_terminal_resize_listener();
             }
         }
+        // Pass on the standard error of the command on a channel of
+        // its own if the caller keeps it apart from the standard output
+        load_vhost_transport();
+        if let Some(stderr_stream) = connect_stderr_channel(
+            defaults::TERM_CONSOLE_PORT
+        ) {
+            call.stderr(get_stdio(stderr_stream));
+        }
         let exit_code = if do_exec {
             // replace ourselves, this only returns if the
             // command could not be called
@@ -549,7 +566,6 @@ fn main() {
             }
         };
         // hand over the exit status of the command to the caller
-        load_vhost_transport();
         send_exit_status(defaults::EXIT_STATUS_PORT, exit_code);
     }
     // Close firecracker session
@@ -982,12 +998,57 @@ fn send_exit_status(port: u32, exit_code: i32) {
     }
 }
 
+fn get_stderr_port(port: u32) -> Option<u32> {
+    /*!
+    Provide the port the caller receives the standard error on
+    for the session of the given port
+    !*/
+    if port & defaults::STDERR_PORT_FLAG != 0 {
+        return None
+    }
+    Some(port | defaults::STDERR_PORT_FLAG)
+}
+
+fn connect_stderr_channel(port: u32) -> Option<VsockStream> {
+    /*!
+    Connect to the caller to pass on the standard error of the
+    command run in the session of the given port
+
+    The caller only listens for it if it keeps standard output
+    and standard error apart. Otherwise, or if the caller does
+    not support it, the standard error is passed on together
+    with the standard output
+    !*/
+    let stderr_port = get_stderr_port(port)?;
+    match VsockStream::connect_with_cid_port(defaults::HOST_CID, stderr_port) {
+        Ok(stream) => {
+            debug(&format!("Standard error goes to port={stderr_port}"));
+            Some(stream)
+        },
+        Err(error) => {
+            debug(&format!(
+                "No standard error channel on port={stderr_port}: {error}"
+            ));
+            None
+        }
+    }
+}
+
+fn get_stdio(stream: VsockStream) -> Stdio {
+    /*!
+    Provide the given stream as a standard channel of a command
+    !*/
+    unsafe { Stdio::from_raw_fd(stream.into_raw_fd()) }
+}
+
 fn redirect_command(
-    command: &[String], stream: vsock::VsockStream, port: u32
+    command: &[String], stream: vsock::VsockStream,
+    stderr_stream: Option<VsockStream>, port: u32
 ) -> i32 {
     // start the given command as a child process in a new PTY
     // or on raw channels if no pseudo terminal can be allocated
-    // connect its standard channels to the stream
+    // connect its standard channels to the stream, the standard
+    // error to its own stream if there is one
     // transfer all channel data when there is data as long as the child exists
     //
     // The terminal fork is done while the list of the child
@@ -1004,13 +1065,15 @@ fn redirect_command(
     };
     match fork_result {
         Ok(fork) => {
-            redirect_command_to_pty(command, stream, fork, port)
+            redirect_command_to_pty(command, stream, stderr_stream, fork, port)
         },
         Err(error) => {
             debug(&format!(
                 "Terminal allocation failed, using raw channels: {error:?}"
             ));
-            let exit_code = redirect_command_to_raw_channels(command, stream);
+            let exit_code = redirect_command_to_raw_channels(
+                command, stream, stderr_stream
+            );
             // there is no terminal in this session, drop a window
             // size which arrived for it
             unregister_terminal_session(port);
@@ -1237,7 +1300,8 @@ fn split_at_eof(data: &[u8]) -> (&[u8], bool) {
 }
 
 fn redirect_command_to_raw_channels(
-    command: &[String], mut stream: vsock::VsockStream
+    command: &[String], mut stream: vsock::VsockStream,
+    stderr_stream: Option<VsockStream>
 ) -> i32 {
     let (program, call_args) = match command.split_first() {
         Some(call) => call,
@@ -1250,23 +1314,32 @@ fn redirect_command_to_raw_channels(
     call
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stderr(match stderr_stream {
+            Some(stderr_stream) => get_stdio(stderr_stream),
+            None => std::process::Stdio::piped()
+        });
     call.args(call_args);
     debug(&format!(
         "SCI CALL: {} -> {:?}", program, call.get_args()
     ));
-    match spawn_child(&mut call) {
+    let spawn_result = spawn_child(&mut call);
+    // The call holds a copy of the standard error channel to the
+    // caller. Close it such that the channel ends with the command
+    drop(call);
+    match spawn_result {
         Ok(mut child) => {
             // access useful I/O and file descriptors
             // the input of the command is closed when the caller
             // signals the end of its input
             let mut stdin = child.stdin.take();
             let stdout = child.stdout.as_mut().unwrap();
-            let stderr = child.stderr.as_mut().unwrap();
+            // there is no pipe for the standard error if it is
+            // connected to the caller directly
+            let mut stderr = child.stderr.take();
 
             let stream_fd = stream.as_raw_fd();
             let stdout_fd = stdout.as_raw_fd();
-            let stderr_fd = stderr.as_raw_fd();
+            let stderr_fd = stderr.as_ref().map(|stderr| stderr.as_raw_fd());
 
             set_output_terminal_flags(stdout_fd);
 
@@ -1280,8 +1353,10 @@ fn redirect_command_to_raw_channels(
                 unsafe { libc::FD_ZERO(&mut fdset) };
                 unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
                 max_fd = std::cmp::max(max_fd, stdout_fd);
-                unsafe { libc::FD_SET(stderr_fd, &mut fdset) };
-                max_fd = std::cmp::max(max_fd, stderr_fd);
+                if let Some(stderr_fd) = stderr_fd {
+                    unsafe { libc::FD_SET(stderr_fd, &mut fdset) };
+                    max_fd = std::cmp::max(max_fd, stderr_fd);
+                }
                 unsafe { libc::FD_SET(stream_fd, &mut fdset) };
                 max_fd = std::cmp::max(max_fd, stream_fd);
 
@@ -1315,9 +1390,12 @@ fn redirect_command_to_raw_channels(
                         break;
                     }
                 }
-                if unsafe { libc::FD_ISSET(stderr_fd, &fdset) } {
+                if stderr_fd.is_some_and(
+                    |stderr_fd| unsafe { libc::FD_ISSET(stderr_fd, &fdset) }
+                ) {
                     // something new happened on stderr,
                     // try to receive some bytes an send them through the stream
+                    let stderr = stderr.as_mut().unwrap();
                     if let Ok(sz_r) = stderr.read(&mut buffer) {
                         if sz_r == 0 {
                             debug("EOF detected on stderr");
@@ -1390,10 +1468,13 @@ fn redirect_command_to_raw_channels(
 }
 
 fn redirect_command_to_pty(
-    command: &[String], mut stream: vsock::VsockStream, pty_fork: Fork,
-    port: u32
+    command: &[String], mut stream: vsock::VsockStream,
+    stderr_stream: Option<VsockStream>, pty_fork: Fork, port: u32
 ) -> i32 {
     if let Ok(mut master) = pty_fork.is_parent() {
+        // The standard error channel to the caller belongs to the
+        // command. Close it here such that it ends with the command
+        drop(stderr_stream);
         let mut child_pid = -1;
         if let Fork::Parent(pid, _) = &pty_fork {
             child_pid = *pid
@@ -1483,6 +1564,12 @@ fn redirect_command_to_pty(
         // This is the child process in the new terminal. It turns
         // into the command such that the exit status of this process
         // is the one of the command
+        if let Some(stderr_stream) = &stderr_stream {
+            // keep the standard error apart from the terminal
+            unsafe {
+                libc::dup2(stderr_stream.as_raw_fd(), libc::STDERR_FILENO)
+            };
+        }
         let exit_code = match command.split_first() {
             Some((program, call_args)) => {
                 let mut call = Command::new(program);
@@ -2029,6 +2116,7 @@ mod tests {
     use super::get_resize_request;
     use super::get_kvm_module;
     use super::{get_exit_code, get_call_error_code, split_at_eof};
+    use super::get_stderr_port;
     use std::io::{Error, ErrorKind};
     use std::os::unix::process::ExitStatusExt;
     use std::process::ExitStatus;
@@ -2182,5 +2270,13 @@ mod tests {
         assert_eq!(split_at_eof(b"data\x04more"), (&b"data"[..], true));
         assert_eq!(split_at_eof(b"\x04"), (&b""[..], true));
         assert_eq!(split_at_eof(b""), (&b""[..], false));
+    }
+
+    #[test]
+    fn test_get_stderr_port() {
+        assert_eq!(get_stderr_port(0), Some(0x8000_0000));
+        assert_eq!(get_stderr_port(49200), Some(0x8000_c030));
+        // a session port with the flag set gets no channel
+        assert_eq!(get_stderr_port(0x8000_0001), None);
     }
 }

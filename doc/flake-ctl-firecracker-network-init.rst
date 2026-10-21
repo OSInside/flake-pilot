@@ -12,12 +12,13 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver] [--host-dhcp]
+       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver] [--host-dhcp] [--egress-deny <EGRESS_DENY>]...
 
    OPTIONS:
        --outgoing-interface <OUTGOING_INTERFACE>
        --host-resolver
        --host-dhcp
+       --egress-deny <EGRESS_DENY>
        --help
 
 DESCRIPTION
@@ -62,7 +63,8 @@ again: the network has to be one of the private networks the command
 selects from, see NETWORK below, and must not collide with a network
 of the host, the interface has to exist. Both are recorded in the
 network state file along with the services of the host given by
-``--host-resolver`` and ``--host-dhcp``. Connecting an application to
+``--host-resolver`` and ``--host-dhcp`` and the networks of the egress
+policy given by ``--egress-deny``. Connecting an application to
 the host network with **flake-ctl-firecracker-network-add**(8) takes
 them from there: the address of the application, the route to it and
 its firewall rules are only ever created within the recorded network.
@@ -106,9 +108,12 @@ follows, shown in the notation of ``iptables -S``:
    # table filter
    -A FORWARD -j FLAKE_PILOT_FORWARD
    -A FLAKE_PILOT_FORWARD -o tap-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-   -A FLAKE_PILOT_FORWARD -i tap-+ -s <NETWORK> -o <OUTGOING_INTERFACE> -j ACCEPT
+   -A FLAKE_PILOT_FORWARD -i tap-+ -s <NETWORK> -o <OUTGOING_INTERFACE> -j FLAKE_PILOT_EGRESS
    -A FLAKE_PILOT_FORWARD -i tap-+ -j DROP
    -A FLAKE_PILOT_FORWARD -o tap-+ -j DROP
+
+   -A FLAKE_PILOT_EGRESS -d <EGRESS_DENY> -j DROP
+   -A FLAKE_PILOT_EGRESS -j ACCEPT
 
    -A INPUT -i tap-+ -j FLAKE_PILOT_INPUT
    -A FLAKE_PILOT_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
@@ -119,6 +124,11 @@ The effect of the setup is:
 * Only traffic of the private network of the VMs which leaves through
   the outgoing interface is masqueraded and forwarded. The answers to
   it pass back to the VMs.
+
+* The traffic of the VMs to the outside world passes the egress
+  policy before it is forwarded. Its traffic to a network given by
+  ``--egress-deny`` is dropped, there is one ``DROP`` rule for each
+  of them. Without the option the egress chain accepts all traffic.
 
 * Traffic between two VMs, traffic from the outside world to a VM and
   traffic from a VM to any other interface of the host is dropped.
@@ -134,7 +144,10 @@ The chains are deleted as a whole by
 
 Former versions of flake-pilot created their rules in the builtin
 chains. Their rules for single TAP devices are deleted by this
-command. A MASQUERADE rule for all traffic of the outgoing interface
+command, as well as a rule of the FLAKE_PILOT_FORWARD chain which
+accepts the traffic of the VMs without passing it to the egress
+chain. Until the command is called again, a setup created by a former
+version keeps working without an egress policy. A MASQUERADE rule for all traffic of the outgoing interface
 and a FORWARD rule accepting all answers, which former versions
 created as well, cannot be told apart from rules created by other
 means. If one of them is found, it is reported along with the command
@@ -221,6 +234,43 @@ OPTIONS
   Applications which were connected before the setting changed keep
   their firewall rules until they are connected again
 
+--egress-deny <EGRESS_DENY>
+
+  Network the traffic of the VMs to the outside world must not go
+  to. Can be specified multiple times, the traffic to all of them is
+  dropped. Either the name of a set of networks or a network in its
+  ``ADDRESS[/PREFIX_LEN]`` notation, an address without a prefix
+  length is a single host:
+
+  link-local
+    ``169.254.0.0/16``. It covers the metadata service a cloud
+    provides to its instances at ``169.254.169.254``, e.g on AWS,
+    Azure, Google Cloud or OpenStack. Without the policy a VM on a
+    cloud instance reaches the metadata service with the identity
+    of the host and may e.g read the credentials of the instance.
+    Clouds which provide their metadata service at another address
+    have to be covered by that address, e.g ``100.100.100.200``
+
+  private
+    ``10.0.0.0/8``, ``172.16.0.0/12`` and ``192.168.0.0/16``, the
+    private networks of RFC 1918. It covers the local network of
+    the host and the services in it. A VM which needs one of them,
+    e.g a proxy or a name server of the local network, cannot reach
+    it anymore
+
+  The policy only applies to the traffic which is forwarded to the
+  outgoing interface. The services of the host a VM may use through
+  its gateway, see FIREWALL above, are not affected. The networks
+  are recorded in the network state file and take effect for all
+  applications at once, including the ones which are already
+  connected. Calling the command again replaces the policy, without
+  the option the policy is removed.
+  **flake-ctl-firecracker-network-add**\(8) refuses to connect an
+  application if the recorded policy is not active
+
+  The policy is IPv4 only, as is the whole setup. IPv6 is switched
+  off on the TAP devices of the VMs
+
 FILES
 -----
 
@@ -238,6 +288,8 @@ EXAMPLE
    $ flake-ctl firecracker network init
 
    $ flake-ctl firecracker network init --outgoing-interface eth0
+
+   $ flake-ctl firecracker network init --egress-deny link-local --egress-deny private
 
 SEE ALSO
 --------

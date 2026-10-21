@@ -64,6 +64,12 @@ pub enum Commands {
         /// The host runs a DHCP server for the VMs
         #[clap(long)]
         host_dhcp: bool,
+
+        /// Network the traffic of the VMs to the outside world must
+        /// not go to: link-local, private or ADDRESS[/PREFIX_LEN].
+        /// Given more than once, all of them are denied
+        #[clap(long, multiple_occurrences = true)]
+        egress_deny: Vec<String>,
     },
     /// Delete the network setup of the host
     NetworkCleanup,

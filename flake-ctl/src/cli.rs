@@ -261,6 +261,17 @@ pub enum Network {
         /// closed to them
         #[clap(long)]
         host_dhcp: bool,
+
+        /// Network the traffic of the VMs to the outside world
+        /// must not go to. Either link-local, which covers the
+        /// metadata service of a cloud at 169.254.169.254, private,
+        /// which covers the private networks of RFC 1918, or a
+        /// network as ADDRESS[/PREFIX_LEN]. Can be specified
+        /// multiple times. Without this option the VMs may reach
+        /// every network the host reaches through the outgoing
+        /// interface
+        #[clap(long, multiple_occurrences = true)]
+        egress_deny: Vec<String>,
     },
     /// Connect a VM application to the host network
     Add {

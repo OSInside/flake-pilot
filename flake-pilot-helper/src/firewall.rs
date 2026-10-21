@@ -34,7 +34,7 @@ use std::process::{Command, Stdio};
 
 use flakes::defaults::{
     self, TAP_DEVICE_PREFIX, FIREWALL_NAT_CHAIN, FIREWALL_FORWARD_CHAIN,
-    FIREWALL_INPUT_CHAIN
+    FIREWALL_INPUT_CHAIN, FIREWALL_EGRESS_CHAIN
 };
 use flakes::network::{
     FirewallRule, HostServices, Ipv4Network, get_tap_match, get_jump_rules,
@@ -46,50 +46,64 @@ use crate::run::run_ok;
 // Position a rule is created at in its chain. Accepting rules are
 // inserted at the top, dropping rules are appended. This keeps
 // every accepting rule in front of the drop rules, no matter in
-// which order the rules are created
+// which order the rules are created. The egress chain is the other
+// way round: the drop rules of the egress policy are inserted at
+// the top, in front of the rule which accepts everything else
 pub enum RulePosition {
     Top,
     Bottom
 }
 
-pub fn get_firewall_chains() -> [(&'static str, &'static str); 3] {
+pub fn get_firewall_chains() -> [(&'static str, &'static str); 4] {
     /*!
     Provide the table and the name of the chains of the host
     firewall setup
+
+    The egress chain is entered from the forward chain and is
+    therefore listed after it, the forward chain has to be deleted
+    first
     !*/
     [
         ("nat", FIREWALL_NAT_CHAIN),
         ("filter", FIREWALL_FORWARD_CHAIN),
-        ("filter", FIREWALL_INPUT_CHAIN)
+        ("filter", FIREWALL_INPUT_CHAIN),
+        ("filter", FIREWALL_EGRESS_CHAIN)
     ]
 }
 
 pub fn get_firewall_rules(
-    network: &str, outgoing_interface: &str
+    network: &str, outgoing_interface: &str, egress_deny: &[Ipv4Network]
 ) -> Vec<(FirewallRule, RulePosition)> {
     /*!
     Provide the rules of the host firewall setup and the position
     they are created at
 
     The traffic of the private network of the VMs is masqueraded
-    and forwarded if it leaves through the outgoing interface. The
-    answers to it may pass back. All other traffic which comes from
-    or goes to a TAP device is dropped: traffic between two VMs,
-    traffic from the outside world to a VM and traffic from a VM to
-    another interface of the host. Traffic from a VM to the host
-    itself is dropped as well, except for answers to traffic of the
-    host and the services connect() allows for each instance
+    and forwarded if it leaves through the outgoing interface and
+    passes the egress policy, see get_egress_rules(). The answers
+    to it may pass back. All other traffic which comes from or goes
+    to a TAP device is dropped: traffic between two VMs, traffic
+    from the outside world to a VM and traffic from a VM to another
+    interface of the host. Traffic from a VM to the host itself is
+    dropped as well, except for answers to traffic of the host and
+    the services connect() allows for each instance
+
+    The rules of the egress chain are listed first, the chain is
+    complete before traffic is passed to it
     !*/
     let tap_match = get_tap_match();
-    vec![
-        (get_masquerade_rule(network, outgoing_interface), RulePosition::Bottom),
+    let mut rules: Vec<(FirewallRule, RulePosition)> = get_egress_rules(
+        egress_deny
+    ).into_iter().map(|rule| (rule, RulePosition::Top)).collect();
+    rules.extend([
         (
-            FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
-                "-i", &tap_match, "-s", network, "-o", outgoing_interface,
+            FirewallRule::new("filter", FIREWALL_EGRESS_CHAIN, &[
                 "-j", "ACCEPT"
             ]),
-            RulePosition::Top
+            RulePosition::Bottom
         ),
+        (get_masquerade_rule(network, outgoing_interface), RulePosition::Bottom),
+        (get_egress_jump_rule(network, outgoing_interface), RulePosition::Top),
         (
             FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
                 "-o", &tap_match, "-m", "conntrack",
@@ -120,7 +134,38 @@ pub fn get_firewall_rules(
             FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &["-j", "DROP"]),
             RulePosition::Bottom
         )
-    ]
+    ]);
+    rules
+}
+
+pub fn get_egress_jump_rule(
+    network: &str, outgoing_interface: &str
+) -> FirewallRule {
+    /*!
+    Provide the rule which passes the traffic of the VMs to the
+    outside world to the egress chain. It is the only way traffic
+    of a TAP device gets forwarded
+    !*/
+    FirewallRule::new("filter", FIREWALL_FORWARD_CHAIN, &[
+        "-i", &get_tap_match(), "-s", network, "-o", outgoing_interface,
+        "-j", FIREWALL_EGRESS_CHAIN
+    ])
+}
+
+pub fn get_egress_rules(egress_deny: &[Ipv4Network]) -> Vec<FirewallRule> {
+    /*!
+    Provide the rules of the egress policy
+
+    The traffic of the VMs to the given networks is dropped, all
+    other traffic which enters the egress chain is accepted by its
+    last rule. The rules are given in the notation iptables lists
+    them with, see delete_stale_egress_rules()
+    !*/
+    egress_deny.iter()
+        .map(|network| FirewallRule::new("filter", FIREWALL_EGRESS_CHAIN, &[
+            "-d", &network.to_string(), "-j", "DROP"
+        ]))
+        .collect()
 }
 
 pub fn get_guest_service_rules(
@@ -170,14 +215,19 @@ pub fn get_guest_service_rules(
     rules
 }
 
-pub fn setup_firewall(network: &Ipv4Network, outgoing_interface: &str) -> bool {
+pub fn setup_firewall(
+    network: &Ipv4Network, outgoing_interface: &str,
+    egress_deny: &[Ipv4Network]
+) -> bool {
     /*!
     Create the chains and rules of the host firewall setup
 
     The chains are created first and are entered from the builtin
     chains last, traffic is therefore only passed to them once they
     are complete. Chains and rules which already exist are kept,
-    this allows to call the setup more than once
+    this allows to call the setup more than once. The drop rules of
+    a former egress policy are deleted once the rules of the given
+    one are in place
     !*/
     for (table, chain) in get_firewall_chains() {
         if ! create_chain(table, chain) {
@@ -185,11 +235,16 @@ pub fn setup_firewall(network: &Ipv4Network, outgoing_interface: &str) -> bool {
         }
     }
     for (rule, position) in get_firewall_rules(
-        &network.to_string(), outgoing_interface
+        &network.to_string(), outgoing_interface, egress_deny
     ) {
         if ! add_rule(&rule, position) {
             return false
         }
+    }
+    if ! delete_stale_egress_rules(egress_deny)
+        || ! delete_unfiltered_forward_rules()
+    {
+        return false
     }
     for rule in get_jump_rules() {
         if ! add_rule(&rule, RulePosition::Top) {
@@ -216,14 +271,62 @@ pub fn delete_firewall() -> bool {
     ok
 }
 
-pub fn firewall_is_active() -> bool {
+pub fn firewall_is_active(
+    network: &Ipv4Network, outgoing_interface: &str,
+    egress_deny: &[Ipv4Network]
+) -> bool {
     /*!
     Check if the host firewall setup is complete, the chains are
     present and are entered from the builtin chains
+
+    With an egress policy, the traffic of the VMs has to be passed
+    to the egress chain and the drop rules of the policy have to be
+    present. A setup created before the egress policy existed has
+    no egress chain, it is complete without a policy
     !*/
-    get_firewall_chains().iter().all(
-        |(table, chain)| chain_exists(table, chain)
-    ) && get_jump_rules().iter().all(rule_exists)
+    let chains_exist = get_firewall_chains().iter()
+        .filter(|(_, chain)| *chain != FIREWALL_EGRESS_CHAIN)
+        .all(|(table, chain)| chain_exists(table, chain));
+    if ! chains_exist || ! get_jump_rules().iter().all(rule_exists) {
+        return false
+    }
+    egress_deny.is_empty() || (
+        rule_exists(
+            &get_egress_jump_rule(&network.to_string(), outgoing_interface)
+        ) && get_egress_rules(egress_deny).iter().all(rule_exists)
+    )
+}
+
+pub fn delete_stale_egress_rules(egress_deny: &[Ipv4Network]) -> bool {
+    /*!
+    Delete the drop rules of the egress chain which are not part of
+    the given egress policy
+    !*/
+    let wanted: Vec<Vec<String>> = get_egress_rules(egress_deny).into_iter()
+        .map(|rule| rule.spec)
+        .collect();
+    delete_listed_rules("filter", FIREWALL_EGRESS_CHAIN, |spec| {
+        spec.last().is_some_and(|target| target == "DROP")
+            && ! wanted.iter().any(|wanted_spec| wanted_spec == spec)
+    })
+}
+
+pub fn delete_unfiltered_forward_rules() -> bool {
+    /*!
+    Delete the rules which forward the traffic of the VMs without
+    passing it to the egress chain
+
+    Former versions accepted the traffic of the TAP devices in the
+    forward chain directly. Such a rule is recognized by its match
+    of the TAP devices as the incoming interface and its target
+    !*/
+    let tap_match = get_tap_match();
+    delete_listed_rules("filter", FIREWALL_FORWARD_CHAIN, |spec| {
+        spec.ends_with(&["-j".to_string(), "ACCEPT".to_string()])
+            && spec.windows(2).any(
+                |pair| pair[0] == "-i" && pair[1] == tap_match
+            )
+    })
 }
 
 pub fn allow_guest_services(
@@ -469,8 +572,8 @@ mod tests {
     use flakes::network::{HostServices, Ipv4Network};
 
     use super::{
-        get_firewall_rules, get_guest_service_rules, get_listed_rules,
-        RulePosition
+        get_egress_rules, get_firewall_rules, get_guest_service_rules,
+        get_listed_rules, RulePosition
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -483,7 +586,10 @@ mod tests {
 
     #[test]
     fn test_firewall_rules() {
-        let rules = get_firewall_rules("172.16.0.0/24", "eth0");
+        let rules = get_firewall_rules(
+            "172.16.0.0/24", "eth0",
+            &[network("169.254.0.0/16"), network("10.0.0.0/8")]
+        );
         let rule_args = |chain: &str| -> Vec<(String, bool)> {
             rules.iter()
                 .filter(|(rule, _)| rule.chain == chain)
@@ -501,12 +607,33 @@ mod tests {
             )],
             rule_args("FLAKE_PILOT_NAT")
         );
+        // the egress chain drops the traffic to the denied networks
+        // in front of the rule which accepts everything else
+        assert_eq!(
+            vec![
+                ("-d 169.254.0.0/16 -j DROP".to_string(), true),
+                ("-d 10.0.0.0/8 -j DROP".to_string(), true),
+                ("-j ACCEPT".to_string(), false)
+            ],
+            rule_args("FLAKE_PILOT_EGRESS")
+        );
+        // the egress chain is complete before traffic is passed to it
+        let last_egress_rule = rules.iter()
+            .rposition(|(rule, _)| rule.chain == "FLAKE_PILOT_EGRESS");
+        let egress_jump_rule = rules.iter()
+            .position(|(rule, _)| rule.spec.ends_with(&[
+                "-j".to_string(), "FLAKE_PILOT_EGRESS".to_string()
+            ]));
+        assert!(last_egress_rule.unwrap() < egress_jump_rule.unwrap());
         // accepting rules are created at the top, the drop rules
-        // for everything else to and from a VM at the bottom
+        // for everything else to and from a VM at the bottom. The
+        // traffic to the outside world is only accepted after it
+        // passed the egress chain
         assert_eq!(
             vec![
                 (
-                    "-i tap-+ -s 172.16.0.0/24 -o eth0 -j ACCEPT".to_string(),
+                    "-i tap-+ -s 172.16.0.0/24 -o eth0 -j FLAKE_PILOT_EGRESS"
+                        .to_string(),
                     true
                 ),
                 (
@@ -529,6 +656,31 @@ mod tests {
                 ("-j DROP".to_string(), false)
             ],
             rule_args("FLAKE_PILOT_INPUT")
+        );
+        // without an egress policy everything passes the egress chain
+        let rules = get_firewall_rules("172.16.0.0/24", "eth0", &[]);
+        assert_eq!(
+            vec!["-j ACCEPT"],
+            rules.iter()
+                .filter(|(rule, _)| rule.chain == "FLAKE_PILOT_EGRESS")
+                .map(|(rule, _)| rule.spec.join(" "))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_egress_rules_are_listed_as_created() {
+        // stale drop rules are recognized by comparing the listed
+        // rules of the egress chain with the created ones
+        let rule_list = "-N FLAKE_PILOT_EGRESS\n\
+            -A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 100.100.100.200/32 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -j ACCEPT\n";
+        assert_eq!(
+            get_listed_rules(rule_list, "FLAKE_PILOT_EGRESS")[..2].to_vec(),
+            get_egress_rules(&[
+                network("169.254.0.0/16"), network("100.100.100.200")
+            ]).into_iter().map(|rule| rule.spec).collect::<Vec<_>>()
         );
     }
 

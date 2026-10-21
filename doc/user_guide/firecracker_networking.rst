@@ -192,6 +192,27 @@ the instance are bound to it.
 A change of these settings takes effect for an application once it
 is connected again.
 
+By default the VMs may reach every network the host reaches through
+the outgoing interface. An egress policy denies them networks with
+``--egress-deny``, which can be given multiple times:
+
+.. code-block:: bash
+
+   flake-ctl firecracker network init --egress-deny link-local --egress-deny private
+
+``link-local`` denies ``169.254.0.0/16``, which covers the metadata
+service of a cloud at ``169.254.169.254``. On a cloud instance a VM
+reaches that service with the identity of the host otherwise, and may
+e.g read the credentials of the instance. ``private`` denies the
+private networks of RFC 1918, ``10.0.0.0/8``, ``172.16.0.0/12`` and
+``192.168.0.0/16``, which keeps the VMs away from the local network of
+the host. Any other network can be given as ``ADDRESS[/PREFIX_LEN]``,
+e.g ``--egress-deny 100.100.100.200`` for the metadata service of a
+cloud which uses another address. The services of the host the VMs use
+through their gateway are not affected. Unlike the settings above, the
+policy takes effect for all applications at once. Calling ``init``
+again replaces it.
+
 Rules of former versions of Flake Pilot for single TAP devices are
 deleted. The rules for all traffic former versions created, a
 ``MASQUERADE`` rule for the outgoing interface and a ``FORWARD`` rule

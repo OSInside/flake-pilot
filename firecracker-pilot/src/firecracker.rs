@@ -37,7 +37,8 @@ use flakes::network::{
 use spinoff::{Spinner, spinners};
 use ubyte::ByteUnit;
 use std::path::Path;
-use std::process::{Stdio, id};
+use std::process::{ExitCode, Stdio, id};
+use std::sync::mpsc::{self, Receiver};
 use std::env;
 use std::fs;
 use std::fs::DirBuilder;
@@ -319,22 +320,24 @@ fn run_creation(
 
 pub fn start(
     program_name: &String, (vm_id, vm_id_file): (String, String)
-) -> Result<(), FlakeError> {
+) -> Result<ExitCode, FlakeError> {
     /*!
     Start VM with the given VM ID
 
-    firecracker-pilot exits with the return code from firecracker
-    after this function
+    firecracker-pilot exits with the return code of the app called
+    in the VM after this function. If the app does not report its
+    exit status, the return code from firecracker is used
     !*/
     let RuntimeSection {
         resume, force_vsock, ..
     } = config().runtime();
 
     let mut is_blocking: bool = true;
+    let exit_status;
 
     if vm_running(&vm_id)? {
         // 1. Execute app in running VM
-        execute_command_at_instance(program_name)?;
+        exit_status = execute_command_at_instance(program_name)?;
     } else {
         let firecracker_config = NamedTempFile::new()?;
         create_firecracker_config(
@@ -346,23 +349,42 @@ pub fn start(
             call_instance(
                 program_name, &firecracker_config, &vm_id_file, is_blocking
             )?;
-            execute_command_at_instance(program_name)?;
+            exit_status = execute_command_at_instance(program_name)?;
         } else {
             // 3. Startup VM and execute app
-            call_instance(
+            exit_status = call_instance(
                 program_name, &firecracker_config, &vm_id_file, is_blocking
             )?;
         }
     }
-    Ok(())
+    Ok(get_exit_code(exit_status))
+}
+
+pub fn get_exit_code(exit_status: Option<i32>) -> ExitCode {
+    /*!
+    Provide the exit code of firecracker-pilot for the exit status
+    the app in the VM has reported
+
+    An app which has not reported its exit status, e.g because the
+    sci in the VM does not support it yet, keeps the return code
+    from firecracker which is a success at this point
+    !*/
+    match exit_status {
+        // Like a shell, only the lower 8 bits of the status are used
+        Some(code) => ExitCode::from(code as u8),
+        None => ExitCode::SUCCESS
+    }
 }
 
 pub fn call_instance(
     program_name: &String, config_file: &NamedTempFile,
     vm_id_file: &str, is_blocking: bool
-) -> Result<(), FlakeError> {
+) -> Result<Option<i32>, FlakeError> {
     /*!
     Run firecracker with specified configuration
+
+    In blocking mode the app runs on the console of the instance
+    and the exit status it reports is returned
     !*/
     // Check if there is an old UDS socket file still present.
     // It must be deleted to allow the new firecracker process
@@ -374,6 +396,15 @@ pub fn call_instance(
         }
         delete_file(&vsock_uds_path);
     }
+    // The app on the console of the instance reports its exit status
+    // to this listener. It must exist before the instance boots
+    let exit_status_receiver = if is_blocking {
+        Some(exit_status_listener(
+            &format!("{vsock_uds_path}_{}", defaults::EXIT_STATUS_PORT)
+        )?)
+    } else {
+        None
+    };
     let mut firecracker = Command::new(defaults::FIRECRACKER);
     firecracker
         .arg("--no-api")
@@ -396,7 +427,8 @@ pub fn call_instance(
         debug!("PID {pid}")
     }
     IO::create_meta_file(vm_id_file)?.write_all(pid.to_string().as_bytes())?;
-    if is_blocking {
+    let mut exit_status = None;
+    if let Some(exit_status_receiver) = exit_status_receiver {
         // the command talks to the console of the instance,
         // follow the window size of the caller's terminal for it
         watch_terminal_size(&vsock_uds_path, defaults::TERM_CONSOLE_PORT);
@@ -404,8 +436,109 @@ pub fn call_instance(
             child.wait_with_output(), firecracker.get_program(),
             firecracker.get_args()
         )?;
+        // sci waits until the exit status got received before it
+        // shuts down the instance. Thus it is available now if
+        // it was sent
+        exit_status = exit_status_receiver.try_recv().ok();
     }
-    Ok(())
+    Ok(exit_status)
+}
+
+pub fn exit_status_listener(
+    socket_path: &str
+) -> Result<Receiver<i32>, FlakeError> {
+    /*!
+    Listen for the exit status of the app on the console of
+    the instance
+
+    The exit status is provided through the returned channel
+    !*/
+    IO::no_symlink(socket_path)?;
+    if Path::new(socket_path).exists() {
+        delete_file(&socket_path.to_string());
+    }
+    let listener = UnixListener::bind(socket_path)?;
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            if let Some(exit_status) = read_exit_status(&mut stream) {
+                let _ = sender.send(exit_status);
+            }
+            // Closing the stream tells sci the exit status got
+            // received. It is done after it was handed over such
+            // that it is available once the instance is gone
+        }
+    });
+    Ok(receiver)
+}
+
+pub fn read_exit_status(stream: &mut UnixStream) -> Option<i32> {
+    /*!
+    Read the exit status sci sends for an app
+    !*/
+    let _ = stream.set_read_timeout(
+        Some(time::Duration::from_millis(defaults::EXIT_STATUS_TIMEOUT_MSEC))
+    );
+    let mut message = String::new();
+    if let Err(error) = stream.read_to_string(&mut message) {
+        if Lookup::is_debug() {
+            debug!("Failed to read exit status: {error}");
+        }
+        return None
+    }
+    match message.trim().parse::<i32>() {
+        Ok(exit_status) => {
+            if Lookup::is_debug() {
+                debug!("App exit status: {exit_status}");
+            }
+            Some(exit_status)
+        },
+        Err(error) => {
+            if Lookup::is_debug() {
+                debug!("Invalid exit status {message:?}: {error}");
+            }
+            None
+        }
+    }
+}
+
+pub fn accept_exit_status(listener: &UnixListener) -> Option<i32> {
+    /*!
+    Accept the connection which sends the exit status of an app
+    called through a vsock and read the exit status
+
+    sci connects for this after the output stream of the app has
+    ended. An sci which does not support it never connects, thus
+    only wait for a limited time
+    !*/
+    if let Err(error) = listener.set_nonblocking(true) {
+        if Lookup::is_debug() {
+            debug!("Failed to wait for exit status: {error}");
+        }
+        return None
+    }
+    let timeout = time::Duration::from_millis(
+        defaults::EXIT_STATUS_TIMEOUT_MSEC
+    );
+    let start = time::Instant::now();
+    loop {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                return read_exit_status(&mut stream)
+            },
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock
+                && start.elapsed() < timeout => {
+                thread::sleep(time::Duration::from_millis(10));
+            },
+            Err(error) => {
+                if Lookup::is_debug() {
+                    debug!("No exit status received: {error}");
+                }
+                return None
+            }
+        }
+    }
 }
 
 pub fn get_exec_port() -> u32 {
@@ -558,9 +691,11 @@ pub fn send_command_to_instance(
 
 pub fn execute_command_at_instance(
     program_name: &String
-) -> Result<(), FlakeError> {
+) -> Result<Option<i32>, FlakeError> {
     /*!
     Send command to a vsock connected to a running instance
+
+    The exit status reported for the command is returned
     !*/
     let mut retry_count = 0;
     let vsock_uds_path = get_vsock_uds_path(program_name)?;
@@ -601,10 +736,16 @@ pub fn execute_command_at_instance(
     // the instance was started from
     watch_terminal_size(&vsock_uds_path, exec_port);
 
-    send_command_to_instance(program_name, &vsock_uds_path, exec_port);
+    if send_command_to_instance(
+        program_name, &vsock_uds_path, exec_port
+    ) != 0 {
+        // nobody connects to the listener, don't wait for it
+        return Err(
+            FlakeError::OperationError(OperationError::MaxTriesExceeded)
+        )
+    }
 
-    let _ = thread_handle.join();
-    Ok(())
+    Ok(thread_handle.join().ok().flatten())
 }
 
 pub fn get_terminal_boot_args() -> Vec<String> {
@@ -1540,7 +1681,14 @@ impl Drop for TerminalMode {
     }
 }
 
-pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
+pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<Option<i32>> {
+    /*!
+    Listen for the I/O stream of a command called through a vsock
+
+    The first connection carries the I/O of the command. Once it
+    has ended, sci connects a second time to send the exit status
+    of the command which is returned by the thread
+    !*/
     let mut socket = String::new();
     socket.push_str(socket_path);
     let handle = move |socket: String| {
@@ -1550,6 +1698,7 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
                     match stream {
                         Ok(stream) => {
                             stream_io(stream);
+                            return accept_exit_status(&listener)
                         }
                         Err(error) => {
                             error!("VM Connection failed: {error}");
@@ -1561,6 +1710,7 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<()> {
                 error!("VM socket listener failed: {error}")
             }
         }
+        None
     };
     thread::spawn(move || {handle(socket)})
 }
@@ -1570,7 +1720,13 @@ pub fn stream_io(mut stream: UnixStream) {
 
     let stream_fd = stream.as_raw_fd();
     let stdin_fd = libc::STDIN_FILENO;
-    let stdout_fd = stdout.as_raw_fd();
+
+    // The input of the caller can end before the command in the
+    // guest is done, e.g if it is read from a file. The output of
+    // the command is passed on until the guest closes the stream
+    let mut stdin_open = true;
+    // Tell whether the input sent so far ends with a complete line
+    let mut at_line_start = true;
 
     // Switch the caller's terminal into raw mode for the time of
     // the session. Only in raw mode a single key stroke, e.g the
@@ -1590,11 +1746,10 @@ pub fn stream_io(mut stream: UnixStream) {
         let mut max_fd = -1;
         unsafe { libc::FD_ZERO(&mut fdset) };
 
-        unsafe { libc::FD_SET(stdout_fd, &mut fdset) };
-        max_fd = std::cmp::max(max_fd, stdout_fd);
-
-        unsafe { libc::FD_SET(stdin_fd, &mut fdset) };
-        max_fd = std::cmp::max(max_fd, stdout_fd);
+        if stdin_open {
+            unsafe { libc::FD_SET(stdin_fd, &mut fdset) };
+            max_fd = std::cmp::max(max_fd, stdin_fd);
+        }
 
         unsafe { libc::FD_SET(stream_fd, &mut fdset) };
         max_fd = std::cmp::max(max_fd, stream_fd);
@@ -1641,13 +1796,30 @@ pub fn stream_io(mut stream: UnixStream) {
                 if Lookup::is_debug() {
                     debug!("EOF detected on stdin");
                 }
-                break;
-            }
-            if stream.write_all(&buffer[0..sz_r as usize]).is_err() {
-                if Lookup::is_debug() {
-                    debug!("write failure on stream");
+                // Closing the stream would also end the output of the
+                // command. Instead, like a terminal does it, end the
+                // input with the EOF character. An incomplete line
+                // needs one of them to be passed on to the command
+                // and another one to end the input
+                stdin_open = false;
+                let eof_count = if at_line_start { 1 } else { 2 };
+                if stream.write_all(
+                    &vec![defaults::TERM_EOF; eof_count]
+                ).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stream");
+                    }
+                    break;
                 }
-                break;
+            } else {
+                let input = &buffer[0..sz_r as usize];
+                if stream.write_all(input).is_err() {
+                    if Lookup::is_debug() {
+                        debug!("write failure on stream");
+                    }
+                    break;
+                }
+                at_line_start = matches!(input.last(), Some(b'\n' | b'\r'));
             }
             let _ = stdout.flush();
         }

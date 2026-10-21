@@ -26,6 +26,7 @@ use crate::config::config_from_str;
 use crate::firecracker::get_network_init_command;
 use crate::firecracker::get_nfs_server_start_command;
 use crate::firecracker::get_nfs_volumes;
+use crate::firecracker::{get_sci_mode_boot_args, is_sci_mode_boot_arg};
 use crate::firecracker::get_nfsd_threads;
 use crate::firecracker::has_network_setup;
 use crate::firecracker::nfsd_is_running;
@@ -340,5 +341,30 @@ fn test_tap_name_is_valid_for_arbitrary_names() {
             is_valid_interface_name(&interface_name),
             "invalid interface name {} from {}", interface_name, name
         );
+    }
+}
+
+#[test]
+fn test_sci_mode_boot_args() {
+    assert!(get_sci_mode_boot_args(false, false).is_empty());
+    assert_eq!(get_sci_mode_boot_args(false, true), vec!["sci_force_vsock=1"]);
+    assert_eq!(get_sci_mode_boot_args(true, false), vec!["sci_resume=1"]);
+    assert_eq!(
+        get_sci_mode_boot_args(true, true),
+        vec!["sci_resume=1", "sci_force_vsock=1"]
+    );
+}
+
+#[test]
+fn test_is_sci_mode_boot_arg() {
+    for boot_arg in [
+        "sci_resume=1", "sci_resume", "sci_force_vsock=1", "sci_force_vsock=0"
+    ] {
+        assert!(is_sci_mode_boot_arg(boot_arg), "{}", boot_arg);
+    }
+    for boot_arg in [
+        "init=/usr/sbin/sci", "console=ttyS0", "sci_resume_x=1", "nfs="
+    ] {
+        assert!(! is_sci_mode_boot_arg(boot_arg), "{}", boot_arg);
     }
 }

@@ -845,6 +845,11 @@ pub fn create_firecracker_config(
         })
     }
     for boot_option in flake_boot_args {
+        if is_sci_mode_boot_arg(boot_option) {
+            // written by former registrations, replaced by the
+            // setting of the runtime section
+            continue
+        }
         if (resume || force_vsock)
             && ! Lookup::is_debug()
             && boot_option.starts_with("console=")
@@ -857,6 +862,10 @@ pub fn create_firecracker_config(
             boot_args.push(boot_option.to_owned());
         }
     }
+    // sci must run the instance in the mode the pilot acts upon.
+    // Otherwise e.g a resume mode sci keeps the instance running
+    // after the command while the pilot does not use it again
+    boot_args.append(&mut get_sci_mode_boot_args(resume, force_vsock));
     if ! firecracker_config.boot_source.boot_args.is_empty() {
         firecracker_config.boot_source.boot_args.push(' ');
     }
@@ -997,6 +1006,36 @@ pub fn has_network_setup(boot_args: &[&str]) -> bool {
     boot_args.iter()
         .filter_map(|boot_arg| boot_arg.strip_prefix("ip="))
         .any(|setup| setup != "off" && setup != "none")
+}
+
+pub fn get_sci_mode_boot_args(resume: bool, force_vsock: bool) -> Vec<String> {
+    /*!
+    Provide the kernel commandline options which tell sci to run
+    the instance in the given mode
+
+    In resume mode sci keeps the instance running and waits for
+    further commands through a vsock. Without resume, sci shuts
+    down the instance once the command has ended, the command is
+    received through a vsock if force_vsock is set
+    !*/
+    let mut boot_args = Vec::new();
+    if resume {
+        boot_args.push(format!("{}=1", defaults::SCI_RESUME_BOOT_ARG));
+    }
+    if force_vsock {
+        boot_args.push(format!("{}=1", defaults::SCI_FORCE_VSOCK_BOOT_ARG));
+    }
+    boot_args
+}
+
+pub fn is_sci_mode_boot_arg(boot_arg: &str) -> bool {
+    /*!
+    Check if the given kernel commandline option sets the mode
+    sci runs the instance in
+    !*/
+    let name = boot_arg.split_once('=').map_or(boot_arg, |(name, _)| name);
+    name == defaults::SCI_RESUME_BOOT_ARG
+        || name == defaults::SCI_FORCE_VSOCK_BOOT_ARG
 }
 
 pub fn get_nfs_volumes<'a>(boot_args: &[&'a str]) -> Vec<&'a str> {

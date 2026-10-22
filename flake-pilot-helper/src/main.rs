@@ -104,9 +104,14 @@ fn main() -> ExitCode {
                 &caller, path, config_file.as_deref(), instance.as_deref()
             )
         },
-        cli::Commands::SandboxRun { rootfs, layers, size, term, args } => {
-            sandbox::run(
-                &caller, rootfs, layers, size.as_deref(), term.as_deref(), args
+        cli::Commands::SandboxRun {
+            rootfs, layers, size, term, persist_dirs, args
+        } => {
+            // The exit code of the application in the sandbox is
+            // the exit code of the helper
+            return sandbox::run(
+                &caller, rootfs, layers, size.as_deref(), term.as_deref(),
+                persist_dirs, args
             )
         },
         cli::Commands::PodmanPilot { app, term, args } => {

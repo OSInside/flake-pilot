@@ -46,6 +46,8 @@
 #     no_new_privs set. The writable layer is a tmpfs which is gone
 #     along with the sandbox. Set sandbox_tmpfs_size in
 #     /etc/flakes.yml to limit it, users can only ask for less.
+#     Mounts which persist on the host, the --persist-mount option
+#     of sandbox-run, are refused for every caller but root.
 #
 #   * Run the podman flakes registered system wide, as root, in the
 #     podman setup of root. The container and its runtime options

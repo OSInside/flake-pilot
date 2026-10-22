@@ -26,8 +26,9 @@
 //! The bwrap options of a flake are read by bubblewrap-pilot. For
 //! a system wide flake with mount points below its root filesystem
 //! they are also read by the helper, which mounts the layers they
-//! configure, see its bubblewrap-pilot command. Both read the
-//! layers the same way, through this module.
+//! configure, see its bubblewrap-pilot command. The helper also
+//! reads the directories whose mounts persist on the host. Both
+//! read the options the same way, through this module.
 //!
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -74,6 +75,31 @@ where
     Ok((layers, other_arguments))
 }
 
+pub fn split_persist_dirs(arguments: Vec<String>) -> (Vec<String>, Vec<String>) {
+    /*!
+    Split the given bwrap arguments of a flake, see split_options(),
+    into the directories whose mounts persist on the host and the
+    other arguments of bwrap
+
+    A directory is configured with --persist-mount. It is handed to
+    the helper, which lets the mounts at or below it persist on the
+    host, and is not passed to bwrap
+    !*/
+    let mut persist_dirs: Vec<String> = Vec::new();
+    let mut other_arguments: Vec<String> = Vec::new();
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        if argument == defaults::BWRAP_PERSIST_MOUNT_OPTION {
+            if let Some(persist_dir) = arguments.next() {
+                persist_dirs.push(persist_dir);
+            }
+        } else {
+            other_arguments.push(argument);
+        }
+    }
+    (persist_dirs, other_arguments)
+}
+
 pub fn expand_variables<F>(option: &str, lookup: F) -> Result<String, String>
 where
     F: Fn(&str) -> Option<String>
@@ -114,7 +140,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_variables, split_options};
+    use super::{expand_variables, split_options, split_persist_dirs};
 
     fn lookup(name: &str) -> Option<String> {
         match name {
@@ -133,6 +159,17 @@ mod tests {
         ).unwrap();
         assert_eq!(vec!["/usr/share/a", "/home/user/b"], layers);
         assert_eq!(vec!["--ro-bind", "/home/user", "/home"], arguments);
+    }
+
+    #[test]
+    fn test_split_persist_dirs() {
+        let (persist_dirs, arguments) = split_persist_dirs(
+            ["--persist-mount", "/mnt", "--dev", "/dev",
+             "--persist-mount", "/run/media", "--persist-mount"]
+                .iter().map(|x| x.to_string()).collect()
+        );
+        assert_eq!(vec!["/mnt", "/run/media"], persist_dirs);
+        assert_eq!(vec!["--dev", "/dev"], arguments);
     }
 
     #[test]

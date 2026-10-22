@@ -60,6 +60,12 @@ pub const SUDO_TOOL: &str = "/usr/bin/sudo";
 // Name of the sudo process. bubblewrap-pilot records it as the
 // process of a sandbox which is created through the helper
 pub const SUDO_PROCESS_NAME: &str = "sudo";
+// Name of the helper process, as the kernel provides it, cut to 15
+// characters. It is the process of a sandbox which root creates
+// through the helper with mounts which persist on the host, the
+// helper waits for the sandbox then instead of replacing itself
+// with bubblewrap-pilot
+pub const HELPER_PROCESS_NAME: &str = "flake-pilot-hel";
 // Program which creates the bubblewrap sandboxes, called by
 // bubblewrap-pilot
 pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
@@ -276,6 +282,18 @@ pub const SANDBOX_MOUNTED_VAR: &str = "FLAKE_PILOT_SANDBOX_MOUNTED";
 // the sandbox. The layers are part of the overlay created by
 // bubblewrap-pilot or the helper and are not passed to bwrap
 pub const BWRAP_OVERLAY_SRC_OPTION: &str = "--overlay-src";
+// Option which lets the mounts the application creates at or below
+// the given directory persist on the host, at the same location. It
+// is only allowed for a flake called by root, the sandbox is then
+// created by the helper. Like --overlay-src it is not passed to bwrap
+pub const BWRAP_PERSIST_MOUNT_OPTION: &str = "--persist-mount";
+// Environment variables the helper sets for the bubblewrap-pilot it
+// starts for a sandbox whose mounts persist on the host. They name
+// the descriptors the pilot passes to bwrap as its info pipe, which
+// bwrap reports the process ID of the sandbox to, and as its block
+// pipe, which bwrap waits for before it starts the application
+pub const SANDBOX_INFO_FD_VAR: &str = "FLAKE_PILOT_SANDBOX_INFO_FD";
+pub const SANDBOX_BLOCK_FD_VAR: &str = "FLAKE_PILOT_SANDBOX_BLOCK_FD";
 // Max. number of rounds a %VAR reference in a bwrap option of a
 // flake is expanded in, a value can reference another variable
 pub const VAR_EXPANSION_LIMIT: i32 = 10;

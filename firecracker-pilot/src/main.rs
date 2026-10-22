@@ -30,7 +30,7 @@ pub mod tests;
 
 use std::process::{ExitCode, Termination};
 
-use config::config;
+use config::load_config;
 use env_logger::Env;
 use flakes::error::FlakeError;
 use flakes::registration;
@@ -42,8 +42,10 @@ pub mod config;
 fn main() -> ExitCode {
     setup_logger();
     // load config now so we can terminate early if the config is invalid
-    config();
-    // past here there should be no more panics
+    if let Err(err) = load_config() {
+        error!("{err}");
+        return err.report()
+    }
 
     let result = run();
 

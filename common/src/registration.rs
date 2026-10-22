@@ -58,9 +58,12 @@ pub fn program_abs_path() -> String {
     Lookup absolute program path on the filesystem from
     the argv binary name of the caller
     !*/
-    let program = env::args().next().expect("Arg 0 must be present");
-    which::which(program).expect("Symlink should exist")
-        .to_string_lossy().to_string()
+    let program = env::args().next().unwrap_or_default();
+    // A program which cannot be found is provided as it was called,
+    // its registration is not found then
+    which::which(&program)
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or(program)
 }
 
 pub fn basename(program_path: &str) -> String {
@@ -194,6 +197,18 @@ where
 {
     /*!
     Deserialize the given yaml document into the configuration
+    model of the caller, see try_config_from_str(). An invalid
+    document is a fatal error
+    !*/
+    try_config_from_str(input, origin).unwrap_or_else(|error| panic!("{error}"))
+}
+
+pub fn try_config_from_str<T>(input: &str, origin: &str) -> Result<T, String>
+where
+    T: Deserialize<'static>
+{
+    /*!
+    Deserialize the given yaml document into the configuration
     model of the caller
 
     Duplicate keys are resolved first, this allows the drop-in
@@ -202,15 +217,16 @@ where
     document and is only used to report on errors
     !*/
     // Parse into a generic YAML to remove duplicate keys
-    let yaml_documents = yaml_rust::YamlLoader::load_from_str(input)
-        .unwrap_or_else(
-            |error| panic!("Failed to parse yaml input at: {origin}: {error}")
-        );
-    let yaml = yaml_documents.first().unwrap_or_else(
-        || panic!("No configuration data provided in: {origin}")
-    );
+    let yaml_documents = yaml_rust::YamlLoader::load_from_str(input).map_err(
+        |error| format!("Failed to parse yaml input at: {origin}: {error}")
+    )?;
+    let yaml = yaml_documents.first().ok_or_else(
+        || format!("No configuration data provided in: {origin}")
+    )?;
     let mut buffer = String::new();
-    yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).unwrap();
+    yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).map_err(
+        |error| format!("Failed to process {origin}: {error}")
+    )?;
 
     // Convert to a String and leak it to make it static
     // Can not use serde_yaml::from_value because of lifetime limitations
@@ -218,23 +234,47 @@ where
     // since the configuration is only loaded once
     let content = Box::leak(buffer.into_boxed_str());
 
-    serde_yaml::from_str(content).unwrap_or_else(
-        |error| panic!("Failed to import {origin}: {error}")
+    serde_yaml::from_str(content).map_err(
+        |error| format!("Failed to import {origin}: {error}")
     )
 }
 
-pub fn load_config<T>(program: &str, usermode: bool) -> T
+pub fn load_config<T>(program: &str, usermode: bool) -> Result<T, String>
 where
     T: Deserialize<'static>
 {
     /*!
     Read the registration of the given program into the
     configuration model of the caller
+
+    A pilot binary called directly, not through the link of a
+    registered application, has no registration. It is told
+    apart from an application which is not registered (anymore)
+    to point the caller to the way a pilot is used
     !*/
-    let yaml = read_config(program, usermode).unwrap_or_else(
-        || panic!("No user/system wide flake registration found for: {program}")
-    );
-    config_from_str(&yaml, &config_file(program, usermode))
+    let yaml = match read_config(program, usermode) {
+        Some(yaml) => yaml,
+        None if is_direct_call() => return Err(format!(
+            "{program} is the launcher of flake applications and is not \
+            meant to be called directly. Call an application registered \
+            through flake-ctl instead"
+        )),
+        None => return Err(format!(
+            "No user/system wide flake registration found for: {program}"
+        ))
+    };
+    try_config_from_str(&yaml, &config_file(program, usermode))
+}
+
+fn is_direct_call() -> bool {
+    /*!
+    Check if the calling program was started directly and not
+    through a symbolic link, which is how a registered flake
+    application calls its pilot
+    !*/
+    fs::symlink_metadata(program_abs_path())
+        .map(|metadata| ! metadata.file_type().is_symlink())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -243,13 +283,27 @@ mod tests {
 
     use super::{
         basename, config_dir, config_dirs, config_file, merge_config,
-        program_abs_path
+        program_abs_path, try_config_from_str
     };
+    use std::collections::HashMap;
 
     #[test]
     fn test_program_abs_path() {
         let program_path = program_abs_path();
         assert!(program_path.starts_with('/'));
+    }
+
+    #[test]
+    fn test_try_config_from_str() {
+        let config: Result<HashMap<String, u32>, String> =
+            try_config_from_str("app: 1\n", "app.yaml");
+        assert_eq!(Some(&1), config.unwrap().get("app"));
+        // invalid documents are reported, not a fatal error
+        for input in ["app: [1", "", "app: text"] {
+            let config: Result<HashMap<String, u32>, String> =
+                try_config_from_str(input, "app.yaml");
+            assert!(config.unwrap_err().contains("app.yaml"), "{input:?}");
+        }
     }
 
     #[test]

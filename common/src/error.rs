@@ -63,6 +63,10 @@ pub enum FlakeError {
     #[error("Datasync failed, for details recall with PILOT_DEBUG=1")]
     SyncFailed,
 
+    /// The registration of the calling program is missing or invalid
+    #[error("{}", .0)]
+    InvalidRegistration(String),
+
     /// OperationError pass through
     #[error("{}", .0)]
     OperationError(#[from] OperationError)

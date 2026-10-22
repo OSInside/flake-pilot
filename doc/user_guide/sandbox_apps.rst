@@ -305,6 +305,37 @@ deleted by you. The ``%discard`` pilot option of former versions is
 gone as well. A pilot option which is unknown is ignored, a flake
 registered with it keeps working.
 
+Mounts Which Persist on the Host
+================================
+
+What the application mounts in the sandbox is gone along with it,
+like everything else it writes. A flake which ``root`` calls can let
+all mounts of the application persist on the host instead, with a
+``--persist-mounts`` option of its own. For example, a ``mountdisk``
+command which runs ``mount`` in a sandbox of the host root:
+
+.. code-block:: bash
+
+   flake-ctl bubblewrap register --rootfs / \
+       --app /usr/local/sbin/mountdisk --target /usr/bin/mount \
+       --opt "\--persist-mounts" --opt "\--dev-bind /dev /dev"
+
+After ``mountdisk /dev/sdb1 /mnt/disk`` has terminated, the
+filesystem stays mounted on ``/mnt/disk`` of the host. Every mount
+the application creates is attached to the host at the same location
+when the sandbox terminates, wherever the application mounts. The
+mounts ``bwrap`` creates for the sandbox, e.g for ``--dev-bind``,
+stay in the sandbox. A missing mount point is created on the host.
+Keep in mind that a mount over an existing directory hides it on the
+host as well, e.g a ``tmpfs`` the application mounts on ``/tmp``. The
+option is not passed to ``bwrap``.
+
+Only ``root`` can attach mounts to the host. Such a flake is
+therefore always created by the ``bubblewrap-pilot`` command of the
+Flake Pilot helper, see above, and any caller but ``root`` is
+refused. The helper waits for ``bwrap`` as ``root`` in this case, ``flake-ctl
+bubblewrap show`` shows the sandbox with the process of the helper.
+
 Registration Options in Short
 =============================
 

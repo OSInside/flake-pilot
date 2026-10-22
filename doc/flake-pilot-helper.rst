@@ -146,6 +146,23 @@ bubblewrap-pilot
   sudo rule to grant single applications. Called by
   **bubblewrap-pilot**\(8)
 
+  With **--persist-mounts** in the bwrap options of the
+  registration, which only root may configure, the mounts the
+  application creates in the sandbox persist on the host. The helper
+  then runs bubblewrap-pilot in a child process and waits for it as
+  root. The pilot passes the pipes of the helper on to bwrap, see
+  the **--info-fd** and **--block-fd** options of bwrap. Once bwrap
+  has set up the sandbox it waits for the block pipe, which the
+  helper sees in /proc/PID/syscall of the sandbox. The helper records
+  the mounts of the sandbox at that point and lets the application
+  start. Once bwrap has terminated, the helper clones the mounts of
+  the sandbox which were not recorded, except the ones which exist
+  on the host already or which the host created meanwhile, and
+  attaches them to the host at the same location. A missing mount
+  point is created, a symbolic link on the way is refused. The exit
+  code of bwrap is the exit code of the helper, a mount which cannot
+  be attached makes the helper fail
+
 meta-dirs-init
   Create the meta data directories of the pilots which are
   configured in /etc/flakes.yml. Called by **flake-ctl-init**\(8)

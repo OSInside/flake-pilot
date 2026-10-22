@@ -44,7 +44,7 @@ fn sandbox_setup(
     parallel
     !*/
     env::set_var("OVERLAYROOT", get_dir("merged"));
-    let (layers, engine_arguments) = get_engine_arguments(options).unwrap();
+    let (layers, _, engine_arguments) = get_engine_arguments(options).unwrap();
     (
         layers,
         get_sandbox_options(
@@ -341,4 +341,28 @@ fn test_mounts_below() {
     // escaped mount points are resolved
     assert!(mounts_below(Path::new("/data/my tree"), mountinfo));
     assert!(! mounts_below(Path::new("/data/my"), mountinfo));
+}
+
+#[test]
+fn test_configured_persist_mounts() {
+    let (layers, persist_mounts, engine_arguments) = get_engine_arguments(Some(vec![
+        "--dev-bind /dev /dev",
+        "--persist-mounts",
+        "--tmpfs /mnt"
+    ])).unwrap();
+    assert!(layers.is_empty());
+    assert!(persist_mounts);
+    // the option is handed to the helper, not to bwrap. bwrap may
+    // mount anywhere, its mounts are told apart from the mounts of
+    // the application by the helper
+    assert_eq!(
+        options(&["--dev-bind", "/dev", "/dev", "--tmpfs", "/mnt"]),
+        engine_arguments
+    );
+    // without the option the mounts of the application are gone
+    // with the sandbox
+    let (_, persist_mounts, _) = get_engine_arguments(Some(vec![
+        "--dev-bind /dev /dev"
+    ])).unwrap();
+    assert!(! persist_mounts);
 }

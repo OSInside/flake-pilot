@@ -25,8 +25,9 @@
 pub const BWRAP: &str = "bwrap";
 pub use flakes::defaults::BWRAP_PATH;
 // Name of the process of a sandbox which is created through the
-// helper, see overlay::has_mounts_below()
-pub use flakes::defaults::SUDO_PROCESS_NAME;
+// helper, see overlay::has_mounts_below(). For root, whose mounts
+// persist on the host, it is the helper itself, see --persist-mounts
+pub use flakes::defaults::{SUDO_PROCESS_NAME, HELPER_PROCESS_NAME};
 pub const PROC_DIR: &str = "/proc";
 // File name extension of the meta data files the pilot
 // creates for its instances
@@ -42,6 +43,10 @@ pub const BWRAP_BIND_OPTION: &str = "--bind";
 // Option which stacks another layer on top of the rootfs, see
 // flakes::bubblewrap::split_options()
 pub use flakes::defaults::BWRAP_OVERLAY_SRC_OPTION;
+// Option which lets all mounts the application creates in the
+// sandbox persist on the host, see
+// flakes::bubblewrap::split_persist_mounts()
+pub use flakes::defaults::BWRAP_PERSIST_MOUNTS_OPTION;
 // Option which selects the working directory in the sandbox
 pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
 // Mount point of the root filesystem of the sandbox
@@ -63,6 +68,12 @@ pub use flakes::defaults::{
 // filesystem it mounted for the flake, see
 // bubblewrap::start_in_mounted_root()
 pub use flakes::defaults::SANDBOX_MOUNTED_VAR;
+// Variables the helper sets for the pilot of a flake whose mounts
+// persist on the host, along with the bwrap options they are passed
+// on with, see bubblewrap::get_helper_pipes()
+pub use flakes::defaults::{SANDBOX_INFO_FD_VAR, SANDBOX_BLOCK_FD_VAR};
+pub const BWRAP_INFO_FD_OPTION: &str = "--info-fd";
+pub const BWRAP_BLOCK_FD_OPTION: &str = "--block-fd";
 // Permissions of the directories of the overlay setup. Nobody but
 // the user of the sandbox has access to them
 pub const OVERLAY_DIR_MODE: &str = "700";

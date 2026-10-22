@@ -26,8 +26,9 @@
 //! The bwrap options of a flake are read by bubblewrap-pilot. For
 //! a system wide flake with mount points below its root filesystem
 //! they are also read by the helper, which mounts the layers they
-//! configure, see its bubblewrap-pilot command. Both read the
-//! layers the same way, through this module.
+//! configure, see its bubblewrap-pilot command. The helper also
+//! reads whether the mounts of the application persist on the host.
+//! Both read the options the same way, through this module.
 //!
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -74,6 +75,25 @@ where
     Ok((layers, other_arguments))
 }
 
+pub fn split_persist_mounts(arguments: Vec<String>) -> (bool, Vec<String>) {
+    /*!
+    Split the given bwrap arguments of a flake, see split_options(),
+    into whether the mounts of the application persist on the host
+    and the other arguments of bwrap
+
+    The mounts persist with --persist-mounts. The option is handed
+    to the helper, which lets all mounts the application creates in
+    the sandbox persist on the host, and is not passed to bwrap
+    !*/
+    let persist_mounts = arguments.iter().any(
+        |argument| argument == defaults::BWRAP_PERSIST_MOUNTS_OPTION
+    );
+    let other_arguments = arguments.into_iter()
+        .filter(|argument| argument != defaults::BWRAP_PERSIST_MOUNTS_OPTION)
+        .collect();
+    (persist_mounts, other_arguments)
+}
+
 pub fn expand_variables<F>(option: &str, lookup: F) -> Result<String, String>
 where
     F: Fn(&str) -> Option<String>
@@ -114,7 +134,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_variables, split_options};
+    use super::{expand_variables, split_options, split_persist_mounts};
 
     fn lookup(name: &str) -> Option<String> {
         match name {
@@ -133,6 +153,30 @@ mod tests {
         ).unwrap();
         assert_eq!(vec!["/usr/share/a", "/home/user/b"], layers);
         assert_eq!(vec!["--ro-bind", "/home/user", "/home"], arguments);
+    }
+
+    #[test]
+    fn test_split_persist_mounts() {
+        let arguments = |arguments: &[&str]| -> Vec<String> {
+            arguments.iter().map(|x| x.to_string()).collect()
+        };
+        let (persist_mounts, other_arguments) = split_persist_mounts(
+            arguments(&["--dev", "/dev", "--persist-mounts", "--proc", "/proc"])
+        );
+        assert!(persist_mounts);
+        assert_eq!(vec!["--dev", "/dev", "--proc", "/proc"], other_arguments);
+        // given more than once it is the same, and not given the
+        // arguments are kept as they are
+        let (persist_mounts, other_arguments) = split_persist_mounts(
+            arguments(&["--persist-mounts", "--persist-mounts"])
+        );
+        assert!(persist_mounts);
+        assert!(other_arguments.is_empty());
+        let (persist_mounts, other_arguments) = split_persist_mounts(
+            arguments(&["--dev", "/dev"])
+        );
+        assert!(! persist_mounts);
+        assert_eq!(vec!["--dev", "/dev"], other_arguments);
     }
 
     #[test]

@@ -31,11 +31,11 @@ use flakes::io::IO;
 use flakes::error::FlakeError;
 use flakes::config::get_bubblewrap_ids_dir;
 use flakes::helper::helper_call;
-use flakes::bubblewrap::split_options;
+use flakes::bubblewrap::{split_options, split_persist_mounts};
 use flakes::registration;
 
 use lazy_static::lazy_static;
-use uzers::get_current_username;
+use uzers::{get_current_uid, get_current_username};
 
 use std::env;
 use std::fs;
@@ -175,6 +175,10 @@ pub fn start(
     sandbox, mounts the overlay in it and starts the pilot there
     with the privileges of the caller, which then calls bwrap, see
     overlay::has_mounts_below() and start_in_mounted_root()
+
+    The helper also creates the sandbox of a flake whose mounts
+    persist on the host, see --persist-mounts. Only root can call
+    such a flake
     !*/
     set_overlay_root_var();
     match prepare_sandbox(program_name) {
@@ -198,12 +202,16 @@ pub fn start_in_mounted_root(program_name: &str) -> Result<ExitCode, FlakeError>
     takes the rootfs and the layers from the registration, mounts
     them in the mount namespace of the sandbox and starts the pilot
     in it, with the privileges of the caller. The instance of the
-    flake is recorded by the pilot which called the helper
+    flake is recorded by the pilot which called the helper.
+
+    For a flake whose mounts persist on the host the helper passes
+    the info and the block pipe of bwrap, see get_helper_pipes()
     !*/
     set_overlay_root_var();
     let RuntimeSection { bubblewrap, .. } = config().runtime();
-    let (_, engine_arguments) = get_engine_arguments(bubblewrap)?;
+    let (_, _, engine_arguments) = get_engine_arguments(bubblewrap)?;
     let mut call = Command::new(defaults::BWRAP_PATH);
+    call.args(get_helper_pipes()?);
     add_sandbox_arguments(&mut call, program_name, engine_arguments);
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
@@ -222,6 +230,36 @@ pub fn is_mounted_by_helper() -> bool {
     a root filesystem, with no other privileges than its own
     !*/
     env::var_os(defaults::SANDBOX_MOUNTED_VAR).is_some()
+}
+
+fn get_helper_pipes() -> Result<Vec<String>, FlakeError> {
+    /*!
+    Provide the bwrap options which pass the info and the block pipe
+    of the helper to bwrap, see defaults::SANDBOX_INFO_FD_VAR
+
+    The helper waits for a sandbox whose mounts persist on the host.
+    bwrap reports the process ID of the sandbox to the info pipe and
+    holds the application back until the helper writes to the block
+    pipe. Like SANDBOX_MOUNTED_VAR the variables are not trusted for
+    anything else, they only name descriptors of the caller
+    !*/
+    let mut options = Vec::new();
+    for (name, option) in [
+        (defaults::SANDBOX_INFO_FD_VAR, defaults::BWRAP_INFO_FD_OPTION),
+        (defaults::SANDBOX_BLOCK_FD_VAR, defaults::BWRAP_BLOCK_FD_OPTION)
+    ] {
+        if let Ok(fd) = env::var(name) {
+            if fd.parse::<u32>().is_err() {
+                return Err(FlakeError::IOError {
+                    kind: "Invalid environment".to_string(),
+                    message: format!("{name}={fd}: a descriptor number is required")
+                })
+            }
+            options.push(option.to_string());
+            options.push(fd);
+        }
+    }
+    Ok(options)
 }
 
 fn set_overlay_root_var() {
@@ -250,11 +288,25 @@ fn prepare_sandbox(program_name: &str) -> Result<Command, FlakeError> {
     the caller
     !*/
     let RuntimeSection { bubblewrap, .. } = config().runtime();
-    let (layers, engine_arguments) = get_engine_arguments(bubblewrap)?;
+    let (layers, persist_mounts, engine_arguments) =
+        get_engine_arguments(bubblewrap)?;
     let rootfs = config().sandbox.name;
     let tmpfs_size = get_tmpfs_size();
 
-    if ! overlay::has_mounts_below(rootfs, &layers)? {
+    // Mounts can only be attached to the mount namespace of the
+    // host with root privileges, by the helper
+    if persist_mounts && get_current_uid() != 0 {
+        return Err(FlakeError::IOError {
+            kind: "Permission denied".to_string(),
+            message: format!(
+                "The flake lets mounts persist on the host, see {}, \
+                only root can call it",
+                defaults::BWRAP_PERSIST_MOUNTS_OPTION
+            )
+        })
+    }
+
+    if ! persist_mounts && ! overlay::has_mounts_below(rootfs, &layers)? {
         overlay::mount(
             rootfs, &layers, tmpfs_size.as_deref(), get_sandbox_user()
         )?;
@@ -263,11 +315,16 @@ fn prepare_sandbox(program_name: &str) -> Result<Command, FlakeError> {
         return Ok(call)
     }
     if Lookup::is_debug() {
-        debug!("Mount points below the root filesystem, using the helper");
+        if ! persist_mounts {
+            debug!("Mount points below the root filesystem, using the helper");
+        } else {
+            debug!("Mounts persist on the host, using the helper");
+        }
     }
     overlay::create_user_dir(get_sandbox_user())?;
     // The application comes first, a sudo rule can name it right
-    // after the command, see the reference sudoers file
+    // after the command, see the reference sudoers file. The helper
+    // takes whether the mounts persist from the registration as well
     let mut call = helper_call("bubblewrap-pilot");
     call.arg("--app").arg(registration::program_abs_path());
     if let Some(size) = tmpfs_size {
@@ -306,8 +363,9 @@ fn run_sandbox(
     system and replaces itself with the application. The process
     recorded as the instance of the flake is therefore the
     application running in the sandbox, or the sudo process the
-    helper runs in. The exit code of the application becomes the
-    exit code of the pilot
+    helper runs in, or the helper itself if it lets mounts persist
+    on the host. The exit code of the application becomes the exit
+    code of the pilot
     !*/
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
@@ -362,12 +420,18 @@ pub fn get_target_app_path(program_name: &str) -> String {
     config().sandbox.target_app_path.unwrap_or(program_name).to_owned()
 }
 
+/// Layers of the root of the sandbox, whether the mounts of the
+/// application persist on the host and the options which are passed
+/// to bwrap
+type EngineArguments = (Vec<String>, bool, Vec<String>);
+
 pub fn get_engine_arguments(
     options: Option<Vec<&str>>
-) -> Result<(Vec<String>, Vec<String>), FlakeError> {
+) -> Result<EngineArguments, FlakeError> {
     /*!
     Read the bwrap options of the flake and provide the layers of
-    the root of the sandbox along with the other options
+    the root of the sandbox and whether the mounts of the application
+    persist on the host, along with the other options
 
     If the flake configures no options at all, a default setup is
     used: the standard pseudo filesystems, a writable /tmp, the
@@ -384,7 +448,11 @@ pub fn get_engine_arguments(
     top of the rootfs, in the order the sources are given. The
     layers are part of the overlay created by the pilot, see
     overlay::mount(), they are provided apart from the options
-    which are passed to bwrap
+    which are passed to bwrap.
+
+    --persist-mounts is handed to the helper, which lets all mounts
+    the application creates in the sandbox persist on the host. It
+    is not passed to bwrap either
     !*/
     let configured_options = options.unwrap_or_default();
     let engine_options = if configured_options.is_empty() {
@@ -393,12 +461,13 @@ pub fn get_engine_arguments(
         configured_options
     };
 
-    let (layers, mut engine_arguments) = split_options(
+    let (layers, arguments) = split_options(
         &engine_options, |name| env::var(name).ok()
     ).map_err(|message| FlakeError::IOError {
         kind: "Invalid runtime option".to_string(),
         message
     })?;
+    let (persist_mounts, mut engine_arguments) = split_persist_mounts(arguments);
 
     // A cleared environment gets the variables of the allow list
     // again. They are added after all other options and thus after
@@ -420,7 +489,7 @@ pub fn get_engine_arguments(
             }
         }
     }
-    Ok((layers, engine_arguments))
+    Ok((layers, persist_mounts, engine_arguments))
 }
 
 pub fn get_sandbox_options(
@@ -504,7 +573,8 @@ fn process_running(sandbox_id: &str) -> bool {
     The name of the process is checked too, to not report a
     process which just reuses the ID of an already terminated
     sandbox as running. A sandbox created through the helper is
-    recorded with the sudo process the helper runs in
+    recorded with the sudo process the helper runs in, or with the
+    helper itself for root whose mounts persist on the host
     !*/
     let pid = match sandbox_id.parse::<u32>() {
         Ok(pid) => pid,
@@ -519,6 +589,7 @@ fn process_running(sandbox_id: &str) -> bool {
             let process_name = process_name.trim();
             process_name == defaults::BWRAP
                 || process_name == defaults::SUDO_PROCESS_NAME
+                || process_name == defaults::HELPER_PROCESS_NAME
         },
         Err(_) => false
     }

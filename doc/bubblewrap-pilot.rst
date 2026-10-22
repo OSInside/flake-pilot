@@ -178,8 +178,9 @@ the caller:
    sudo /usr/libexec/flake-pilot/flake-pilot-helper bubblewrap-pilot \
        --app APP [--size SIZE] [--term TERM] -- ARGUMENTS
 
-The helper takes the rootfs and the layers from the registration of
-the flake. The registration of a flake registered system wide
+The helper takes the rootfs, the layers and whether the mounts of
+the application persist on the host, see **--persist-mounts**, from
+the registration of the flake. The registration of a flake registered system wide
 belongs to root. The flakes configuration `~/.config/flakes.yml` and
 the registration of a flake of the caller are read with the identity
 of the caller.
@@ -274,6 +275,55 @@ application has written to its root filesystem is not kept. Every
 call starts from the unmodified rootfs. Data which should outlast
 the call has to be written to a path which is bound writable from
 the host.
+
+The same applies to what the application mounts in the sandbox: a
+mount created in the sandbox is gone along with it, it never
+reaches the host. A flake called by root can let all mounts of the
+application persist on the host with the **--persist-mounts**
+option, e.g for a tool which mounts a disk:
+
+.. code:: yaml
+
+   bubblewrap:
+     - --persist-mounts
+     - --dev-bind /dev /dev
+     - --proc /proc
+     - --unshare-pid
+
+Every mount the application creates in the sandbox is attached to
+the host at the same location once the sandbox has terminated,
+along with the mounts below it, e.g after `mount /dev/sdb1
+/mnt/disk` the filesystem stays mounted on `/mnt/disk` of the host,
+no matter where the application mounts. The mounts bwrap creates
+for the sandbox from the other options of the flake are not part of
+them, they are gone with the sandbox as before. The option is not
+passed to bwrap.
+
+A missing mount point is created on the host, a symbolic link on
+the way to it is refused. A mount of the application over an
+existing directory of the host hides that directory on the host as
+well, e.g a tmpfs the application mounts on `/tmp`. A mount on `/`
+itself is not attached. Not attached either is a mount which exists
+on the host at the same location already, or which the host created
+while the sandbox ran and which reached the sandbox through a tree
+bound into it, e.g a USB stick the host mounted meanwhile.
+
+Mounts can only be attached to the host with root privileges. A
+flake with **--persist-mounts** is therefore always created by the
+helper, see above, and only root can call it, any other caller is
+refused. The helper takes the option from the registration. It does
+not replace itself by the pilot in this case but starts the pilot in
+a child process, which calls bwrap, and waits for it as root: bwrap
+reports the process ID of the sandbox to the helper and holds the
+application back until the helper lets it start, once bwrap has set
+up the sandbox. The helper records the mounts of the sandbox at
+that point, they are the mounts of bwrap. When bwrap has terminated,
+the helper clones the mounts of the sandbox which were not recorded
+and attaches the clones to the host. The exit code of the
+application is the exit code of the pilot. If a mount cannot be
+attached, the error is reported and the pilot fails, although the
+application succeeded. As long as the sandbox runs, its instance is
+recorded with the process of the helper.
 
 The size of the tmpfs is limited by the **sandbox_tmpfs_size**
 setting in `/etc/flakes.yml`, which only root can write. It is the

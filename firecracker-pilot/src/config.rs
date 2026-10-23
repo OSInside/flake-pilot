@@ -27,6 +27,7 @@ use strum::Display;
 use std::collections::HashMap;
 use flakes::lookup::Lookup;
 use flakes::registration;
+use flakes::error::FlakeError;
 
 lazy_static! {
     static ref PROGRAM: String = registration::program_name();
@@ -37,16 +38,28 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref CONFIG: Config<'static> = registration::load_config(
-        &PROGRAM, *USERMODE
-    );
+    static ref CONFIG: Result<Config<'static>, String> =
+        registration::load_config(&PROGRAM, *USERMODE);
+}
+
+/// Loads the config singleton
+///
+/// A missing or invalid registration of the calling program is
+/// reported as error. The pilot calls this first, every later
+/// call of `config()` relies on it
+pub fn load_config() -> Result<(), FlakeError> {
+    match CONFIG.as_ref() {
+        Ok(_) => Ok(()),
+        Err(error) => Err(FlakeError::InvalidRegistration(error.clone()))
+    }
 }
 
 /// Returns the config singleton
 ///
-/// Will initialize the config on first call and return the cached version afterwards
+/// Will initialize the config on first call and return the cached version afterwards.
+/// The config has to be loaded successfully before, see `load_config()`
 pub fn config() -> &'static Config<'static> {
-    &CONFIG
+    CONFIG.as_ref().expect("The configuration is loaded by load_config()")
 }
 
 /// Returns whether the calling program is registered for the

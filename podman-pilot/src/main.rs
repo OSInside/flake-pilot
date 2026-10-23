@@ -32,7 +32,7 @@ use std::env;
 use std::os::unix::process::CommandExt;
 use std::process::{ExitCode, Termination};
 
-use config::{config, is_usermode};
+use config::{is_usermode, load_config};
 use env_logger::Env;
 use flakes::error::FlakeError;
 use flakes::helper::helper_call;
@@ -60,8 +60,10 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE
     }
     // load config now so we can terminate early if the config is invalid
-    config();
-    // past here there should be no more panics
+    if let Err(err) = load_config() {
+        error!("{err}");
+        return err.report()
+    }
 
     let result = run();
 

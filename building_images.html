@@ -1,0 +1,423 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>11. How To Build Your Own App Images &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=1da9b6e9" />
+
+  
+    <link rel="shortcut icon" href="_static/flake-pilot-logo.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=537ea5e8"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="12. Troubleshooting and Known Issues" href="troubleshooting.html" />
+    <link rel="prev" title="10. Application Setup" href="application_setup.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+              <img src="_static/flake-pilot-logo.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="privileges.html">3. Privileges and Trust</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#how-flake-pilot-gets-its-privileges">3.1. How Flake Pilot Gets Its Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-the-helper-checks">3.2. What the Helper Checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-each-feature-needs">3.3. What Each Feature Needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-this-means-in-practice">3.4. What This Means in Practice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#the-reference-policy">3.5. The Reference Policy</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">4. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">4.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">4.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">4.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">4.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">4.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">5. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">5.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">5.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">5.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">5.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">5.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">5.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">5.7. Pilot Options as Part of the Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#updating-the-container-image">5.8. Updating the Container Image</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">6. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">6.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">6.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">6.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">6.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">7. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">7.1. The Concept</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#the-firewall-setup">7.1.1. The Firewall Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">7.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">7.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">7.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">7.2.3. Disconnect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#delete-the-host-setup">7.2.4. Delete the Host Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">7.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">8. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">8.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">8.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">8.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">8.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">8.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="sandbox_apps.html">9. Applications From a Sandbox</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#providing-a-root-filesystem-tree">9.1. Providing a Root Filesystem Tree</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="sandbox_apps.html#the-host-root-as-the-tree">9.1.1. The Host Root as the Tree</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#a-shell-as-a-sandbox-app">9.2. A Shell as a Sandbox App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#adding-paths-from-the-host">9.3. Adding Paths from the Host</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#where-written-data-is-kept">9.4. Where Written Data Is Kept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#registration-options-in-short">9.5. Registration Options in Short</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sandbox_apps.html#calling-a-registered-sandbox-app">9.6. Calling a Registered Sandbox App</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">10. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">10.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">10.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">10.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">10.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">11. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#build-commands">11.1. Build Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#how-the-build-works">11.1.1. How the Build Works</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#building-container-images">11.1.2. Building Container Images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#building-vm-images">11.1.3. Building VM Images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#delta-containers">11.2. Delta Containers</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">12. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">12.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">12.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">12.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">12.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">12.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">12.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">11. </span>How To Build Your Own App Images</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="application_setup.html" class="btn btn-neutral float-left" title="10. Application Setup" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="troubleshooting.html" class="btn btn-neutral float-right" title="12. Troubleshooting and Known Issues" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="how-to-build-your-own-app-images">
+<span id="building-images"></span><h1><span class="section-number">11. </span>How To Build Your Own App Images<a class="headerlink" href="#how-to-build-your-own-app-images" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter explains how the container and VM images the flakes
+of this guide are based on are built, and how to build your own.</p>
+</div>
+<p>The container and VM images used in this guide are built with
+<a class="reference external" href="https://github.com/OSInside/kiwi">KIWI</a>. Every image is described
+by a KIWI image description, and the descriptions for all images used
+in this guide are part of the appstore in the Flake Pilot repository:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/OSInside/flake-pilot/tree/main/appstore/podman">https://github.com/OSInside/flake-pilot/tree/main/appstore/podman</a>
+for container images, published at
+<a class="reference external" href="https://gallery.ecr.aws/b9k1j9y6?page=1">https://gallery.ecr.aws/b9k1j9y6?page=1</a></p></li>
+<li><p><a class="reference external" href="https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker">https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker</a>
+for VM images, published at <a class="reference external" href="https://ddrasqgvrmpt8.cloudfront.net">https://ddrasqgvrmpt8.cloudfront.net</a></p></li>
+</ul>
+<p>They can be used as they are, or as a starting point for your own
+images.</p>
+<p>KIWI is also the tool of choice for the two image types which are
+specific to Flake Pilot:</p>
+<ul class="simple">
+<li><p><strong>Delta containers</strong>, which carry only the difference to a base
+container and are used with the <code class="docutils literal notranslate"><span class="pre">--base</span></code> option of
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span> <span class="pre">register</span></code>, see <a class="reference internal" href="#building-delta-containers"><span class="std std-ref">Delta Containers</span></a>
+and <a class="reference internal" href="container_apps.html#container-example-delta"><span class="std std-ref">An Editor as a Delta Container</span></a>.</p></li>
+<li><p><strong>KIS images</strong>, the kernel/initrd/rootfs archives pulled with
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">pull</span> <span class="pre">--kis-image</span></code>, see <a class="reference internal" href="vm_apps.html#vm-apps"><span class="std std-ref">Applications From a Virtual Machine</span></a>.</p></li>
+</ul>
+<section id="build-commands">
+<span id="building-images-commands"></span><h2><span class="section-number">11.1. </span>Build Commands<a class="headerlink" href="#build-commands" title="Link to this heading"></a></h2>
+<p>flake-ctl provides a build command for each of the two image kinds:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span> <span class="pre">build</span></code> builds container images, from image
+descriptions of the KIWI <code class="docutils literal notranslate"><span class="pre">docker</span></code> or <code class="docutils literal notranslate"><span class="pre">oci</span></code> image type.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">build</span></code> builds VM images, from image
+descriptions of the KIWI <code class="docutils literal notranslate"><span class="pre">kis</span></code> image type.</p></li>
+</ul>
+<p>Both commands take the path of the image description and the name
+of the file to store the resulting image archive in:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>/path/to/image/description<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/path/to/result
+</pre></div>
+</div>
+<p>The only tool the build host requires for this is podman. KIWI and
+everything else the build needs is provided by the KIWI container
+and the box it starts. Nothing of it is installed on the host, and
+the host does not need to run the distribution the image is built
+for.</p>
+<section id="how-the-build-works">
+<h3><span class="section-number">11.1.1. </span>How the Build Works<a class="headerlink" href="#how-the-build-works" title="Link to this heading"></a></h3>
+<img alt="Image build through flake-ctl, the KIWI container and the box" class="align-center" src="_images/image-build.png" />
+<p>A build takes the following steps:</p>
+<ol class="arabic simple">
+<li><p>flake-ctl starts the KIWI container through podman. The image
+description, the box cache <code class="docutils literal notranslate"><span class="pre">~/.kiwi_boxes</span></code> and an optional
+shared path are mounted into the container, along with a
+temporary directory below <code class="docutils literal notranslate"><span class="pre">/var/tmp</span></code> for the result.</p></li>
+<li><p>In the container, <code class="docutils literal notranslate"><span class="pre">kiwi</span> <span class="pre">system</span> <span class="pre">boxbuild</span></code> starts the box, a small
+virtual machine. The box is downloaded once to <code class="docutils literal notranslate"><span class="pre">~/.kiwi_boxes</span></code>
+and reused by later builds. By default the <code class="docutils literal notranslate"><span class="pre">tumbleweed</span></code> box is
+used. The box runs with KVM acceleration if the host provides it.</p></li>
+<li><p>In the box, KIWI builds the image and bundles the result into the
+temporary directory: the image archive, its checksum and the log
+of the build.</p></li>
+<li><p>flake-ctl moves the image archive to <code class="docutils literal notranslate"><span class="pre">OUTFILE</span></code> and creates the
+sha256 checksum file <code class="docutils literal notranslate"><span class="pre">OUTFILE.sha256</span></code> next to it, which allows
+to verify the archive and makes a KIS image ready to be pulled with
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">pull</span> <span class="pre">--kis-image</span></code>. The log of the build
+is kept as <code class="docutils literal notranslate"><span class="pre">OUTFILE.log</span></code>, also if the build fails. The temporary
+directory is deleted.</p></li>
+</ol>
+<p>The box and its resources are selected by the options of
+<code class="docutils literal notranslate"><span class="pre">kiwi</span> <span class="pre">system</span> <span class="pre">boxbuild</span></code>, which both commands provide under the same
+name, for example:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>/path/to/image/description<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/path/to/result<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--box<span class="w"> </span>universal<span class="w"> </span>--box-smp-cpus<span class="w"> </span><span class="m">2</span><span class="w"> </span>--box-memory<span class="w"> </span><span class="m">2048</span>
+</pre></div>
+</div>
+<p>The KIWI container is <code class="docutils literal notranslate"><span class="pre">public.ecr.aws/b9k1j9y6/kiwi:latest</span></code>. Another
+container can be configured with <code class="docutils literal notranslate"><span class="pre">kiwi_container</span></code> in
+<code class="docutils literal notranslate"><span class="pre">/etc/flakes.yml</span></code>. For all options see
+<code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">flake-ctl-podman-build</span></code> and <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">flake-ctl-firecracker-build</span></code>.</p>
+</section>
+<section id="building-container-images">
+<h3><span class="section-number">11.1.2. </span>Building Container Images<a class="headerlink" href="#building-container-images" title="Link to this heading"></a></h3>
+<p>The container images for podman are in <code class="docutils literal notranslate"><span class="pre">appstore/podman</span></code>, grouped
+in subdirectories such as <code class="docutils literal notranslate"><span class="pre">ai</span></code> and <code class="docutils literal notranslate"><span class="pre">cloudsdk</span></code>. Their descriptions
+use the KIWI <code class="docutils literal notranslate"><span class="pre">docker</span></code> image type. <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span> <span class="pre">build</span></code> accepts
+descriptions of the <code class="docutils literal notranslate"><span class="pre">docker</span></code> and <code class="docutils literal notranslate"><span class="pre">oci</span></code> image types:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>appstore/podman/ai/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/var/tmp/claude.docker.tar
+</pre></div>
+</div>
+<p>The result is a container archive, which can be loaded into the local
+container storage and then registered as a flake as described in
+<a class="reference internal" href="container_apps.html#container-apps"><span class="std std-ref">Applications From a Container</span></a>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>load<span class="w"> </span>--oci<span class="w"> </span>/var/tmp/claude.docker.tar
+</pre></div>
+</div>
+<p>The image description is shared with the box at <code class="docutils literal notranslate"><span class="pre">/description</span></code>.
+Data outside of the description directory is only available in the
+box if it is shared with the <code class="docutils literal notranslate"><span class="pre">--shared-path</span></code> option. The images in
+<code class="docutils literal notranslate"><span class="pre">appstore/podman/cloudsdk</span></code> for example share a repository with the
+SLES release package. Their descriptions link to it through the
+relative symlink <code class="docutils literal notranslate"><span class="pre">release</span> <span class="pre">-&gt;</span> <span class="pre">../.sle16/release</span></code>, which resolves to
+<code class="docutils literal notranslate"><span class="pre">/.sle16/release</span></code> in the box. With <code class="docutils literal notranslate"><span class="pre">HOST_PATH:BOX_PATH</span></code> the
+repository is shared at exactly this location:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>appstore/podman/cloudsdk/aws<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/var/tmp/aws.docker.tar<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--shared-path<span class="w"> </span>appstore/podman/cloudsdk/.sle16:/.sle16
+</pre></div>
+</div>
+<p>Without a <code class="docutils literal notranslate"><span class="pre">BOX_PATH</span></code>, the shared path is available at the same
+location in the box as on the host.</p>
+</section>
+<section id="building-vm-images">
+<h3><span class="section-number">11.1.3. </span>Building VM Images<a class="headerlink" href="#building-vm-images" title="Link to this heading"></a></h3>
+<p>The VM images for firecracker are in <code class="docutils literal notranslate"><span class="pre">appstore/firecracker</span></code>. Their
+descriptions use the KIWI <code class="docutils literal notranslate"><span class="pre">kis</span></code> image type, which is the type
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">firecracker</span> <span class="pre">build</span></code> expects. The result is a KIS archive
+containing the rootfs, the kernel and the initrd:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>appstore/firecracker/claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/var/tmp/claude.kis
+</pre></div>
+</div>
+<p>With the checksum file created next to it, the archive can be pulled
+into the local firecracker registry right away and used as described
+in <a class="reference internal" href="vm_apps.html#vm-apps"><span class="std std-ref">Applications From a Virtual Machine</span></a>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>firecracker<span class="w"> </span>pull<span class="w"> </span>--name<span class="w"> </span>claude<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kis-image<span class="w"> </span>/var/tmp/claude.kis
+</pre></div>
+</div>
+<p>To make the image available to other hosts, publish the archive on a
+web server together with its <code class="docutils literal notranslate"><span class="pre">.sha256</span></code> checksum file and pull it
+from there by its https URL.</p>
+</section>
+</section>
+<section id="delta-containers">
+<span id="building-delta-containers"></span><h2><span class="section-number">11.2. </span>Delta Containers<a class="headerlink" href="#delta-containers" title="Link to this heading"></a></h2>
+<p>A regular container image contains the complete root tree of the
+application, including all the parts it shares with other
+containers. A delta container contains only the files that differ
+from a given base container. The base is pulled to the host once and
+shared by all delta containers built against it, so every additional
+application only adds its own data.</p>
+<p>A delta container is not functional on its own. To run it, the base
+container is mounted and the delta container is layered on top of it.
+Flake Pilot does this in the provision step of podman flakes that
+were registered with the <code class="docutils literal notranslate"><span class="pre">--base</span></code> option, see
+<a class="reference internal" href="container_apps.html#container-example-delta"><span class="std std-ref">An Editor as a Delta Container</span></a>. Further layers between the base and
+the delta can be added with the <code class="docutils literal notranslate"><span class="pre">--layer</span></code> option.</p>
+<p>In KIWI, a delta container is a container image built from a base
+container with the <code class="docutils literal notranslate"><span class="pre">delta_root</span></code> attribute enabled:</p>
+<div class="highlight-xml notranslate"><div class="highlight"><pre><span></span><span class="nt">&lt;type</span><span class="w"> </span><span class="na">image=</span><span class="s">"oci"</span>
+<span class="w">      </span><span class="na">derived_from=</span><span class="s">"docker-archive:/path/to/basesystem.tar"</span>
+<span class="w">      </span><span class="na">delta_root=</span><span class="s">"true"</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;containerconfig</span><span class="w"> </span><span class="na">name=</span><span class="s">"joe"</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;/type&gt;</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">derived_from</span></code> attribute sets the base container, here given as
+a docker archive type. This is the base the delta container must be used
+with later. The <code class="docutils literal notranslate"><span class="pre">derived_from</span></code> value is passed along to <code class="docutils literal notranslate"><span class="pre">skopeo</span> <span class="pre">copy</span></code>
+as such any skopeo supported source-image format/location can be used
+to reference the base container.
+A base container stored on the build host has to be made available
+to the build in the box. Build the delta container with
+<code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">podman</span> <span class="pre">build</span></code> and share the directory of the base with
+the <code class="docutils literal notranslate"><span class="pre">--shared-path</span></code> option. It is available at the same path in the
+box as on the host:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>podman<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kiwi-image<span class="w"> </span>/path/to/joe<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outfile<span class="w"> </span>/var/tmp/joe.oci.tar<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--shared-path<span class="w"> </span>/path/to
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">delta_root=&quot;true&quot;</span></code> KIWI puts only the differences to that base into
+the resulting image. A <code class="docutils literal notranslate"><span class="pre">config-overlay.sh</span></code> script, if present in
+the image description, runs at the end of the build and is the last
+point at which the delta root tree can be changed.</p>
+<p>Example delta containers built against a common basesystem container,
+including the <code class="docutils literal notranslate"><span class="pre">joe</span></code> editor used in <a class="reference internal" href="container_apps.html#container-example-delta"><span class="std std-ref">An Editor as a Delta Container</span></a>,
+can be found here:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers">https://build.opensuse.org/project/show/home:marcus.schaefer:delta_containers</a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="application_setup.html" class="btn btn-neutral float-left" title="10. Application Setup" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="troubleshooting.html" class="btn btn-neutral float-right" title="12. Troubleshooting and Known Issues" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on October 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

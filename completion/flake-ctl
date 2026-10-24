@@ -180,6 +180,34 @@ __flake_ctl_podman_show() {
     __flake_ctl_show
 }
 
+__flake_ctl_podman_build() {
+    __comp_reply_unused "
+        --9p-sharing
+        --aarch64
+        --box
+        --box-console
+        --box-debug
+        --box-memory
+        --box-smp-cpus
+        --container
+        --cpu
+        --kiwi-image
+        --kiwi-version
+        --machine
+        --no-accel
+        --no-snapshot
+        --no-update-check
+        --outfile
+        --shared-path
+        --ssh-key
+        --ssh-port
+        --sshfs-sharing
+        --virtiofs-sharing
+        --x86_64
+        --help
+    "
+}
+
 __flake_ctl_podman_load() {
     __comp_reply_unused "--oci --use-addon-store --help"
 }
@@ -225,6 +253,7 @@ __flake_ctl_main() {
     if [ "${cword}" -gt 1 ];then
         for comp in ${COMP_WORDS[1]}_${COMP_WORDS[2]};do
             case "$comp" in
+            podman_build| \
             podman_load| \
             podman_export| \
             podman_help| \
@@ -259,7 +288,7 @@ __flake_ctl_main() {
                 ;;
             podman_*)
                 command="podman" && __comp_reply "
-                    help export load pull register remove reset show
+                    build help export load pull register remove reset show
                 " && return 0
                 ;;
             help_*)

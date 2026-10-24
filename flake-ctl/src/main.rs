@@ -105,7 +105,8 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     kiwi_image, outfile, boxbuild
                 } => {
                     exit(
-                        build::build_kis_image(
+                        build::build_image(
+                            &build::KIS_IMAGE,
                             kiwi_image, outfile, boxbuild, user
                         )
                     );
@@ -370,8 +371,22 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
         },
         // podman engine
         cli::Commands::Podman { command } => {
-            init_flakes_dir(user)?;
+            // Building an image does not touch the registry
+            if ! matches!(command, cli::Podman::Build { .. }) {
+                init_flakes_dir(user)?;
+            }
             match &command {
+                // build
+                cli::Podman::Build {
+                    kiwi_image, outfile, boxbuild
+                } => {
+                    exit(
+                        build::build_image(
+                            &build::CONTAINER_IMAGE,
+                            kiwi_image, outfile, boxbuild, user
+                        )
+                    );
+                },
                 // pull
                 cli::Podman::Pull { uri, use_addon_store } => {
                     if ! addon_store_allowed(*use_addon_store, user) {

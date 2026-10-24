@@ -31,7 +31,7 @@ SYNOPSIS
         --no-snapshot
         --no-update-check
         --outfile <OUTFILE>
-        --shared-path <PATH>
+        --shared-path <HOST_PATH[:BOX_PATH]>
         --ssh-key <NAME>
         --ssh-port <PORT>
         --sshfs-sharing
@@ -136,12 +136,20 @@ see the kiwi documentation for details:
   will be fetched from pip and replaces the box installed KIWI
   version
 
---shared-path <PATH>
+--shared-path <HOST_PATH[:BOX_PATH]>
 
   Optional host path to share with the box. The same path as it is
   present on the host will also be available inside of the box
-  during build time. The path is mounted to the same location in
-  the kiwi container
+  during build time. With HOST_PATH:BOX_PATH the host path is
+  available at BOX_PATH inside of the box instead. This allows an
+  image description to reference data outside of its directory at
+  a fixed location, e.g through a relative symlink which resolves
+  to BOX_PATH from the location of the description in the box,
+  `/description`. BOX_PATH has to be an absolute path and must not
+  interfere with `/description`, `/result` and `/root/.kiwi_boxes`,
+  which are used by the build. HOST_PATH must not contain ':'.
+  The host path is mounted to BOX_PATH, or to the same location,
+  in the kiwi container, from where kiwi shares it with the box
 
 --no-update-check
 

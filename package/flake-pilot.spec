@@ -296,6 +296,7 @@ fi
 /usr/sbin/flake-registry
 %doc %{_mandir}/man8/flake-ctl-podman-export.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-load.8.gz
+%doc %{_mandir}/man8/flake-ctl-podman-build.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-pull.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-register.8.gz
 %doc %{_mandir}/man8/flake-ctl-podman-remove.8.gz

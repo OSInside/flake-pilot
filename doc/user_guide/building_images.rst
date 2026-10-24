@@ -35,104 +35,128 @@ specific to Flake Pilot:
 * **KIS images**, the kernel/initrd/rootfs archives pulled with
   ``flake-ctl firecracker pull --kis-image``, see :ref:`vm-apps`.
 
-.. _building-images-boxbuild:
+.. _building-images-commands:
 
-Building With Podman Only
-=========================
+Build Commands
+==============
 
-KIWI does not need to be installed on the build host. Instead the
-build runs KIWI from a container, and inside the container
-``kiwi system boxbuild`` is called. The boxbuild command starts a
-small virtual machine, the box, and runs the actual image build
-inside of it. Because the build happens in the box and not on the
-host, the only requirement for the build host is podman.
+flake-ctl provides a build command for each of the two image kinds:
 
-Each image description in the appstore comes with a build script
-named after the image. For example, the ``claude`` container image
-is built by ``claude.sh``:
+* ``flake-ctl podman build`` builds container images, from image
+  descriptions of the KIWI ``docker`` or ``oci`` image type.
+
+* ``flake-ctl firecracker build`` builds VM images, from image
+  descriptions of the KIWI ``kis`` image type.
+
+Both commands take the path of the image description and the name
+of the file to store the resulting image archive in:
 
 .. code-block:: bash
 
-   #!/bin/bash
+   flake-ctl podman build \
+       --kiwi-image /path/to/image/description \
+       --outfile /path/to/result
 
-   mkdir -p image $HOME/.kiwi_boxes
+The only tool the build host requires for this is podman. KIWI and
+everything else the build needs is provided by the KIWI container
+and the box it starts. Nothing of it is installed on the host, and
+the host does not need to run the distribution the image is built
+for.
 
-   podman run \
-       --privileged \
-       --pull=newer \
-       -v $HOME/.kiwi_boxes:/root/.kiwi_boxes \
-       -v $PWD:/claude.kiwi \
-       -v $PWD/image:/claude.oci \
-       --rm \
-       -it public.ecr.aws/b9k1j9y6/kiwi:latest \
-       system boxbuild \
-       --box tumbleweed \
-       --box-smp-cpus 2 \
-       --box-memory 2048 \
-       kiwi \
-       --description /claude.kiwi \
-       --target-dir /claude.oci
+How the Build Works
+-------------------
 
-The script mounts the image description from the current directory
-into the KIWI container and the ``image`` directory as the target for
-the build result. The box is downloaded to ``$HOME/.kiwi_boxes`` once
-and reused by later builds. The options after ``system boxbuild``
-select the box and its resources, and everything after the ``kiwi``
-keyword is passed to the KIWI build that runs inside the box.
+.. image:: ../images/image-build.png
+   :align: center
+   :alt: Image build through flake-ctl, the KIWI container and the box
+
+A build takes the following steps:
+
+1. flake-ctl starts the KIWI container through podman. The image
+   description, the box cache ``~/.kiwi_boxes`` and an optional
+   shared path are mounted into the container, along with a
+   temporary directory below ``/var/tmp`` for the result.
+
+2. In the container, ``kiwi system boxbuild`` starts the box, a small
+   virtual machine. The box is downloaded once to ``~/.kiwi_boxes``
+   and reused by later builds. By default the ``tumbleweed`` box is
+   used. The box runs with KVM acceleration if the host provides it.
+
+3. In the box, KIWI builds the image and bundles the result into the
+   temporary directory: the image archive, its checksum and the log
+   of the build.
+
+4. flake-ctl moves the image archive to ``OUTFILE`` and creates the
+   sha256 checksum file ``OUTFILE.sha256`` next to it, which allows
+   to verify the archive and makes a KIS image ready to be pulled with
+   ``flake-ctl firecracker pull --kis-image``. The log of the build
+   is kept as ``OUTFILE.log``, also if the build fails. The temporary
+   directory is deleted.
+
+The box and its resources are selected by the options of
+``kiwi system boxbuild``, which both commands provide under the same
+name, for example:
+
+.. code-block:: bash
+
+   flake-ctl podman build \
+       --kiwi-image /path/to/image/description \
+       --outfile /path/to/result \
+       --box universal --box-smp-cpus 2 --box-memory 2048
+
+The KIWI container is ``public.ecr.aws/b9k1j9y6/kiwi:latest``. Another
+container can be configured with ``kiwi_container`` in
+``/etc/flakes.yml``. For all options see
+``man flake-ctl-podman-build`` and ``man flake-ctl-firecracker-build``.
 
 Building Container Images
 -------------------------
 
 The container images for podman are in ``appstore/podman``, grouped
-in subdirectories such as ``ai`` and ``cloudsdk``. To build one of
-them, change into its directory and call its build script:
+in subdirectories such as ``ai`` and ``cloudsdk``. Their descriptions
+use the KIWI ``docker`` image type. ``flake-ctl podman build`` accepts
+descriptions of the ``docker`` and ``oci`` image types:
 
 .. code-block:: bash
 
-   cd appstore/podman/ai/claude
-   ./claude.sh
+   flake-ctl podman build \
+       --kiwi-image appstore/podman/ai/claude \
+       --outfile /var/tmp/claude.docker.tar
 
-The result is an OCI archive in the ``image`` directory, which can be
-loaded into the local container storage and then registered as a
-flake as described in :ref:`container-apps`:
+The result is a container archive, which can be loaded into the local
+container storage and then registered as a flake as described in
+:ref:`container-apps`:
 
 .. code-block:: bash
 
-   podman load -i image/*.tar.xz
+   flake-ctl podman load --oci /var/tmp/claude.docker.tar
+
+The image description is shared with the box at ``/description``.
+Data outside of the description directory is only available in the
+box if it is shared with the ``--shared-path`` option. The images in
+``appstore/podman/cloudsdk`` for example share a repository with the
+SLES release package. Their descriptions link to it through the
+relative symlink ``release -> ../.sle16/release``, which resolves to
+``/.sle16/release`` in the box. With ``HOST_PATH:BOX_PATH`` the
+repository is shared at exactly this location:
+
+.. code-block:: bash
+
+   flake-ctl podman build \
+       --kiwi-image appstore/podman/cloudsdk/aws \
+       --outfile /var/tmp/aws.docker.tar \
+       --shared-path appstore/podman/cloudsdk/.sle16:/.sle16
+
+Without a ``BOX_PATH``, the shared path is available at the same
+location in the box as on the host.
 
 Building VM Images
 ------------------
 
-The VM images for firecracker are in ``appstore/firecracker`` and
-follow the same concept. Each image has a build script named after
-the image, for example ``claude.sh``:
-
-.. code-block:: bash
-
-   cd appstore/firecracker/claude
-   ./claude.sh
-
-The image descriptions use the KIWI ``kis`` image type, so the result
-in the ``image`` directory is a KIS archive containing the rootfs, the
-kernel and the initrd. To use it with
-``flake-ctl firecracker pull --kis-image``, publish the archive on a
-web server together with a checksum file of the same name plus a
-``.sha256`` suffix, see :ref:`vm-apps`. To use it on the build host
-itself, create the checksum file next to the archive and pass the
-path of the archive:
-
-.. code-block:: bash
-
-   cd image
-   sha256sum claude.x86_64-1.16.0-0.tar.xz > claude.x86_64-1.16.0-0.tar.xz.sha256
-   flake-ctl firecracker pull --name claude \
-       --kis-image $PWD/claude.x86_64-1.16.0-0.tar.xz
-
-The same build is also provided by ``flake-ctl firecracker build``.
-It runs the kiwi boxbuild in the kiwi container like the build
-scripts do, stores the KIS archive under the given name and creates
-the checksum file next to it, such that the result can be pulled
-right away:
+The VM images for firecracker are in ``appstore/firecracker``. Their
+descriptions use the KIWI ``kis`` image type, which is the type
+``flake-ctl firecracker build`` expects. The result is a KIS archive
+containing the rootfs, the kernel and the initrd:
 
 .. code-block:: bash
 
@@ -140,11 +164,18 @@ right away:
        --kiwi-image appstore/firecracker/claude \
        --outfile /var/tmp/claude.kis
 
+With the checksum file created next to it, the archive can be pulled
+into the local firecracker registry right away and used as described
+in :ref:`vm-apps`:
+
+.. code-block:: bash
+
    flake-ctl firecracker pull --name claude \
        --kis-image /var/tmp/claude.kis
 
-The container used for the build is set by ``kiwi_container`` in
-``/etc/flakes.yml``, see ``man flake-ctl-firecracker-build``.
+To make the image available to other hosts, publish the archive on a
+web server together with its ``.sha256`` checksum file and pull it
+from there by its https URL.
 
 .. _building-delta-containers:
 
@@ -181,6 +212,19 @@ a docker archive type. This is the base the delta container must be used
 with later. The ``derived_from`` value is passed along to ``skopeo copy``
 as such any skopeo supported source-image format/location can be used
 to reference the base container.
+A base container stored on the build host has to be made available
+to the build in the box. Build the delta container with
+``flake-ctl podman build`` and share the directory of the base with
+the ``--shared-path`` option. It is available at the same path in the
+box as on the host:
+
+.. code-block:: bash
+
+   flake-ctl podman build \
+       --kiwi-image /path/to/joe \
+       --outfile /var/tmp/joe.oci.tar \
+       --shared-path /path/to
+
 With ``delta_root="true"`` KIWI puts only the differences to that base into
 the resulting image. A ``config-overlay.sh`` script, if present in
 the image description, runs at the end of the build and is the last

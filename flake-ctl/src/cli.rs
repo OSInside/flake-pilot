@@ -304,8 +304,10 @@ pub struct BoxbuildOptions {
 
     /// Optional host path to share with the box. The same
     /// path as it is present on the host will also be
-    /// available inside of the box during build time
-    #[clap(long, value_name = "PATH")]
+    /// available inside of the box during build time.
+    /// With HOST_PATH:BOX_PATH the host path is available
+    /// at BOX_PATH inside of the box instead
+    #[clap(long, value_name = "HOST_PATH[:BOX_PATH]")]
     pub shared_path: Option<String>,
 
     /// Skip check for available box update. The option has
@@ -627,6 +629,24 @@ pub enum Bubblewrap {
 
 #[derive(Subcommand)]
 pub enum Podman {
+    /// Build container image through a kiwi boxbuild in a container
+    Build {
+        /// Path to the KIWI image description to build. The
+        /// description has to build the docker or oci image type
+        #[clap(long)]
+        kiwi_image: String,
+
+        /// Path name of the container archive to create. A
+        /// checksum file named like the archive plus a '.sha256'
+        /// suffix is created next to it. The archive can be
+        /// loaded via 'podman load --oci'. The build log is
+        /// kept next to it with a '.log' suffix
+        #[clap(long)]
+        outfile: String,
+
+        #[clap(flatten)]
+        boxbuild: BoxbuildOptions,
+    },
     /// Pull container
     Pull {
         /// OCI image to pull from remote registry into local podman registry

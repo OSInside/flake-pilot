@@ -10,3 +10,6 @@ generic:
   # %tmpfs_size option, applied by bubblewrap-pilot or the helper.
   # Without it the tmpfs may use up to half of the memory
   # sandbox_tmpfs_size: 2G
+  # Container which runs the kiwi boxbuild for
+  # 'flake-ctl firecracker build'
+  # kiwi_container: public.ecr.aws/b9k1j9y6/kiwi:latest

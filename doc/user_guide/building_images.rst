@@ -128,6 +128,24 @@ path of the archive:
    flake-ctl firecracker pull --name claude \
        --kis-image $PWD/claude.x86_64-1.16.0-0.tar.xz
 
+The same build is also provided by ``flake-ctl firecracker build``.
+It runs the kiwi boxbuild in the kiwi container like the build
+scripts do, stores the KIS archive under the given name and creates
+the checksum file next to it, such that the result can be pulled
+right away:
+
+.. code-block:: bash
+
+   flake-ctl firecracker build \
+       --kiwi-image appstore/firecracker/claude \
+       --outfile /var/tmp/claude.kis
+
+   flake-ctl firecracker pull --name claude \
+       --kis-image /var/tmp/claude.kis
+
+The container used for the build is set by ``kiwi_container`` in
+``/etc/flakes.yml``, see ``man flake-ctl-firecracker-build``.
+
 .. _building-delta-containers:
 
 Delta Containers

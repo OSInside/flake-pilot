@@ -216,7 +216,7 @@ pub fn init_toplevel_image_dir(registry_dir: &str) -> bool {
     ok
 }
 
-fn tempdir() -> io::Result<TempDir> {
+pub fn tempdir() -> io::Result<TempDir> {
     /*!
     Create a temporary directory below defaults::TEMP_DIR
 
@@ -677,7 +677,7 @@ pub fn verify_checksum(image: &str, checksum_record: &str) -> bool {
     true
 }
 
-fn checksum(image: &str, size: Option<u64>) -> Option<String> {
+pub fn checksum(image: &str, size: Option<u64>) -> Option<String> {
     /*!
     Calculate the sha256 sum of the first size bytes of image.
     If no size is given the complete file is read

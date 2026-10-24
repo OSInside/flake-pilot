@@ -22,7 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-use clap::{AppSettings, ArgEnum, Parser, Subcommand, ArgGroup};
+use clap::{AppSettings, ArgEnum, Args, Parser, Subcommand, ArgGroup};
 
 /// flake-ctl - Manage Flake Applications
 #[derive(Parser)]
@@ -138,6 +138,24 @@ pub enum Firecracker {
         #[clap(long)]
         force: bool,
     },
+    /// Build KIS image through a kiwi boxbuild in a container
+    Build {
+        /// Path to the KIWI image description to build. The
+        /// description has to build the kis image type
+        #[clap(long)]
+        kiwi_image: String,
+
+        /// Path name of the KIS archive to create. A checksum
+        /// file named like the archive plus a '.sha256' suffix
+        /// is created next to it, such that the result can be
+        /// pulled via 'firecracker pull --kis-image'. The build
+        /// log is kept next to it with a '.log' suffix
+        #[clap(long)]
+        outfile: String,
+
+        #[clap(flatten)]
+        boxbuild: BoxbuildOptions,
+    },
     /// Register VM application
     Register {
         /// A virtual machine name. The name must match with a
@@ -232,6 +250,130 @@ pub enum Firecracker {
         #[clap(long)]
         force: bool,
     },
+}
+
+/// Options of the kiwi system boxbuild command, passed along
+/// to the boxbuild running in the kiwi container
+#[derive(Args)]
+#[clap(
+    group(
+        ArgGroup::new("arch")
+            .required(false).args(&["x86-64", "aarch64"])
+    ),
+    group(
+        ArgGroup::new("sharing")
+            .required(false)
+            .args(&["qemu-9p-sharing", "virtiofs-sharing", "sshfs-sharing"])
+    ),
+)]
+pub struct BoxbuildOptions {
+    /// Name of the box to use for the build process
+    #[clap(long = "box", value_name = "NAME", default_value = "tumbleweed")]
+    pub boxname: String,
+
+    /// Number of GBs to reserve as main memory for the
+    /// virtual machine. By default 8GB will be used
+    #[clap(long, value_name = "VMGB")]
+    pub box_memory: Option<String>,
+
+    /// Name of console in the kernel settings for the
+    /// virtual machine. By default set to hvc0
+    #[clap(long, value_name = "TTYNAME")]
+    pub box_console: Option<String>,
+
+    /// Number of CPUs to use in the SMP setup.
+    /// By default 4 CPUs will be used
+    #[clap(long, value_name = "NUMBER")]
+    pub box_smp_cpus: Option<u32>,
+
+    /// In debug mode the started virtual machine will
+    /// be kept open
+    #[clap(long)]
+    pub box_debug: bool,
+
+    /// Build in container instead of a VM. Options related
+    /// to building in a VM will have no effect
+    #[clap(long)]
+    pub container: bool,
+
+    /// Specify a KIWI version to use for the build. The
+    /// referenced KIWI will be fetched from pip and replaces
+    /// the box installed KIWI version
+    #[clap(long, value_name = "VERSION")]
+    pub kiwi_version: Option<String>,
+
+    /// Optional host path to share with the box. The same
+    /// path as it is present on the host will also be
+    /// available inside of the box during build time
+    #[clap(long, value_name = "PATH")]
+    pub shared_path: Option<String>,
+
+    /// Skip check for available box update. The option has
+    /// no effect if the selected box does not yet exist
+    #[clap(long)]
+    pub no_update_check: bool,
+
+    /// Run box with snapshot mode switched off. This causes
+    /// the box disk file to be modified by the build process
+    /// and allows to keep a persistent package cache as part
+    /// of the box
+    #[clap(long)]
+    pub no_snapshot: bool,
+
+    /// Run box without hardware acceleration. By default
+    /// KVM acceleration is activated
+    #[clap(long)]
+    pub no_accel: bool,
+
+    /// Select 9p backend to use for sharing data between
+    /// the host and the box
+    #[clap(long = "9p-sharing")]
+    pub qemu_9p_sharing: bool,
+
+    /// Select virtiofsd backend to use for sharing data
+    /// between the host and the box
+    #[clap(long)]
+    pub virtiofs_sharing: bool,
+
+    /// Select sshfs backend to use for sharing data between
+    /// the host and the box
+    #[clap(long)]
+    pub sshfs_sharing: bool,
+
+    /// Name of ssh key to authorize for connection.
+    /// By default id_rsa is used
+    #[clap(long, value_name = "NAME")]
+    pub ssh_key: Option<String>,
+
+    /// Port number to use to forward the guest SSH port
+    /// to the host. By default 10022 is used
+    #[clap(long, value_name = "PORT")]
+    pub ssh_port: Option<u16>,
+
+    /// Select box for the x86_64 architecture. If no
+    /// architecture is selected the host architecture is
+    /// used for selecting the box. The selected box
+    /// architecture also specifies the target architecture
+    /// for the image build with that box
+    #[clap(long = "x86_64")]
+    pub x86_64: bool,
+
+    /// Select box for the aarch64 architecture, see --x86_64
+    #[clap(long)]
+    pub aarch64: bool,
+
+    /// Machine name used by QEMU. By default no specific
+    /// value is used here and qemu selects its default
+    /// machine type. For cross arch builds it is required
+    /// to specify a machine name
+    #[clap(long, value_name = "QEMU_MACHINE")]
+    pub machine: Option<String>,
+
+    /// CPU type used by QEMU. By default the host CPU type
+    /// is used. On cross arch builds it is required to
+    /// specify the CPU emulation the box should use
+    #[clap(long, value_name = "QEMU_CPU")]
+    pub cpu: Option<String>,
 }
 
 #[derive(Subcommand)]

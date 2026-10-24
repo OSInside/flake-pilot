@@ -78,6 +78,13 @@ FILES
        # the host, see bubblewrap-pilot
        sandbox_tmpfs_size: 2G
 
+       # Container which provides kiwi to build KIS images
+       # through a kiwi system boxbuild, used by
+       # 'flake-ctl firecracker build'. Only read from
+       # /etc/flakes.yml. Without it the container
+       # public.ecr.aws/b9k1j9y6/kiwi:latest is used
+       kiwi_container: public.ecr.aws/b9k1j9y6/kiwi:latest
+
   The user specific configuration for running flake applications
   is created by calling the following command as that user:
 

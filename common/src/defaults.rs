@@ -47,6 +47,9 @@ pub const PODMAN_STORAGE_CONF: &str = "/etc/flakes/storage.conf";
 // are only written into it on request of flake-ctl
 pub const PODMAN_ADDON_STORE: &str = "/usr/lib/podman/storage";
 pub const PODMAN_PATH: &str = "/usr/bin/podman";
+// Container which provides kiwi to build images through
+// kiwi system boxbuild, see the kiwi_container setting
+pub const KIWI_CONTAINER: &str = "public.ecr.aws/b9k1j9y6/kiwi:latest";
 // The helper performs every action of flake-pilot which needs
 // root privileges. It belongs to root, provides a fixed set of
 // commands and validates their arguments. A caller who is not

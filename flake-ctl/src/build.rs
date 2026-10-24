@@ -26,28 +26,52 @@ use flakes::defaults::PODMAN_PATH;
 use serde_json::Value;
 use std::fs;
 use std::io::{self, IsTerminal};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use crate::cli::BoxbuildOptions;
 use crate::defaults;
 use crate::firecracker::{checksum, mv, tempdir, verify_checksum};
 
-pub fn build_kis_image(
-    kiwi_image: &str, outfile: &str, boxbuild: &BoxbuildOptions,
-    usermode: bool
+/// Type of image a build creates
+pub struct ImageType {
+    /// Name of the image type in messages
+    pub name: &'static str,
+    /// KIWI image type(s) the image description has to build
+    pub kiwi_type: &'static str,
+    /// Key of the archive in the kiwi result file
+    pub result_key: &'static str,
+}
+
+/// KIS archive of a firecracker VM image
+pub const KIS_IMAGE: ImageType = ImageType {
+    name: "KIS image",
+    kiwi_type: "kis",
+    result_key: defaults::KIWI_RESULT_KIS_ARCHIVE,
+};
+
+/// Archive of a podman container image
+pub const CONTAINER_IMAGE: ImageType = ImageType {
+    name: "container image",
+    kiwi_type: "docker or oci",
+    result_key: defaults::KIWI_RESULT_CONTAINER,
+};
+
+pub fn build_image(
+    image_type: &ImageType, kiwi_image: &str, outfile: &str,
+    boxbuild: &BoxbuildOptions, usermode: bool
 ) -> i32 {
     /*!
-    Build the KIWI image description kiwi_image as KIS image and
-    store the resulting archive as outfile
+    Build the KIWI image description kiwi_image and store the
+    resulting archive of the given image type as outfile
 
     The build runs 'kiwi system boxbuild' in an instance of the
     configured kiwi container, see get_kiwi_container. Along with
     the archive a checksum file named like outfile plus a '.sha256'
-    suffix is created, which allows to pull the result via
-    'firecracker pull --kis-image outfile'. The log of the build
-    is kept as outfile plus a '.log' suffix, also if the build
-    has failed
+    suffix is created. For a KIS image this allows to pull the
+    result via 'firecracker pull --kis-image outfile'. The log of
+    the build is kept as outfile plus a '.log' suffix, also if the
+    build has failed
     !*/
     let result = 255;
 
@@ -62,7 +86,7 @@ pub fn build_kis_image(
         None => return result
     };
     let shared_path = match &boxbuild.shared_path {
-        Some(shared_path) => match real_dir(shared_path) {
+        Some(shared_path) => match parse_shared_path(shared_path) {
             Some(shared_path) => Some(shared_path),
             None => return result
         },
@@ -89,14 +113,14 @@ pub fn build_kis_image(
 
     let mut build_result = match boxbuild_call(
         &description, &target_dir, &boxes_dir,
-        shared_path.as_deref(), boxbuild
+        shared_path.as_ref(), boxbuild
     ) {
-        Some(mut call) => run_build(&mut call),
+        Some(mut call) => run_build(&mut call, image_type),
         None => result
     };
     if build_result == 0 && (
         ! box_build_succeeded(&target_dir)
-        || ! store_kis_archive(&target_dir, &outfile)
+        || ! store_archive(&target_dir, &outfile, image_type)
     ) {
         build_result = result
     }
@@ -128,7 +152,7 @@ pub fn build_kis_image(
 
 fn boxbuild_call(
     description: &Path, target_dir: &Path, boxes_dir: &Path,
-    shared_path: Option<&Path>, boxbuild: &BoxbuildOptions
+    shared_path: Option<&SharedPath>, boxbuild: &BoxbuildOptions
 ) -> Option<Command> {
     /*!
     Create the podman call which runs the kiwi boxbuild of the
@@ -157,19 +181,83 @@ fn boxbuild_call(
     call.arg("--volume").arg(
         volume(target_dir, Path::new(defaults::KIWI_TARGET_DIR))?
     );
-    // The shared path is expected at the same location in the
-    // box as on the host. kiwi shares it from the container
-    // into the box and therefore it has to exist there too
+    // kiwi shares the shared path from the container into the
+    // box at the same location. It is therefore mounted to the
+    // location it is expected at in the box
     if let Some(shared_path) = shared_path {
-        call.arg("--volume").arg(volume(shared_path, shared_path)?);
+        call.arg("--volume").arg(
+            volume(&shared_path.host, &shared_path.target)?
+        );
     }
     call.arg(get_kiwi_container())
         .arg("system").arg("boxbuild")
-        .args(boxbuild_args(boxbuild, shared_path))
+        .args(boxbuild_args(
+            boxbuild, shared_path.map(|shared_path| &*shared_path.target)
+        ))
         .arg("kiwi")
         .arg("--description").arg(defaults::KIWI_DESCRIPTION_DIR)
         .arg("--target-dir").arg(defaults::KIWI_TARGET_DIR);
     Some(call)
+}
+
+/// Host directory to share with the box along with its
+/// location in the box
+#[derive(Debug, PartialEq)]
+pub struct SharedPath {
+    pub host: PathBuf,
+    pub target: PathBuf,
+}
+
+fn parse_shared_path(spec: &str) -> Option<SharedPath> {
+    /*!
+    Provide the shared path given as HOST_PATH or HOST_PATH:BOX_PATH
+
+    Without BOX_PATH the host directory is shared at the same
+    location in the box as on the host. BOX_PATH has to be an
+    absolute path. It must not interfere with the locations used
+    for the build in the kiwi container, see boxbuild_call. The
+    same applies to the location of the host directory if it is
+    shared at the same location
+    !*/
+    let (host, target) = match spec.split_once(':') {
+        Some((host, target)) => (host, Some(target)),
+        None => (spec, None)
+    };
+    let host = real_dir(host)?;
+    let target = match target {
+        Some(target) => {
+            let target = Path::new(target);
+            let normal = target.components().all(|component| {
+                matches!(component, Component::RootDir | Component::Normal(_))
+            });
+            if ! target.is_absolute() || ! normal {
+                error!(
+                    "Invalid box path '{}' in shared path {spec}: expected \
+                    an absolute path without '.' and '..'",
+                    target.display()
+                );
+                return None
+            }
+            target.to_path_buf()
+        },
+        None => host.clone()
+    };
+    for reserved in [
+        defaults::KIWI_DESCRIPTION_DIR,
+        defaults::KIWI_TARGET_DIR,
+        defaults::KIWI_BOXES_DIR
+    ] {
+        let reserved = Path::new(reserved);
+        if target.starts_with(reserved) || reserved.starts_with(&target) {
+            error!(
+                "Box path '{}' of shared path {spec} interferes with \
+                {} used by the build",
+                target.display(), reserved.display()
+            );
+            return None
+        }
+    }
+    Some(SharedPath { host, target })
 }
 
 fn boxbuild_args(
@@ -215,11 +303,11 @@ fn boxbuild_args(
     args
 }
 
-fn run_build(call: &mut Command) -> i32 {
+fn run_build(call: &mut Command, image_type: &ImageType) -> i32 {
     /*!
     Run the build and provide its exit code
     !*/
-    info!("Building KIS image...");
+    info!("Building {}...", image_type.name);
     debug!("{call:?}");
     match call.status() {
         Ok(status) => {
@@ -267,15 +355,17 @@ fn box_build_succeeded(target_dir: &Path) -> bool {
     }
 }
 
-fn store_kis_archive(target_dir: &Path, outfile: &Path) -> bool {
+fn store_archive(
+    target_dir: &Path, outfile: &Path, image_type: &ImageType
+) -> bool {
     /*!
-    Move the KIS archive built in target_dir to outfile and
-    create the checksum file next to it
+    Move the archive of the given image type built in target_dir
+    to outfile and create the checksum file next to it
 
     An archive which comes with a checksum file created by kiwi
     is verified against it first
     !*/
-    let archive = match find_kis_archive(target_dir) {
+    let archive = match find_archive(target_dir, image_type) {
         Some(archive) => archive,
         None => return false
     };
@@ -303,7 +393,7 @@ fn store_kis_archive(target_dir: &Path, outfile: &Path) -> bool {
         error!("Failed to write {checksum_file}: {error}");
         return false
     }
-    info!("KIS image: {outfile_name}");
+    info!("{}: {outfile_name}", capitalize(image_type.name));
     info!("Checksum: {checksum_file}");
     true
 }
@@ -342,13 +432,16 @@ fn keep_build_log(target_dir: &Path, outfile: &Path) {
     }
 }
 
-fn find_kis_archive(target_dir: &Path) -> Option<PathBuf> {
+fn find_archive(
+    target_dir: &Path, image_type: &ImageType
+) -> Option<PathBuf> {
     /*!
-    Find the KIS archive in the target directory of the build
+    Find the archive of the given image type in the target
+    directory of the build
 
     A build in a box VM keeps the build result in the VM. Only the
     result bundle created from it is stored in the target directory,
-    there is no kiwi result file. The bundle consists of the KIS
+    there is no kiwi result file. The bundle consists of the
     archive, its checksum file and the package lists. The name of
     the archive carries the bundle id. If the bundle renames the
     archive, a symlink of the original name points to the archive
@@ -373,16 +466,13 @@ fn find_kis_archive(target_dir: &Path) -> Option<PathBuf> {
                 return None
             }
         };
-        return match kiwi_result[defaults::KIWI_RESULT_KIS_ARCHIVE]
+        return match kiwi_result[image_type.result_key]
             ["filename"].as_str()
             .and_then(|filename| Path::new(filename).file_name())
         {
             Some(archive_name) => Some(target_dir.join(archive_name)),
             None => {
-                error!(
-                    "No KIS archive in build result, the image description \
-                    is expected to build the kis image type"
-                );
+                no_archive(image_type);
                 None
             }
         }
@@ -400,24 +490,43 @@ fn find_kis_archive(target_dir: &Path) -> Option<PathBuf> {
             entry.file_type().is_ok_and(|file_type| file_type.is_file())
         })
         .map(|entry| entry.path())
-        .filter(|path| {
-            let name = path.to_string_lossy();
-            name.ends_with(".tar.xz") || name.ends_with(".tar")
-        })
+        .filter(|path| is_archive(&path.to_string_lossy()))
         .collect();
     match archives.len() {
         1 => archives.pop(),
         0 => {
-            error!(
-                "No KIS archive in build result, the image description \
-                is expected to build the kis image type"
-            );
+            no_archive(image_type);
             None
         },
         _ => {
             error!("Build result is ambiguous, found archives: {archives:?}");
             None
         }
+    }
+}
+
+fn is_archive(name: &str) -> bool {
+    /*!
+    Check if the given file name is the one of a tar archive,
+    compressed or not, e.g foo.tar, foo.tar.xz, foo.docker.tar
+    !*/
+    ["", ".xz", ".gz", ".bz2", ".zst"].iter()
+        .any(|compression| name.ends_with(&format!(".tar{compression}")))
+}
+
+fn no_archive(image_type: &ImageType) {
+    error!(
+        "No {} archive in build result, the image description \
+        is expected to build the {} image type",
+        image_type.name, image_type.kiwi_type
+    );
+}
+
+fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new()
     }
 }
 
@@ -486,7 +595,7 @@ fn volume(source: &Path, target: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{Cli, Commands, Firecracker};
+    use crate::cli::{Cli, Commands, Firecracker, Podman};
     use clap::Parser;
     use std::os::unix::fs::symlink;
 
@@ -524,16 +633,20 @@ mod tests {
 
     #[test]
     fn test_boxbuild_call() {
+        let shared_path = SharedPath {
+            host: PathBuf::from("/host/shared"),
+            target: PathBuf::from("/shared")
+        };
         let call = boxbuild_call(
             Path::new("/desc"), Path::new("/target"), Path::new("/boxes"),
-            Some(Path::new("/shared")), &parse_boxbuild(&[])
+            Some(&shared_path), &parse_boxbuild(&[])
         ).unwrap();
         let args: Vec<String> = call.get_args()
             .map(|arg| arg.to_string_lossy().to_string()).collect();
         assert_eq!(call.get_program(), PODMAN_PATH);
         for volume in [
             "/boxes:/root/.kiwi_boxes", "/desc:/description",
-            "/target:/result", "/shared:/shared"
+            "/target:/result", "/host/shared:/shared"
         ] {
             assert!(args.contains(&volume.to_string()), "{}", volume);
         }
@@ -551,6 +664,41 @@ mod tests {
             Path::new("/de:sc"), Path::new("/target"), Path::new("/boxes"),
             None, &parse_boxbuild(&[])
         ).is_none());
+    }
+
+    #[test]
+    fn test_parse_shared_path() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let host = fs::canonicalize(tmp_dir.path()).unwrap();
+        let host_name = host.to_string_lossy().to_string();
+
+        // shared at the same location as on the host
+        assert_eq!(parse_shared_path(&host_name), Some(SharedPath {
+            host: host.clone(), target: host.clone()
+        }));
+
+        // shared at the given location in the box
+        assert_eq!(
+            parse_shared_path(&format!("{host_name}:/.sle16")),
+            Some(SharedPath {
+                host: host.clone(), target: PathBuf::from("/.sle16")
+            })
+        );
+
+        // the host path has to be an existing directory
+        assert!(parse_shared_path("/nonexistent:/.sle16").is_none());
+
+        // the box path has to be absolute and normalized and must
+        // not interfere with the locations used by the build
+        for target in [
+            "", "relative", "/a/../b", "/", "/description",
+            "/result/sub", "/root", "/root/.kiwi_boxes"
+        ] {
+            assert!(
+                parse_shared_path(&format!("{host_name}:{target}")).is_none(),
+                "{}", target
+            );
+        }
     }
 
     #[test]
@@ -594,7 +742,7 @@ mod tests {
         fs::write(target_dir.join("result.code"), "0\n").unwrap();
         fs::write(target_dir.join("result.log"), "log").unwrap();
         fs::write(target_dir.join("foo.x86_64-1.0-0.packages"), "").unwrap();
-        assert!(! store_kis_archive(&target_dir, &outfile));
+        assert!(! store_archive(&target_dir, &outfile, &KIS_IMAGE));
 
         // the bundled archive with the checksum file of kiwi and
         // the symlink of the original name which only resolves in
@@ -609,18 +757,18 @@ mod tests {
 
         // a checksum mismatch fails
         fs::write(&kiwi_checksum_file, "0000  foo.x86_64-1.0-0.tar.xz\n").unwrap();
-        assert!(! store_kis_archive(&target_dir, &outfile));
+        assert!(! store_archive(&target_dir, &outfile, &KIS_IMAGE));
         assert!(archive.exists());
 
         fs::write(&kiwi_checksum_file, sha256_record(&archive)).unwrap();
-        assert!(store_kis_archive(&target_dir, &outfile));
+        assert!(store_archive(&target_dir, &outfile, &KIS_IMAGE));
         assert!(! archive.exists());
         assert_stored(tmp_dir.path(), &outfile, "kis");
 
         // more than one archive is ambiguous
         fs::write(target_dir.join("a.tar.xz"), "a").unwrap();
         fs::write(target_dir.join("b.tar.xz"), "b").unwrap();
-        assert!(! store_kis_archive(&target_dir, &outfile));
+        assert!(! store_archive(&target_dir, &outfile, &KIS_IMAGE));
     }
 
     #[test]
@@ -634,7 +782,7 @@ mod tests {
         // a result without a KIS archive
         let result_file = target_dir.join(defaults::KIWI_RESULT_NAME);
         fs::write(&result_file, r#"{"image_packages": {}}"#).unwrap();
-        assert!(! store_kis_archive(&target_dir, &outfile));
+        assert!(! store_archive(&target_dir, &outfile, &KIS_IMAGE));
 
         // the archive is found by the base name of the file name
         // the build has recorded
@@ -643,9 +791,77 @@ mod tests {
         }}"#).unwrap();
         fs::write(target_dir.join("foo.x86_64-1.0.tar.xz"), "kis").unwrap();
         fs::write(target_dir.join("other.tar.xz"), "other").unwrap();
-        assert!(store_kis_archive(&target_dir, &outfile));
+        assert!(store_archive(&target_dir, &outfile, &KIS_IMAGE));
         assert!(! target_dir.join("foo.x86_64-1.0.tar.xz").exists());
         assert_stored(tmp_dir.path(), &outfile, "kis");
+    }
+
+    #[test]
+    fn test_podman_build_options() {
+        let call = [
+            "flake-ctl", "podman", "build",
+            "--kiwi-image", "desc", "--outfile", "out.docker.tar",
+            "--box-memory", "2048"
+        ];
+        match Cli::parse_from(call).command {
+            Commands::Podman {
+                command: Podman::Build { kiwi_image, outfile, boxbuild }
+            } => {
+                assert_eq!(kiwi_image, "desc");
+                assert_eq!(outfile, "out.docker.tar");
+                assert_eq!(boxbuild_args(&boxbuild, None), [
+                    "--box", "tumbleweed", "--box-memory", "2048"
+                ]);
+            },
+            _ => panic!("not a podman build command")
+        }
+    }
+
+    #[test]
+    fn test_is_archive() {
+        for name in [
+            "foo.tar", "foo.tar.xz", "foo.x86_64-1.0-0.docker.tar",
+            "foo.x86_64-1.0-0.oci.tar.xz", "foo.tar.gz"
+        ] {
+            assert!(is_archive(name), "{}", name);
+        }
+        for name in [
+            "foo.tar.xz.sha256", "foo.docker.tar.sha256",
+            "foo.packages", "foo.verified",
+            "result.log", "foo.tarball", "foo.raw"
+        ] {
+            assert!(! is_archive(name), "{}", name);
+        }
+    }
+
+    #[test]
+    fn test_store_container_archive() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let target_dir = tmp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+        let outfile = tmp_dir.path().join("result.kis");
+
+        // the result bundle of a box VM
+        let archive = target_dir.join("foo.x86_64-1.0-0.docker.tar");
+        fs::write(&archive, "container").unwrap();
+        fs::write(
+            target_dir.join("foo.x86_64-1.0-0.docker.tar.sha256"),
+            sha256_record(&archive)
+        ).unwrap();
+        fs::write(target_dir.join("foo.x86_64-1.0-0.packages"), "").unwrap();
+        fs::write(target_dir.join("foo.x86_64-1.0-0.verified"), "").unwrap();
+        assert!(store_archive(&target_dir, &outfile, &CONTAINER_IMAGE));
+        assert_stored(tmp_dir.path(), &outfile, "container");
+
+        // the build result of a box container, the container
+        // archive is looked up by its key
+        fs::write(target_dir.join(defaults::KIWI_RESULT_NAME), r#"{
+            "container": {"filename": "/bundle/foo.x86_64-1.0.oci.tar.xz"}
+        }"#).unwrap();
+        fs::write(target_dir.join("foo.x86_64-1.0.oci.tar.xz"), "oci").unwrap();
+        assert!(! store_archive(&target_dir, &outfile, &KIS_IMAGE));
+        assert!(store_archive(&target_dir, &outfile, &CONTAINER_IMAGE));
+        assert_stored(tmp_dir.path(), &outfile, "oci");
     }
 
     #[test]

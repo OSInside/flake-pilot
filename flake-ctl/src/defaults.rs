@@ -173,11 +173,11 @@ pub const SHA256_TOOL:&str =
     "sha256sum";
 pub const TAR_TOOL:&str =
     "tar";
-// Locations used by 'firecracker build' inside of the kiwi
-// container. The image description and the build target
-// directory are mounted there, the box cache below the home
-// directory of the calling user is mounted to the box cache
-// of root in the container
+// Locations used by 'firecracker build' and 'podman build'
+// inside of the kiwi container. The image description and the
+// build target directory are mounted there, the box cache below
+// the home directory of the calling user is mounted to the box
+// cache of root in the container
 pub const KIWI_DESCRIPTION_DIR:&str =
     "/description";
 pub const KIWI_TARGET_DIR:&str =
@@ -195,12 +195,15 @@ pub const KIWI_RESULT_CODE_NAME:&str =
 pub const KIWI_RESULT_LOG_NAME:&str =
     "result.log";
 // Result file of a kiwi build in a box container, the key of
-// the KIS archive in there names the file the build has produced.
-// A build in a box VM provides only the result bundle
+// the KIS archive or the container archive in there names the
+// file the build has produced. A build in a box VM provides only
+// the result bundle
 pub const KIWI_RESULT_NAME:&str =
     "kiwi.result.json";
 pub const KIWI_RESULT_KIS_ARCHIVE:&str =
     "kis_archive";
+pub const KIWI_RESULT_CONTAINER:&str =
+    "container";
 // Program used to kill a process inside of a container. It is
 // called through 'podman exec' and is therefore expected to be
 // part of the container, like the sleep program it kills

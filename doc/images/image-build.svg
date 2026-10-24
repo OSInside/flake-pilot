@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="756" viewBox="0 0 1500 756">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c6cb0"/>
+    </marker>
+    <style>
+      .panel  { fill: #e8f1fb; stroke: #cfe0f4; stroke-width: 2; }
+      .box    { fill: #ffffff; stroke: #2c5f9e; stroke-width: 2; }
+      .tap    { fill: #f7fbff; stroke: #2c5f9e; stroke-width: 2; }
+      .icon   { fill: #dbeafe; stroke: #2c5f9e; stroke-width: 2; }
+      .use    { fill: #fff8ec; stroke: #e08e0b; stroke-width: 2; }
+      .link   { stroke: #2c6cb0; stroke-width: 3; fill: none; }
+      .head   { font: bold 28px 'Adwaita Sans', sans-serif; fill: #24527f; }
+      .sub    { font: 17px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .title  { font: bold 22px 'Adwaita Sans', sans-serif; fill: #10263d; }
+      .cmd    { font: bold 24px 'Source Code Pro', monospace; fill: #10263d; }
+      .mono   { font: 17px 'Source Code Pro', monospace; fill: #10263d; }
+      .monos  { font: 15px 'Source Code Pro', monospace; fill: #4a6a8a; }
+      .tiny   { font: 15px 'Adwaita Sans', sans-serif; fill: #4a6a8a; }
+      .amber  { font: bold 16px 'Source Code Pro', monospace; fill: #b8720a; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="756" fill="#ffffff"/>
+
+  <!-- command and requirement -->
+  <text class="cmd" x="750" y="50" text-anchor="middle">flake-ctl podman build  |  flake-ctl firecracker build</text>
+  <text class="sub" x="750" y="80" text-anchor="middle">podman is the only tool required on the build host</text>
+
+  <!-- panels -->
+  <rect class="panel" x="24"   y="106" width="360" height="626" rx="18"/>
+  <rect class="panel" x="408"  y="106" width="684" height="626" rx="18"/>
+  <rect class="panel" x="1116" y="106" width="360" height="626" rx="18"/>
+
+  <text class="head" x="204"  y="150" text-anchor="middle">Host</text>
+  <text class="head" x="750"  y="150" text-anchor="middle">kiwi container</text>
+  <text class="head" x="1296" y="150" text-anchor="middle">Host</text>
+  <text class="sub"  x="204"  y="176" text-anchor="middle">input of the build</text>
+  <text class="sub"  x="750"  y="176" text-anchor="middle">started by podman, see kiwi_container</text>
+  <text class="sub"  x="1296" y="176" text-anchor="middle">result of the build</text>
+
+  <!-- ==================== input ==================== -->
+  <rect class="box" x="48" y="210" width="312" height="96" rx="12"/>
+  <text class="title" x="72" y="244">Image description</text>
+  <text class="mono"  x="72" y="270">--kiwi-image</text>
+  <text class="monos" x="72" y="292">kis, docker or oci type</text>
+
+  <rect class="box" x="48" y="336" width="312" height="96" rx="12"/>
+  <text class="title" x="72" y="370">Box cache</text>
+  <text class="mono"  x="72" y="396">~/.kiwi_boxes</text>
+  <text class="monos" x="72" y="418">box downloaded once</text>
+
+  <rect class="box" x="48" y="462" width="312" height="96" rx="12"/>
+  <text class="title" x="72" y="496">Shared path</text>
+  <text class="mono"  x="72" y="522">--shared-path</text>
+  <text class="monos" x="72" y="544">optional</text>
+
+  <!-- input mounted into the kiwi container -->
+  <path class="link" marker-end="url(#arrow)" d="M 360 258 L 440 258"/>
+  <path class="link" marker-end="url(#arrow)" d="M 360 384 L 440 384"/>
+  <path class="link" marker-end="url(#arrow)" d="M 360 510 L 440 510"/>
+
+  <!-- ==================== kiwi container ==================== -->
+  <rect class="tap" x="440" y="230" width="230" height="56" rx="12"/>
+  <text class="mono" x="555" y="264" text-anchor="middle">/description</text>
+
+  <rect class="tap" x="440" y="356" width="230" height="56" rx="12"/>
+  <text class="mono" x="555" y="390" text-anchor="middle">/root/.kiwi_boxes</text>
+
+  <rect class="tap" x="440" y="482" width="230" height="56" rx="12"/>
+  <text class="mono" x="555" y="516" text-anchor="middle">BOX_PATH</text>
+
+  <!-- shared with the box -->
+  <path class="link" marker-end="url(#arrow)" d="M 670 258 L 720 258"/>
+  <path class="link" marker-end="url(#arrow)" d="M 670 384 L 720 384"/>
+  <path class="link" marker-end="url(#arrow)" d="M 670 510 L 720 510"/>
+
+  <!-- box -->
+  <rect class="box" x="720" y="210" width="340" height="348" rx="12"/>
+  <text class="title" x="744" y="244">Box</text>
+  <text class="tiny"  x="744" y="268">virtual machine, kiwi system boxbuild</text>
+
+  <rect class="icon" x="748" y="296" width="284" height="88" rx="10"/>
+  <text class="mono" x="890" y="334" text-anchor="middle">kiwi-ng system build</text>
+  <text class="tiny" x="890" y="360" text-anchor="middle">builds the image</text>
+
+  <path class="link" marker-end="url(#arrow)" d="M 890 384 L 890 414"/>
+
+  <rect class="icon" x="748" y="414" width="284" height="88" rx="10"/>
+  <text class="mono" x="890" y="452" text-anchor="middle">kiwi-ng result bundle</text>
+  <text class="tiny" x="890" y="478" text-anchor="middle">archive, checksum and log</text>
+
+  <path class="link" marker-end="url(#arrow)" d="M 890 502 L 890 610"/>
+
+  <rect class="tap" x="720" y="610" width="340" height="60" rx="12"/>
+  <text class="mono"  x="890" y="636" text-anchor="middle">/result</text>
+  <text class="monos" x="890" y="658" text-anchor="middle">temporary dir in /var/tmp</text>
+
+  <!-- result moved next to OUTFILE -->
+  <path class="link" d="M 1060 640 L 1104 640 L 1104 258"/>
+  <path class="link" marker-end="url(#arrow)" d="M 1104 258 L 1140 258"/>
+  <path class="link" marker-end="url(#arrow)" d="M 1104 384 L 1140 384"/>
+  <path class="link" marker-end="url(#arrow)" d="M 1104 510 L 1140 510"/>
+
+  <!-- ==================== result ==================== -->
+  <rect class="box" x="1140" y="210" width="312" height="96" rx="12"/>
+  <text class="title" x="1164" y="244">OUTFILE</text>
+  <text class="mono"  x="1164" y="270">--outfile</text>
+  <text class="monos" x="1164" y="292">container or KIS archive</text>
+
+  <rect class="box" x="1140" y="336" width="312" height="96" rx="12"/>
+  <text class="title" x="1164" y="370">OUTFILE.sha256</text>
+  <text class="monos" x="1164" y="400">checksum of the archive</text>
+
+  <rect class="box" x="1140" y="462" width="312" height="96" rx="12"/>
+  <text class="title" x="1164" y="496">OUTFILE.log</text>
+  <text class="monos" x="1164" y="526">build log, kept on failure</text>
+
+  <rect class="use" x="1140" y="590" width="312" height="114" rx="12"/>
+  <text class="tiny"  x="1164" y="620">load or pull with flake-ctl</text>
+  <text class="amber" x="1164" y="652">podman load --oci</text>
+  <text class="amber" x="1164" y="682">firecracker pull --kis-image</text>
+</svg>

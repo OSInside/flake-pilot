@@ -68,11 +68,41 @@
 //! arguments of bwrap are passed on as they are, they are evaluated
 //! with the privileges of the caller only.
 //!
+//! Mounts which persist on the host
+//! --------------------------------
+//! Nothing the application mounts in the sandbox reaches the host:
+//! the namespace of the helper is private and bwrap makes the mounts
+//! of its own namespace slaves, which receive but never send mount
+//! events. Root can name directories whose mounts persist on the
+//! host anyway, e.g /mnt for a flake which mounts a disk there.
+//!
+//! For such a sandbox the helper does not replace itself with bwrap.
+//! It runs bwrap in a child process and waits for it as root. bwrap
+//! reports the process ID of the sandbox through its info pipe and
+//! waits for its block pipe before it starts the application, which
+//! is when the helper opens the mount namespace of the sandbox. The
+//! namespace descriptor keeps the namespace, along with the mounts
+//! in it, after the sandbox has terminated.
+//!
+//! Once bwrap has terminated, the helper moves into that namespace
+//! and clones the mounts at or below the directories, along with
+//! the mounts below them. A mount which also exists on the host at
+//! the same location, of the same filesystem tree, is skipped, e.g
+//! a mount of the host below a tree bwrap bound recursively. Back in
+//! the namespace of the host, the helper attaches the clones at the
+//! same location. A missing mount point below a directory is
+//! created, a symbolic link on the way is refused. The flake must
+//! not let bwrap mount at or below the directories, bubblewrap-pilot
+//! checks that.
+//!
 use std::ffi::CString;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode};
 
 use flakes::config::get_sandbox_tmpfs_size;
 use flakes::defaults::{
@@ -80,6 +110,7 @@ use flakes::defaults::{
     OVERLAY_MERGED_NAME, OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME,
     OVERLAY_LOWER_NAME, OVERLAY_EMPTY_NAME
 };
+use flakes::mountinfo::{self, Mount};
 use flakes::tmpfs::{get_tmpfs_size, host_memory};
 
 use crate::caller::Caller;
@@ -94,6 +125,8 @@ const MOUNT_ATTR_NOSUID: libc::c_uint = 0x2;
 const MOUNT_ATTR_NODEV: libc::c_uint = 0x4;
 const MOVE_MOUNT_F_EMPTY_PATH: libc::c_uint = 0x4;
 const MOVE_MOUNT_T_EMPTY_PATH: libc::c_uint = 0x40;
+const OPEN_TREE_CLONE: libc::c_uint = 0x1;
+const AT_RECURSIVE: libc::c_uint = 0x8000;
 
 // Filesystem types of the setup
 const TMPFS_TYPE: &str = "tmpfs";
@@ -105,10 +138,28 @@ const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 // Max. number of layers a flake can stack on top of its rootfs
 const MAX_LAYERS: usize = 16;
 
+// Max. number of directories whose mounts persist on the host
+const MAX_PERSIST_DIRS: usize = 16;
+
+// Permissions of a mount point the helper creates on the host
+const MOUNT_POINT_DIR_MODE: libc::mode_t = 0o755;
+const MOUNT_POINT_FILE_MODE: libc::mode_t = 0o644;
+
+// procfs, its mount table of the reading process and the mount
+// namespace of a process
+const PROC_DIR: &str = "/proc";
+const PROC_SELF_MOUNTINFO: &str = "self/mountinfo";
+const PROC_NAMESPACE: &str = "ns/mnt";
+
+// Options of bwrap which report the process ID of the sandbox and
+// hold the application back until data is written to a descriptor
+const BWRAP_INFO_FD_OPTION: &str = "--info-fd";
+const BWRAP_BLOCK_FD_OPTION: &str = "--block-fd";
+
 pub fn run(
     caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>,
-    term: Option<&str>, args: &[String]
-) -> bool {
+    term: Option<&str>, persist_dirs: &[String], args: &[String]
+) -> ExitCode {
     /*!
     Mount the root filesystem of a sandbox of the caller in a new
     mount namespace and replace the helper by bwrap, called with the
@@ -122,14 +173,26 @@ pub fn run(
     bwrap gets a fresh environment, like the pilots the helper
     calls. The variables of the caller are provided to the
     application through the bwrap options
+
+    With directories whose mounts persist on the host, which only
+    root may give, the helper waits for bwrap instead and exits with
+    its exit code, see run_persisting(). Otherwise bwrap replaces the
+    helper and its exit code is the one of the helper anyway
     !*/
+    let host = if persist_dirs.is_empty() {
+        None
+    } else {
+        match Host::open(caller, persist_dirs) {
+            Ok(host) => Some(host),
+            Err(error) => {
+                error!("{error}");
+                return ExitCode::FAILURE
+            }
+        }
+    };
     if let Err(error) = mount_root(caller, rootfs, layers, size) {
         error!("{error}");
-        return false
-    }
-    if let Err(error) = drop_privileges(caller) {
-        error!("{error}");
-        return false
+        return ExitCode::FAILURE
     }
     let term = term.filter(|term| match validate::terminal_type(term) {
         Ok(()) => true,
@@ -138,8 +201,30 @@ pub fn run(
             false
         }
     });
+    match host {
+        Some(host) => run_persisting(caller, term, args, &host),
+        None => {
+            exec_bwrap(caller, term, &[], args);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn exec_bwrap(
+    caller: &Caller, term: Option<&str>, options: &[String], args: &[String]
+) {
+    /*!
+    Turn into the caller for good and replace the process by bwrap,
+    called with the given options of the helper followed by the
+    given arguments. Only returns if that failed
+    !*/
+    if let Err(error) = drop_privileges(caller) {
+        error!("{error}");
+        return
+    }
     let mut call = Command::new(BWRAP_PATH);
-    call.args(args)
+    call.args(options)
+        .args(args)
         .env_clear()
         .env("PATH", crate::HELPER_PATH)
         .env("HOME", &caller.home)
@@ -150,7 +235,428 @@ pub fn run(
     }
     let error = call.exec();
     error!("Failed to execute {BWRAP_PATH}: {error}");
-    false
+}
+
+struct Host {
+    /// Mount namespace of the host, the mounts are attached in it
+    namespace: OwnedFd,
+    /// procfs of the host, it provides the mount table of the
+    /// namespace the helper is in, whichever that is
+    proc_dir: OwnedFd,
+    /// Mounts of the host when the helper started
+    mounts: Vec<Mount>,
+    /// Directories whose mounts persist on the host
+    persist_dirs: Vec<PathBuf>,
+}
+
+impl Host {
+    fn open(caller: &Caller, persist_dirs: &[String]) -> Result<Host, String> {
+        /*!
+        Keep what is needed of the host to attach mounts to it later,
+        before the helper leaves its mount namespace
+
+        Only root may let mounts persist on the host, for everybody
+        else the sandbox would be a way to mount on the host
+        !*/
+        if ! caller.is_root() {
+            return Err("Only root can let mounts persist on the host".to_string())
+        }
+        if persist_dirs.len() > MAX_PERSIST_DIRS {
+            return Err(format!(
+                "Up to {MAX_PERSIST_DIRS} directories can let mounts persist"
+            ))
+        }
+        for persist_dir in persist_dirs {
+            validate::absolute_path(persist_dir)?;
+            if Path::new(persist_dir) == Path::new("/") {
+                return Err("The mounts of / cannot persist on the host".to_string())
+            }
+        }
+        let namespace = open_file(
+            libc::AT_FDCWD, &format!("{PROC_DIR}/self/{PROC_NAMESPACE}")
+        ).map_err(
+            |error| format!("Failed to open the mount namespace of the host: {error}")
+        )?;
+        let proc_dir = open_dir(libc::AT_FDCWD, PROC_DIR, false).map_err(
+            |error| format!("Failed to open {PROC_DIR}: {error}")
+        )?;
+        let mounts = read_mounts(&proc_dir)?;
+        Ok(Host {
+            namespace,
+            proc_dir,
+            mounts,
+            persist_dirs: persist_dirs.iter().map(PathBuf::from).collect()
+        })
+    }
+}
+
+fn run_persisting(
+    caller: &Caller, term: Option<&str>, args: &[String], host: &Host
+) -> ExitCode {
+    /*!
+    Run bwrap in a child process and let the mounts the application
+    created at or below the directories of the host persist on the
+    host once bwrap has terminated, see persist_mounts()
+
+    bwrap gets the info pipe, which it reports the process ID of the
+    sandbox to, and the block pipe, which it waits for before it
+    starts the application. The helper opens the mount namespace of
+    the sandbox in between, the application could be gone otherwise
+    before the helper gets to it. A terminal interrupt is meant for
+    the application, the helper ignores it and waits for bwrap.
+
+    The exit code of bwrap is the one of the helper. If a mount
+    could not be attached, the helper fails although bwrap succeeded
+    !*/
+    let pipes = create_pipe().and_then(|info| Ok((info, create_pipe()?)));
+    let ((info_read, info_write), (block_read, block_write)) = match pipes {
+        Ok(pipes) => pipes,
+        Err(error) => {
+            error!("Failed to create the pipes of bwrap: {error}");
+            return ExitCode::FAILURE
+        }
+    };
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        error!("Failed to fork: {}", io::Error::last_os_error());
+        return ExitCode::FAILURE
+    }
+    if pid == 0 {
+        // bwrap inherits its ends of the pipes, all other
+        // descriptors of the helper are closed on exec
+        match clear_cloexec(&info_write).and_then(|_| clear_cloexec(&block_read)) {
+            Ok(()) => exec_bwrap(caller, term, &[
+                BWRAP_INFO_FD_OPTION.to_string(), info_write.as_raw_fd().to_string(),
+                BWRAP_BLOCK_FD_OPTION.to_string(), block_read.as_raw_fd().to_string()
+            ], args),
+            Err(error) => error!("Failed to pass the pipes to bwrap: {error}")
+        }
+        unsafe { libc::_exit(1) }
+    }
+    drop(info_write);
+    drop(block_read);
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN);
+        libc::signal(libc::SIGQUIT, libc::SIG_IGN);
+    }
+
+    let namespace = open_sandbox_namespace(info_read, host);
+    // The application starts, also without the namespace: the
+    // helper does not decide whether the application runs
+    if let Err(error) = File::from(block_write).write_all(b"1") {
+        debug!("Failed to start the application: {error}");
+    }
+    let status = match wait_for(pid) {
+        Ok(status) => status,
+        Err(error) => {
+            error!("Failed to wait for bwrap: {error}");
+            return ExitCode::FAILURE
+        }
+    };
+    let persisted = match namespace {
+        Ok(Some(namespace)) => persist_mounts(&namespace, host),
+        // bwrap failed before it created the sandbox, it reported why
+        Ok(None) => true,
+        Err(error) => {
+            error!("{error}");
+            false
+        }
+    };
+    match libc::WIFEXITED(status).then(|| libc::WEXITSTATUS(status)) {
+        Some(0) if ! persisted => ExitCode::FAILURE,
+        Some(code) => ExitCode::from(code as u8),
+        // bwrap was terminated by a signal
+        None => ExitCode::FAILURE
+    }
+}
+
+fn open_sandbox_namespace(
+    info: OwnedFd, host: &Host
+) -> Result<Option<OwnedFd>, String> {
+    /*!
+    Open the mount namespace of the sandbox whose process ID bwrap
+    reports through the given info pipe. bwrap closes the pipe
+    without a report if it fails before it creates the sandbox
+    !*/
+    let mut report = String::new();
+    File::from(info).read_to_string(&mut report).map_err(
+        |error| format!("Failed to read the process ID of the sandbox: {error}")
+    )?;
+    if report.is_empty() {
+        return Ok(None)
+    }
+    let pid = child_pid(&report).ok_or_else(
+        || format!("No process ID of the sandbox in: {report:?}")
+    )?;
+    open_file(host.proc_dir.as_raw_fd(), &format!("{pid}/{PROC_NAMESPACE}"))
+        .map(Some)
+        .map_err(|error| format!(
+            "Failed to open the mount namespace of the sandbox: {error}"
+        ))
+}
+
+fn child_pid(report: &str) -> Option<u32> {
+    /*!
+    Provide the process ID of the sandbox out of the JSON report
+    bwrap writes to its info pipe, e.g {"child-pid": 42, ...}
+    !*/
+    report.split("\"child-pid\":").nth(1)?
+        .trim_start()
+        .split(|c: char| ! c.is_ascii_digit())
+        .next()?
+        .parse().ok()
+}
+
+fn persist_mounts(namespace: &OwnedFd, host: &Host) -> bool {
+    /*!
+    Attach the mounts the application created at or below the
+    directories of the host to the host, at the same location
+
+    The mounts are cloned in the given mount namespace of the
+    sandbox, where their location is the one in the sandbox, and
+    attached in the namespace of the host
+    !*/
+    let mut persisted = true;
+    if let Err(error) = enter_namespace(namespace) {
+        error!("Failed to enter the namespace of the sandbox: {error}");
+        return false
+    }
+    let mounts = match read_mounts(&host.proc_dir) {
+        Ok(mounts) => mounts,
+        Err(error) => {
+            error!("{error}");
+            Vec::new()
+        }
+    };
+    let mut clones: Vec<(PathBuf, OwnedFd)> = Vec::new();
+    for mount in select_mounts(&mounts, &host.persist_dirs, &host.mounts) {
+        match clone_mount(&mount.mount_point) {
+            Ok(clone) => clones.push((mount.mount_point.clone(), clone)),
+            Err(error) => {
+                error!("Failed to clone {}: {error}", mount.mount_point.display());
+                persisted = false
+            }
+        }
+    }
+    if let Err(error) = enter_namespace(&host.namespace) {
+        error!("Failed to return to the namespace of the host: {error}");
+        return false
+    }
+    for (mount_point, clone) in clones {
+        match attach_on_host(&clone, &mount_point, &host.persist_dirs) {
+            Ok(()) => debug!("{} persists on the host", mount_point.display()),
+            Err(error) => {
+                error!(
+                    "Failed to persist {} on the host: {error}",
+                    mount_point.display()
+                );
+                persisted = false
+            }
+        }
+    }
+    persisted
+}
+
+fn select_mounts<'a>(
+    mounts: &'a [Mount], persist_dirs: &[PathBuf], host_mounts: &[Mount]
+) -> Vec<&'a Mount> {
+    /*!
+    Select the mounts of the given sandbox mount table which persist
+    on the host: the mounts at or below one of the given directories
+    which do not exist on the host already, at the same location and
+    of the same filesystem tree. Only the topmost ones are selected,
+    the mounts below them are cloned along with them
+    !*/
+    let persisting: Vec<&Mount> = mounts.iter()
+        .filter(|mount| persist_dirs.iter().any(
+            |persist_dir| mount.mount_point.starts_with(persist_dir)
+        ))
+        .filter(|mount| ! host_mounts.iter().any(|host_mount| {
+            host_mount.mount_point == mount.mount_point
+                && host_mount.device == mount.device
+                && host_mount.root == mount.root
+        }))
+        .collect();
+    persisting.iter()
+        .filter(|mount| ! persisting.iter().any(|other| other.id == mount.parent_id))
+        .copied()
+        .collect()
+}
+
+fn clone_mount(mount_point: &Path) -> io::Result<OwnedFd> {
+    /*!
+    Clone the mount on the given mount point of the namespace the
+    helper is in, along with the mounts below it. The clone is
+    detached and provided through the descriptor of its root
+    !*/
+    let path = to_c_string(&mount_point.to_string_lossy())?;
+    syscall_fd(unsafe {
+        libc::syscall(
+            libc::SYS_open_tree, libc::AT_FDCWD, path.as_ptr(),
+            OPEN_TREE_CLONE | libc::O_CLOEXEC as libc::c_uint | AT_RECURSIVE
+        )
+    })
+}
+
+fn attach_on_host(
+    clone: &OwnedFd, mount_point: &Path, persist_dirs: &[PathBuf]
+) -> Result<(), String> {
+    /*!
+    Attach the given detached mount to the given mount point of the
+    host, which is at or below one of the given directories
+
+    The path below the directory is resolved one component at a
+    time, without following a symbolic link. Missing components are
+    created as directories, the last one as a directory or a file,
+    the type of the root of the mount
+    !*/
+    let persist_dir = persist_dirs.iter()
+        .filter(|persist_dir| mount_point.starts_with(persist_dir))
+        .max_by_key(|persist_dir| persist_dir.components().count())
+        .ok_or("Not below a directory whose mounts persist")?;
+    let mut target = open_dir(
+        libc::AT_FDCWD, &persist_dir.to_string_lossy(), true
+    ).map_err(|error| format!("Failed to open {}: {error}", persist_dir.display()))?;
+
+    let is_dir = file_type(clone).map_err(|error| error.to_string())? == libc::S_IFDIR;
+    let components: Vec<String> = mount_point.strip_prefix(persist_dir)
+        .map_err(|error| error.to_string())?
+        .iter()
+        .map(|component| component.to_string_lossy().to_string())
+        .collect();
+    for (index, component) in components.iter().enumerate() {
+        let last = index + 1 == components.len();
+        target = open_mount_point(&target, component, ! last || is_dir).map_err(
+            |error| format!("Failed to open the mount point {component}: {error}")
+        )?;
+    }
+    attach_mount(clone, &target).map_err(|error| error.to_string())
+}
+
+fn open_mount_point(
+    directory: &OwnedFd, name: &str, is_dir: bool
+) -> io::Result<OwnedFd> {
+    /*!
+    Open the given directory or file below the given directory,
+    without following a symbolic link. It is created if missing
+    !*/
+    let fd = directory.as_raw_fd();
+    let c_name = to_c_string(name)?;
+    let open = || -> io::Result<OwnedFd> {
+        let mut flags = libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        if is_dir {
+            flags |= libc::O_DIRECTORY;
+        }
+        syscall_fd(unsafe { libc::openat(fd, c_name.as_ptr(), flags) } as libc::c_long)
+    };
+    let mount_point = match open() {
+        Err(error) if error.raw_os_error() == Some(libc::ENOENT) => {
+            let created = if is_dir {
+                unsafe { libc::mkdirat(fd, c_name.as_ptr(), MOUNT_POINT_DIR_MODE) }
+            } else {
+                let file = unsafe {
+                    libc::openat(
+                        fd, c_name.as_ptr(),
+                        libc::O_CREAT | libc::O_EXCL | libc::O_WRONLY
+                            | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                        MOUNT_POINT_FILE_MODE as libc::c_uint
+                    )
+                };
+                if file >= 0 {
+                    unsafe { libc::close(file) };
+                }
+                file
+            };
+            if created < 0 {
+                return Err(io::Error::last_os_error())
+            }
+            open()?
+        },
+        result => result?
+    };
+    // A symbolic link opened as O_PATH is the link itself
+    let expected = if is_dir { libc::S_IFDIR } else { libc::S_IFREG };
+    if file_type(&mount_point)? != expected {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            if is_dir { "not a directory" } else { "not a regular file" }
+        ))
+    }
+    Ok(mount_point)
+}
+
+fn read_mounts(proc_dir: &OwnedFd) -> Result<Vec<Mount>, String> {
+    /*!
+    Read the mount table of the namespace the helper is in, relative
+    to its root, through the given procfs
+    !*/
+    let mut mountinfo = String::new();
+    open_file(proc_dir.as_raw_fd(), PROC_SELF_MOUNTINFO)
+        .map(File::from)
+        .and_then(|mut file| file.read_to_string(&mut mountinfo))
+        .map_err(|error| format!("Failed to read the mount table: {error}"))?;
+    Ok(mountinfo::parse(&mountinfo))
+}
+
+fn enter_namespace(namespace: &OwnedFd) -> io::Result<()> {
+    /*!
+    Move the helper into the given mount namespace, its root and
+    working directory become the root of the namespace
+    !*/
+    if unsafe { libc::setns(namespace.as_raw_fd(), libc::CLONE_NEWNS) } != 0 {
+        return Err(io::Error::last_os_error())
+    }
+    Ok(())
+}
+
+fn wait_for(pid: libc::pid_t) -> io::Result<libc::c_int> {
+    /*!
+    Wait for the given child process to terminate and provide its
+    wait status
+    !*/
+    let mut status: libc::c_int = 0;
+    loop {
+        if unsafe { libc::waitpid(pid, &mut status, 0) } >= 0 {
+            return Ok(status)
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error)
+        }
+    }
+}
+
+fn create_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    /*!
+    Create a pipe, closed on exec, and provide its read and its
+    write end
+    !*/
+    let mut fds: [libc::c_int; 2] = [-1; 2];
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(io::Error::last_os_error())
+    }
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
+fn clear_cloexec(descriptor: &OwnedFd) -> io::Result<()> {
+    if unsafe { libc::fcntl(descriptor.as_raw_fd(), libc::F_SETFD, 0) } != 0 {
+        return Err(io::Error::last_os_error())
+    }
+    Ok(())
+}
+
+fn open_file(dirfd: RawFd, name: &str) -> io::Result<OwnedFd> {
+    /*!
+    Open the given file relative to dirfd for reading
+    !*/
+    let name = to_c_string(name)?;
+    syscall_fd(unsafe {
+        libc::openat(dirfd, name.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC)
+    } as libc::c_long)
+}
+
+fn file_type(descriptor: &OwnedFd) -> io::Result<libc::mode_t> {
+    Ok(fstat(descriptor)?.st_mode & libc::S_IFMT)
 }
 
 fn mount_root(
@@ -609,6 +1115,36 @@ mod tests {
         let caller = caller();
         // the primary group is always part of the groups
         assert!(caller_groups(&caller).unwrap().contains(&caller.gid));
+    }
+
+    #[test]
+    fn test_child_pid() {
+        let report = "{\n    \"child-pid\": 4242,\n    \"mnt-namespace\": 4026532\n}\n";
+        assert_eq!(Some(4242), child_pid(report));
+        assert_eq!(None, child_pid("{}"));
+    }
+
+    #[test]
+    fn test_select_mounts() {
+        let host_mounts = mountinfo::parse("\
+            22 1 0:21 / / rw - btrfs /dev/vda2 rw\n\
+            40 22 8:33 / /run/media/usb rw - vfat /dev/sdc1 rw\n");
+        let mounts = mountinfo::parse("\
+            100 99 0:50 / / rw - overlay overlay rw\n\
+            101 100 0:21 /run /run rw - btrfs /dev/vda2 rw\n\
+            102 101 8:33 / /run/media/usb rw - vfat /dev/sdc1 rw\n\
+            103 100 8:17 / /mnt rw - ext4 /dev/sdb1 rw\n\
+            104 103 0:60 / /mnt/data/tmp rw - tmpfs tmpfs rw\n\
+            105 100 8:18 / /mnt2 rw - ext4 /dev/sdb2 rw\n\
+            106 100 8:19 / /srv/disk rw - ext4 /dev/sdb3 rw\n");
+        let persist_dirs = vec![PathBuf::from("/mnt"), PathBuf::from("/run")];
+        let selected: Vec<u64> = select_mounts(&mounts, &persist_dirs, &host_mounts)
+            .iter().map(|mount| mount.id).collect();
+        // /run is a recursive bind of the host tree of the same
+        // location and the USB stick below it is mounted on the host
+        // already. /mnt/data/tmp is cloned along with /mnt, /mnt2 is
+        // not below /mnt and /srv/disk not below any directory
+        assert_eq!(vec![101, 103], selected);
     }
 
     #[test]

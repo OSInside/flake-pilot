@@ -21,7 +21,7 @@ SYNOPSIS
        network-disconnect --config-file <FILE> [--instance <NAME>] [--uid <UID>]
        volume-export --path <PATH> --config-file <FILE> [--instance <NAME>]
        volume-release --path <PATH> [--config-file <FILE> [--instance <NAME>]]
-       sandbox-run --rootfs <DIR> [--layer <DIR>]... [--size <SIZE>] [--term <TERM>] -- <BWRAP_ARGS>...
+       sandbox-run --rootfs <DIR> [--layer <DIR>]... [--size <SIZE>] [--term <TERM>] [--persist-mount <DIR>]... -- <BWRAP_ARGS>...
        podman-pilot --app <PATH> [--term <TERM>] -- [ARGS]...
        meta-dirs-init
 
@@ -118,6 +118,19 @@ sandbox-run
   the given arguments and a fresh environment. The bwrap arguments
   are evaluated with the privileges of the caller only. Called by
   **bubblewrap-pilot**\(8)
+
+  With **--persist-mount**, which only root may give, the mounts the
+  application creates at or below the given directory persist on
+  the host. The helper runs bwrap in a child process then and waits
+  for it as root. It opens the mount namespace of the sandbox before
+  bwrap starts the application, see the **--info-fd** and
+  **--block-fd** options of bwrap. Once bwrap has terminated, the
+  helper clones the mounts at or below the directories in that
+  namespace, except the ones which exist on the host already, and
+  attaches them to the host at the same location. A missing mount
+  point is created, a symbolic link on the way is refused. The exit
+  code of bwrap is the exit code of the helper, a mount which cannot
+  be attached makes the helper fail
 
 podman-pilot
   Run a podman flake registered system wide for the caller. The

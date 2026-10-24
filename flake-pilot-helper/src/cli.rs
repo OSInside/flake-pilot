@@ -148,7 +148,8 @@ pub enum Commands {
     /// Run bwrap for the caller in a mount namespace with the root
     /// filesystem of the sandbox. Used for a rootfs with mount
     /// points below it, which bubblewrap-pilot cannot overlay in
-    /// a user namespace
+    /// a user namespace, and for the sandboxes of root whose mounts
+    /// persist on the host
     SandboxRun {
         /// Directory tree which is the lowest layer of the overlay
         #[clap(long)]
@@ -170,6 +171,13 @@ pub enum Commands {
         /// Terminal type of the caller
         #[clap(long)]
         term: Option<String>,
+
+        /// Directory whose mounts persist on the host: a mount the
+        /// application creates at or below it in the sandbox is
+        /// attached to the host at the same location when the
+        /// sandbox ends. Only root may give it, more than once
+        #[clap(long = "persist-mount", multiple_occurrences = true)]
+        persist_dirs: Vec<String>,
 
         /// Arguments of bwrap
         #[clap(last = true)]

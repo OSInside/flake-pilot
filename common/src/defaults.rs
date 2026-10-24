@@ -60,6 +60,11 @@ pub const SUDO_TOOL: &str = "/usr/bin/sudo";
 // Name of the sudo process. bubblewrap-pilot records it as the
 // process of a sandbox which is created through the helper
 pub const SUDO_PROCESS_NAME: &str = "sudo";
+// Name of the helper process, as the kernel provides it, cut to 15
+// characters. It is the process of a sandbox which root creates
+// through the helper with mounts which persist on the host, the
+// helper waits for bwrap then instead of replacing itself with it
+pub const HELPER_PROCESS_NAME: &str = "flake-pilot-hel";
 // Program which creates the bubblewrap sandboxes. The helper runs
 // it for the caller, see its sandbox-run command
 pub const BWRAP_PATH: &str = "/usr/bin/bwrap";

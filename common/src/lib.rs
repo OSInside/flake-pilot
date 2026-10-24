@@ -39,3 +39,4 @@ pub mod network;
 pub mod podman;
 pub mod helper;
 pub mod tmpfs;
+pub mod mountinfo;

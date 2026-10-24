@@ -80,6 +80,9 @@ named `foo.tar.xz` the checksum file is expected at
 `foo.tar.xz.sha256`. If no such file exists the pull is rejected
 with an error.
 
+This applies to a local archive in the same way, the checksum file
+is then expected next to it on the local machine.
+
 The checksum is used to verify the downloaded archive and it is
 stored along with the image as `source_checksum`. Pulling an image
 under a name that already exists in the registry then behaves as
@@ -122,6 +125,10 @@ OPTIONS
   into local image store. This means the file behind KIS_IMAGE
   is expected to be a tarball containing the KIS
   components; rootfs-image, kernel and optional initrd.
+  KIS_IMAGE is either a URL or the location of an archive on
+  the local machine, given as path, e.g ``image.tar.xz`` or
+  ``/path/to/image.tar.xz``, or as ``file://`` URI. A local
+  archive is copied instead of downloaded.
   A checksum file named like KIS_IMAGE plus a '.sha256' suffix
   must be available at the same location, see UPDATE CHECK
 
@@ -155,11 +162,15 @@ EXAMPLE
 .. code:: bash
 
    $ flake-ctl firecracker pull --name myImage --kis-image \
-       https://download.opensuse.org/repositories/home:/marcus.schaefer:/delta_containers/images/firecracker-basesystem.x86_64.tar.xz
+       https://ddrasqgvrmpt8.cloudfront.net/leap.x86_64-1.16.0-0.tar.xz
+
+   $ flake-ctl firecracker pull --name myLocalImage --kis-image \
+       $PWD/leap.x86_64-1.16.0-0.tar.xz
 
    $ flake-ctl firecracker pull --name myVM \
        --rootfs https://example.org/images/myvm-rootfs.ext4 \
-       --kernel https://example.org/images/myvm-vmlinux
+       --kernel https://example.org/images/myvm-vmlinux \
+       --initrd https://example.org/images/myvm-initrd
 
 AUTHOR
 ------

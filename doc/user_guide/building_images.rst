@@ -117,7 +117,16 @@ in the ``image`` directory is a KIS archive containing the rootfs, the
 kernel and the initrd. To use it with
 ``flake-ctl firecracker pull --kis-image``, publish the archive on a
 web server together with a checksum file of the same name plus a
-``.sha256`` suffix, see :ref:`vm-apps`.
+``.sha256`` suffix, see :ref:`vm-apps`. To use it on the build host
+itself, create the checksum file next to the archive and pass the
+path of the archive:
+
+.. code-block:: bash
+
+   cd image
+   sha256sum claude.x86_64-1.16.0-0.tar.xz > claude.x86_64-1.16.0-0.tar.xz.sha256
+   flake-ctl firecracker pull --name claude \
+       --kis-image $PWD/claude.x86_64-1.16.0-0.tar.xz
 
 .. _building-delta-containers:
 

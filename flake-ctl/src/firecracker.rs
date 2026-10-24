@@ -331,6 +331,10 @@ pub async fn pull_kis_image(
     is expected to be a tarball containing the KIS
     components; rootfs-image, kernel and optional initrd
 
+    An uri given as file:// URI or as a plain path refers to an
+    archive on the local machine, see local_path. It is copied
+    instead of downloaded
+
     The archive must be accompanied by a checksum file of the
     same name plus a '.sha256' suffix. That checksum verifies
     the download and it is kept with the image such that a
@@ -374,25 +378,40 @@ pub async fn pull_kis_image(
             let kis_tar = tmp_dir.path().join("kis_archive")
                 .into_os_string().into_string().unwrap();
 
-            // Download...
+            // Download or copy...
             match fs::create_dir_all(&work_dir) {
                 Ok(_) => {
-                    match send_request(uri).await {
-                        Ok(response) => {
-                            result = response.status().as_u16().into();
-                            match fetch_file(response, &kis_tar).await {
-                                Ok(_) => { },
-                                Err(error) => {
-                                    error!("Download failed with: {error}");
-                                    return result
-                                }
-                            }
-                        },
-                        Err(error) => {
-                            error!(
-                                "Request to '{}' failed with: {}", uri, error
-                            );
+                    // A local archive is copied to the temporary
+                    // location as well. This way the archive which
+                    // gets verified is the one that gets unpacked,
+                    // regardless of changes to the original
+                    if let Some(path) = local_path(uri) {
+                        info!("Copying {path}...");
+                        if let Err(error) = fs::copy(path, &kis_tar) {
+                            error!("Failed to copy '{path}': {error}");
                             return result
+                        }
+                    } else {
+                        match send_request(uri).await {
+                            Ok(response) => {
+                                result = response.status().as_u16().into();
+                                match fetch_file(response, &kis_tar).await {
+                                    Ok(_) => { },
+                                    Err(error) => {
+                                        error!(
+                                            "Download failed with: {error}"
+                                        );
+                                        return result
+                                    }
+                                }
+                            },
+                            Err(error) => {
+                                error!(
+                                    "Request to '{}' failed with: {}",
+                                    uri, error
+                                );
+                                return result
+                            }
                         }
                     }
                 },
@@ -405,7 +424,7 @@ pub async fn pull_kis_image(
             }
 
             // Verify the archive against the checksum record
-            // fetched from the server
+            // of its origin
             info!("Verifying archive checksum...");
             if ! verify_checksum(&kis_tar, &source_checksum) {
                 error!("Archive checksum verification failed");
@@ -486,6 +505,22 @@ pub async fn pull_kis_image(
     result
 }
 
+fn local_path(uri: &str) -> Option<&str> {
+    /*!
+    Provide the path of the given image location if it refers
+    to a file on the local machine
+
+    This is the case for a file:// URI and for a location given
+    without any URI scheme, e.g /path/to/image.tar.xz. All other
+    locations are fetched from remote
+    !*/
+    match uri.strip_prefix("file://") {
+        Some(path) => Some(path),
+        None if ! uri.contains("://") => Some(uri),
+        None => None
+    }
+}
+
 async fn fetch_source_checksum(uri: &String) -> Option<String> {
     /*!
     Fetch the checksum record that belongs to the given image URI
@@ -493,26 +528,38 @@ async fn fetch_source_checksum(uri: &String) -> Option<String> {
     The record is expected at the same location as the image under
     the name of the image plus a '.sha256' suffix. An image which
     does not provide it cannot be verified and cannot take part in
-    the update check and is therefore rejected
+    the update check and is therefore rejected. For a local image
+    the record is read from the local file next to it
     !*/
     let checksum_uri = format!("{uri}.sha256");
-    info!("Fetching checksum {checksum_uri}...");
-    let response = match send_request(&checksum_uri).await {
-        Ok(response) => response,
-        Err(error) => {
-            error!("Request to '{checksum_uri}' failed with: {error}");
-            error!(
-                "The image is expected to provide a checksum file named \
-                like the image plus a '.sha256' suffix"
-            );
-            return None
+    let missing_hint = "The image is expected to provide a checksum file \
+        named like the image plus a '.sha256' suffix";
+    let checksum_record = if let Some(path) = local_path(&checksum_uri) {
+        info!("Reading checksum {path}...");
+        match fs::read_to_string(path) {
+            Ok(checksum_record) => checksum_record,
+            Err(error) => {
+                error!("Failed to read '{path}': {error}");
+                error!("{missing_hint}");
+                return None
+            }
         }
-    };
-    let checksum_record = match response.text().await {
-        Ok(checksum_record) => checksum_record,
-        Err(error) => {
-            error!("Failed to read '{checksum_uri}': {error}");
-            return None
+    } else {
+        info!("Fetching checksum {checksum_uri}...");
+        let response = match send_request(&checksum_uri).await {
+            Ok(response) => response,
+            Err(error) => {
+                error!("Request to '{checksum_uri}' failed with: {error}");
+                error!("{missing_hint}");
+                return None
+            }
+        };
+        match response.text().await {
+            Ok(checksum_record) => checksum_record,
+            Err(error) => {
+                error!("Failed to read '{checksum_uri}': {error}");
+                return None
+            }
         }
     };
     if checksum_value(&checksum_record).is_none() {
@@ -898,6 +945,42 @@ mod tests {
 
 
 
+
+    #[test]
+    fn test_local_path() {
+        assert_eq!(local_path("/images/foo.tar.xz"), Some("/images/foo.tar.xz"));
+        assert_eq!(local_path("foo.tar.xz"), Some("foo.tar.xz"));
+        assert_eq!(
+            local_path("file:///images/foo.tar.xz"), Some("/images/foo.tar.xz")
+        );
+        assert_eq!(local_path("https://example.org/foo.tar.xz"), None);
+        assert_eq!(local_path("http://example.org/foo.tar.xz"), None);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_source_checksum_local() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let image = tmp_dir.path().join("foo.tar.xz")
+            .into_os_string().into_string().unwrap();
+        let record = "abc123  foo.tar.xz\n";
+
+        // no checksum file next to the image
+        assert_eq!(fetch_source_checksum(&image).await, None);
+
+        // a checksum file which provides no checksum
+        fs::write(format!("{image}.sha256"), "").unwrap();
+        assert_eq!(fetch_source_checksum(&image).await, None);
+
+        // a valid checksum file, given as path and as file:// URI
+        fs::write(format!("{image}.sha256"), record).unwrap();
+        assert_eq!(
+            fetch_source_checksum(&image).await.as_deref(), Some(record)
+        );
+        assert_eq!(
+            fetch_source_checksum(&format!("file://{image}")).await.as_deref(),
+            Some(record)
+        );
+    }
 
     #[test]
     fn test_validate_image_name() {

@@ -13,6 +13,34 @@ __flake_ctl_firecracker_pull() {
     "
 }
 
+__flake_ctl_firecracker_build() {
+    __comp_reply_unused "
+        --9p-sharing
+        --aarch64
+        --box
+        --box-console
+        --box-debug
+        --box-memory
+        --box-smp-cpus
+        --container
+        --cpu
+        --kiwi-image
+        --kiwi-version
+        --machine
+        --no-accel
+        --no-snapshot
+        --no-update-check
+        --outfile
+        --shared-path
+        --ssh-key
+        --ssh-port
+        --sshfs-sharing
+        --virtiofs-sharing
+        --x86_64
+        --help
+    "
+}
+
 __flake_ctl_firecracker_help() {
     :
 }
@@ -205,6 +233,7 @@ __flake_ctl_main() {
             podman_remove| \
             podman_reset| \
             podman_show| \
+            firecracker_build| \
             firecracker_remove| \
             firecracker_help| \
             firecracker_network| \
@@ -225,7 +254,7 @@ __flake_ctl_main() {
                 ;;
             firecracker_*)
                 command="firecracker" && __comp_reply "
-                    help network pull register remove show volume
+                    build help network pull register remove show volume
                 " && return 0
                 ;;
             podman_*)

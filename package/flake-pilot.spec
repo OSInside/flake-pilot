@@ -330,6 +330,7 @@ fi
 %config /etc/flakes/firecracker-flake.yaml
 %config /etc/flakes/firecracker.json
 %doc %{_mandir}/man8/flake-ctl-firecracker-pull.8.gz
+%doc %{_mandir}/man8/flake-ctl-firecracker-build.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-remove.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-register.8.gz
 %doc %{_mandir}/man8/flake-ctl-firecracker-show.8.gz

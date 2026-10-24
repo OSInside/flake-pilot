@@ -151,6 +151,19 @@ pub fn get_sandbox_tmpfs_size() -> Option<String> {
     sandbox_tmpfs_size.clone()
 }
 
+pub fn get_kiwi_container() -> String {
+    /*!
+    Provide the container which runs kiwi to build images
+
+    The container is only read from the system wide configuration,
+    which belongs to root. Without it defaults::KIWI_CONTAINER
+    is used
+    !*/
+    let GenericData { kiwi_container, .. } = &flakes_config(false).generic;
+    kiwi_container.clone()
+        .unwrap_or_else(|| defaults::KIWI_CONTAINER.to_string())
+}
+
 fn flakes_config(user: bool) -> &'static FlakesConfig {
     if user {
         &FLAKES_CONFIG_USER
@@ -198,6 +211,8 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
         firecracker_ids_dir: ~
         bubblewrap_ids_dir: ~
         podman_storage_conf: ~
+        sandbox_tmpfs_size: ~
+        kiwi_container: ~
     !*/
     if Path::new(&flake_config_path).exists() {
         if Lookup::is_debug() {
@@ -219,7 +234,8 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
                 firecracker_ids_dir: None::<String>,
                 bubblewrap_ids_dir: None::<String>,
                 podman_storage_conf: None::<String>,
-                sandbox_tmpfs_size: None::<String>
+                sandbox_tmpfs_size: None::<String>,
+                kiwi_container: None::<String>
             }
         }
     }
@@ -279,5 +295,8 @@ struct GenericData {
 
     /// Size limit of the tmpfs which keeps the writable layer of a
     /// bubblewrap sandbox, in the notation of the tmpfs size option
-    sandbox_tmpfs_size: Option<String>
+    sandbox_tmpfs_size: Option<String>,
+
+    /// Container which runs kiwi system boxbuild to build images
+    kiwi_container: Option<String>
 }

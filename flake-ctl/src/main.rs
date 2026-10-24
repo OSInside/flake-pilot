@@ -33,6 +33,7 @@ pub mod podman;
 pub mod firecracker;
 pub mod app;
 pub mod app_config;
+pub mod build;
 pub mod defaults;
 pub mod fetch;
 pub mod instance;
@@ -75,7 +76,10 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
         },
         // firecracker engine
         cli::Commands::Firecracker { command } => {
-            init_flakes_dir(user)?;
+            // Building an image does not touch the registry
+            if ! matches!(command, cli::Firecracker::Build { .. }) {
+                init_flakes_dir(user)?;
+            }
             match &command {
                 // pull
                 cli::Firecracker::Pull {
@@ -95,6 +99,16 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                             ).await
                         );
                     }
+                },
+                // build
+                cli::Firecracker::Build {
+                    kiwi_image, outfile, boxbuild
+                } => {
+                    exit(
+                        build::build_kis_image(
+                            kiwi_image, outfile, boxbuild, user
+                        )
+                    );
                 },
                 // register
                 cli::Firecracker::Register {

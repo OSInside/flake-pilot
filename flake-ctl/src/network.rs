@@ -534,6 +534,10 @@ fn configure_flake(
     let dns_option = format!(
         "nameserver={}", get_nameserver(network, services)
     );
+    // The initrd has to wait for the network to come up. It is
+    // requested along with the address, which is the setting
+    // that tells the initrd to bring up the network
+    let neednet_option = "rd.neednet=1".to_string();
 
     // The route to the gateway and the name server are the same
     // for all instances and are therefore always set globally
@@ -551,12 +555,15 @@ fn configure_flake(
             let instance_key = get_instance_key(instances, instance);
             let instance_section = instances.entry(instance_key)
                 .or_insert(AppFireCrackerInstance { boot_args: None });
-            set_boot_arg(
-                instance_section.boot_args.get_or_insert_with(Vec::new),
-                ip_option
-            );
+            let instance_boot_args = instance_section.boot_args
+                .get_or_insert_with(Vec::new);
+            set_boot_arg(instance_boot_args, ip_option);
+            set_boot_arg(instance_boot_args, neednet_option);
         },
-        None => set_boot_arg(boot_args, ip_option)
+        None => {
+            set_boot_arg(boot_args, ip_option);
+            set_boot_arg(boot_args, neednet_option);
+        }
     }
 
     if ! write_flake_config(config_file, &yaml_config) {
@@ -590,7 +597,9 @@ fn unconfigure_flake(config_file: &str, instance: Option<&str>) -> bool {
 
     Only the address is specific to an instance. The route to the
     gateway and the name server are shared and are therefore only
-    deleted if no instance of the application is connected anymore
+    deleted if no instance of the application is connected anymore.
+    Without an address the initrd must not wait for the network,
+    which is the same state a fresh registration creates
     !*/
     let mut yaml_config = match read_flake_config(config_file) {
         Some(yaml_config) => yaml_config,
@@ -610,6 +619,12 @@ fn unconfigure_flake(config_file: &str, instance: Option<&str>) -> bool {
                 unset_boot_arg(boot_args, "ip");
             }
         }
+    }
+    if get_configured_address(engine_section, None).is_none() {
+        set_boot_arg(
+            engine_section.boot_args.get_or_insert_with(Vec::new),
+            "rd.neednet=0".to_string()
+        );
     }
     if ! has_configured_address(engine_section) {
         if let Some(boot_args) = engine_section.boot_args.as_mut() {
@@ -639,7 +654,8 @@ fn delete_instance_address(
     engine_section: &mut AppFireCrackerEngine, instance: &str
 ) {
     /*!
-    Delete the address of the given instance
+    Delete the address of the given instance along with the
+    request to wait for the network
 
     An instance section which provides nothing else is deleted
     along with the address
@@ -660,6 +676,7 @@ fn delete_instance_address(
     let is_empty = match instance_section.boot_args.as_mut() {
         Some(boot_args) => {
             unset_boot_arg(boot_args, "ip");
+            unset_boot_arg(boot_args, "rd.neednet");
             boot_args.is_empty()
         },
         None => true
@@ -1158,11 +1175,17 @@ mod tests {
     use flakes::network::get_tap_name;
     use uzers::get_current_uid;
 
-    use flakes::network::{Allocation, NetworkState};
+    use flakes::network::{
+        Allocation, HostServices, Ipv4Network, NetworkState
+    };
+    use std::fs;
+    use tempfile::tempdir;
 
     use super::{
-        get_effective_boot_args, get_flake_taps, get_network_info,
-        get_remove_command, select_outgoing_interface, NetworkConfig
+        configure_flake, get_effective_boot_args, get_flake_taps,
+        get_network_info, get_remove_command, read_flake_config,
+        select_outgoing_interface, unconfigure_flake, FlakeNetwork,
+        NetworkConfig
     };
 
     fn address(address: &str) -> Ipv4Addr {
@@ -1216,6 +1239,85 @@ mod tests {
         }
     }
 
+
+    fn read_boot_args(
+        config_file: &str
+    ) -> (Option<Vec<String>>, Option<Vec<String>>) {
+        let yaml_config = read_flake_config(config_file).unwrap();
+        let engine_section = yaml_config.vm.unwrap().runtime.unwrap()
+            .firecracker.unwrap();
+        let instance_boot_args = engine_section.instance
+            .and_then(|mut instances| instances.remove("@one"))
+            .and_then(|instance_section| instance_section.boot_args);
+        (engine_section.boot_args, instance_boot_args)
+    }
+
+    #[test]
+    fn test_configure_and_unconfigure_flake() {
+        let config_dir = tempdir().unwrap();
+        let config_file = config_dir.path().join("myapp.yaml")
+            .display().to_string();
+        fs::write(
+            &config_file,
+            "vm:\n  name: leap\n  target_app_path: /usr/bin/myapp\n  \
+            host_app_path: /usr/bin/myapp\n  runtime:\n    firecracker:\n      \
+            boot_args:\n        - root=/dev/vda\n        - rd.neednet=0\n"
+        ).unwrap();
+        let network = Ipv4Network::new(address("172.16.0.0"), 24);
+        let services = HostServices { resolver: false, dhcp: false };
+        let registered = boot_args(&["root=/dev/vda", "rd.neednet=0"]);
+
+        // the instance waits for the network, the application
+        // called without an instance selector does not
+        let flake = FlakeNetwork {
+            config_file: config_file.clone(),
+            instance: Some("@one".to_string()),
+            tap: "tap-1000_myapp_one".to_string()
+        };
+        assert!(configure_flake(
+            &flake, &address("172.16.0.3"), &network, services
+        ));
+        let (global, instance) = read_boot_args(&config_file);
+        assert_eq!(
+            Some(boot_args(&[
+                "root=/dev/vda", "rd.neednet=0",
+                "rd.route=172.16.0.1/24::eth0", "nameserver=8.8.8.8"
+            ])),
+            global
+        );
+        assert_eq!(
+            Some(boot_args(&[
+                "ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off",
+                "rd.neednet=1"
+            ])),
+            instance
+        );
+        assert!(unconfigure_flake(&config_file, Some("@one")));
+        assert_eq!(
+            (Some(registered.clone()), None), read_boot_args(&config_file)
+        );
+
+        // the application called without an instance selector
+        let flake = FlakeNetwork {
+            config_file: config_file.clone(),
+            instance: None,
+            tap: "tap-1000_myapp".to_string()
+        };
+        assert!(configure_flake(
+            &flake, &address("172.16.0.2"), &network, services
+        ));
+        let (global, _) = read_boot_args(&config_file);
+        assert_eq!(
+            Some(boot_args(&[
+                "root=/dev/vda", "rd.neednet=1",
+                "rd.route=172.16.0.1/24::eth0", "nameserver=8.8.8.8",
+                "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
+            ])),
+            global
+        );
+        assert!(unconfigure_flake(&config_file, None));
+        assert_eq!((Some(registered), None), read_boot_args(&config_file));
+    }
 
     #[test]
     fn test_get_flake_taps() {

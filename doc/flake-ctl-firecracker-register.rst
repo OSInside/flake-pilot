@@ -49,8 +49,11 @@ like a normal application on this host.
 The registration creates no network setup. The ``ip=`` option is
 deleted from the kernel commandline of the VM. Without it the VM is
 not connected, the pilot creates no TAP device setup for it and
-passes no ``network-interfaces`` section to firecracker. The setup
-can be created later on with **flake-ctl-firecracker-network-add**(8)
+passes no ``network-interfaces`` section to firecracker. The
+``rd.neednet=0`` option is set such that the initrd does not wait
+for a network which never comes up and would block the boot of the
+VM. The setup can be created later on with
+**flake-ctl-firecracker-network-add**\(8)
 
 For further details about the flake configuration please refer to
 the **firecracker-pilot** manual page.

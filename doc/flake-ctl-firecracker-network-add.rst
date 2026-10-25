@@ -108,8 +108,14 @@ network:
 
    boot_args:
      - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+     - rd.neednet=1
      - rd.route=172.16.0.1/24::eth0
      - nameserver=8.8.8.8
+
+The ``rd.neednet=1`` option tells the initrd to wait for the network
+and replaces the ``rd.neednet=0`` setting of the registration. Like
+the ``ip=`` option it is written to the instance section if the
+command is called for an instance.
 
 Gateway and netmask describe the private network between the host
 and the VMs. That network is the one recorded by

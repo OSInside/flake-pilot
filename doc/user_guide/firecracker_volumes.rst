@@ -229,6 +229,7 @@ from :ref:`firecracker-networking`:
        firecracker:
          boot_args:
            - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+           - rd.neednet=1
            - rd.route=172.16.0.1/24::eth0
            - nameserver=8.8.8.8
            - nfs=172.16.0.1:/some/local/path:/some/guest/path
@@ -236,6 +237,7 @@ from :ref:`firecracker-networking`:
            "@id1":
              boot_args:
                - ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off
+               - rd.neednet=1
                - nfs=172.16.0.1:/other/local/path:/other/guest/path
 
 More than one volume of the same section is folded into a single

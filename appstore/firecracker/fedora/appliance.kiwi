@@ -7,7 +7,7 @@
         <specification>FireCracker Fedora Rawhide Base System for Testing</specification>
     </description>
     <preferences>
-        <version>1.16.0</version>
+        <version>1.46.0</version>
         <packagemanager>dnf5</packagemanager>
         <locale>en_US</locale>
         <keytable>us</keytable>

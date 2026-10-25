@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<image schemaversion="7.5" name="fedora">
+    <description type="system">
+        <author>Marcus Schäfer</author>
+        <contact>marcus.schaefer@gmail.com</contact>
+        <specification>FireCracker Fedora Rawhide Base System for Testing</specification>
+    </description>
+    <preferences>
+        <version>1.16.0</version>
+        <packagemanager>dnf5</packagemanager>
+        <locale>en_US</locale>
+        <keytable>us</keytable>
+        <timezone>Europe/Berlin</timezone>
+        <rpm-excludedocs>true</rpm-excludedocs>
+        <rpm-check-signatures>false</rpm-check-signatures>
+        <type image="kis" filesystem="ext4"/>
+    </preferences>
+    <users>
+        <user password="$1$wYJUgpM5$RXMMeASDc035eX.NbYWFl0" home="/root" name="root" groups="root"/>
+    </users>
+    <repository type="rpm-md">
+        <source path="https://download.opensuse.org/repositories/Virtualization:/Appliances:/Builder/Fedora_Rawhide"/>
+    </repository>
+    <repository type="rpm-md" sourcetype="metalink">
+        <source path="https://mirrors.fedoraproject.org/metalink?repo=rawhide&amp;arch=x86_64"/>
+    </repository>
+    <packages type="image">
+        <!-- kernel -->
+        <package name="kernel"/>
+        <!-- needed to extract vmlinux from the zstd compressed vmlinuz -->
+        <package name="zstd"/>
+        <!-- system -->
+        <package name="fedora-repos-rawhide"/>
+        <package name="selinux-policy-targeted"/>
+        <package name="dhclient"/>
+        <package name="dnf5"/>
+        <package name="tzdata"/>
+        <package name="systemd"/>
+        <package name="iputils"/>
+        <package name="binutils"/>
+        <package name="gzip"/>
+        <package name="iproute"/>
+        <package name="socat"/>
+        <package name="kmod"/>
+        <package name="openssh-server"/>
+        <package name="nodejs-npm"/>
+        <package name="dracut"/>
+        <package name="bash"/>
+        <package name="flake-pilot-firecracker-guestvm-tools"/>
+        <package name="flake-pilot-firecracker-dracut-netstart"/>
+        <package name="curl"/>
+        <package name="less"/>
+        <package name="sed"/>
+        <package name="libcap"/>
+        <package name="ncurses"/>
+        <package name="acl"/>
+        <package name="coreutils"/>
+        <package name="cpio"/>
+        <package name="findutils"/>
+        <package name="pigz"/>
+        <package name="tar"/>
+        <package name="psmisc"/>
+        <package name="fontconfig"/>
+        <package name="sudo"/>
+        <package name="rsync"/>
+        <package name="python3"/>
+        <package name="python3-pip"/>
+        <package name="rust"/>
+        <package name="cargo"/>
+        <package name="vim-enhanced"/>
+        <package name="which"/>
+        <package name="procps-ng"/>
+        <package name="nfs-utils"/>
+        <package name="git"/>
+        <package name="cryptsetup"/>
+        <package name="dracut-network"/>
+        <package name="NetworkManager"/>
+        <package name="systemd-networkd"/>
+        <package name="systemd-resolved"/>
+    </packages>
+    <packages type="bootstrap">
+        <package name="coreutils"/>
+        <package name="filesystem"/>
+        <package name="basesystem"/>
+        <package name="shadow-utils"/>
+        <package name="fedora-release"/>
+        <package name="glibc-langpack-en"/>
+        <package name="ca-certificates"/>
+    </packages>
+</image>

@@ -30,6 +30,7 @@ use serde_yaml::{self};
 use flakes::registration;
 use crate::defaults;
 use crate::firecracker;
+use crate::network;
 
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -361,10 +362,13 @@ impl AppConfig {
         }
 
         // The registration creates no network setup. The 'ip=' option
-        // is deleted from the kernel commandline of the VM. The setup
-        // can be created later on with 'flake-ctl firecracker network add'
+        // is deleted from the kernel commandline of the VM and the
+        // initrd is told not to wait for the network, which would
+        // block the boot. The setup can be created later on with
+        // 'flake-ctl firecracker network add'
         let boot_args = firecracker_section.boot_args.as_mut().unwrap();
         boot_args.retain(|boot_arg| ! boot_arg.starts_with("ip="));
+        network::set_boot_arg(boot_args, "rd.neednet=0".to_string());
 
         yaml_config.to_file(config_file)
     }

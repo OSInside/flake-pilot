@@ -280,10 +280,11 @@ with ``--instance`` only the setup of that instance is deleted, with
 
 .. note::
 
-   The application is left without an ``ip=`` option, which is the
-   same state a fresh registration creates. If
-   the VM should fall back to a dynamic setup, ``ip=dhcp`` has to be
-   added to its ``boot_args`` by hand.
+   The application is left without an ``ip=`` option and with
+   ``rd.neednet=0``, which is the same state a fresh registration
+   creates. If the VM should fall back to a dynamic setup,
+   ``ip=dhcp`` and ``rd.neednet=1`` have to be added to its
+   ``boot_args`` by hand.
 
 Delete the Host Setup
 ---------------------
@@ -331,27 +332,37 @@ addresses of the selected network show up instead:
        firecracker:
          boot_args:
            - ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off
+           - rd.neednet=1
            - rd.route=172.16.0.1/24::eth0
            - nameserver=8.8.8.8
          instance:
            "@id1":
              boot_args:
                - ip=172.16.0.3::172.16.0.1:255.255.255.0::eth0:off
+               - rd.neednet=1
            "@id2":
              boot_args:
                - ip=172.16.0.4::172.16.0.1:255.255.255.0::eth0:off
+               - rd.neednet=1
 
 With this setup ``claude`` boots with the static IP 172.16.0.2,
 ``claude @id1`` with 172.16.0.3 and ``claude @id2`` with 172.16.0.4.
 For further information about the network setup options, refer to
 ``man dracut.cmdline`` and look up the section about ``ip=``.
 
+The ``rd.neednet=1`` option tells the initrd to wait for the network
+to come up. It is written along with every ``ip=`` option. A fresh
+registration provides no network and sets ``rd.neednet=0`` instead,
+otherwise the initrd would wait for a network which never comes up
+and block the boot of the VM. Removing the network setup resets the
+option to ``rd.neednet=0``.
+
 The instance settings do not replace the global ``boot_args`` but are
 merged into them: an option which is also set in the ``instance``
 section takes the place of the global setting of the same option,
 options which are not set globally are appended. In the example above
-only the ``ip=`` option is exchanged, ``rd.route=`` and
-``nameserver=`` stay in effect for all instances.
+only the ``ip=`` and ``rd.neednet=`` options are exchanged,
+``rd.route=`` and ``nameserver=`` stay in effect for all instances.
 
 .. note::
 

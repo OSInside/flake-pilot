@@ -50,9 +50,10 @@ is deleted by the helper, see **flake-pilot-helper**\(8):
 The command then deletes the network setup from the flake
 configuration, with the privileges of the calling user. The ``ip=``,
 ``rd.route=`` and ``nameserver=`` options are deleted from the kernel
-commandline of the VM. Sections which became empty are dropped such
-that the configuration is the same as it was before the setup was
-created.
+commandline of the VM and ``rd.neednet=1`` is reset to
+``rd.neednet=0``, such that the initrd no longer waits for the
+network. Sections which became empty are dropped such that the
+configuration is the same as it was before the setup was created.
 
 The address of the application becomes available again and is
 handed out to the next application which is connected. The

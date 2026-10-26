@@ -1,0 +1,4 @@
+options:
+  - "--box tumbleweed"
+  - "--shared-path cloudsdk/.sle16:/.sle16"
+  - "--outfile aws.x86_64-1.16.0-0.tar.xz"

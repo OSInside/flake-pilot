@@ -1,0 +1,483 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2026 Marcus Schäfer
+#
+# This file is part of flake-pilot
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+"""
+Build and deploy the images of the podman appstore
+
+appstore build /path/to/image/description
+
+  Build the container image of the given image description through
+  'flake-ctl podman build'. The options of the build are read from
+  the build.yml file of the description, e.g:
+
+    options:
+      - "--box tumbleweed"
+      - "--shared-path cloudsdk/.sle16:/.sle16"
+      - "--outfile aws-cli.x86_64-1.16.0-0.tar.xz"
+
+  The image description is passed as --kiwi-image and must not
+  be part of the options, --outfile is required. A relative
+  --outfile is created in the target directory, the current
+  directory by default. The build creates a checksum file named
+  like the outfile plus a '.sha256' suffix next to it. A relative
+  host path of --shared-path is a path of the appstore, it is
+  resolved from the directory of this tool.
+
+appstore deploy /path/to/image
+
+  Push the given container image archive to the ECR registry of
+  the appstore, like the push script did it before. The image is
+  verified against its checksum file if there is one, loaded into
+  the local container registry and pushed as REPOSITORY:latest.
+  The repository is the path of the image description in the
+  appstore, e.g ai/claude: the description whose build.yml creates
+  an --outfile of the name of the image. The upload information is
+  read from the appstore.yml file next to this tool, e.g:
+
+    deploy:
+      ecr: public.ecr.aws/b9k1j9y6
+      ecr_user: AWS
+      login_profile: suse-bci
+      region: us-east-1
+
+  The login_profile is the AWS profile of the credentials, e.g
+  as configured in ~/.aws/config. Without it the default
+  credentials of boto3 are used. The password to login to the
+  registry is requested from ECR Public with these credentials,
+  like 'aws ecr-public get-login-password' does it.
+
+appstore list
+
+  Show the repositories of the ECR registry of the appstore, along
+  with the tags, the push date in local time and the size of the
+  latest image of each of them
+"""
+import base64
+import hashlib
+import os
+import shlex
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, List, NoReturn, Optional
+
+import typer
+import yaml
+
+# Directory of the appstore, the image descriptions are below it
+APPSTORE_DIR = Path(__file__).resolve().parent
+# Configuration file of the appstore with the upload information
+APPSTORE_CONFIG = APPSTORE_DIR / 'appstore.yml'
+# Configuration file of an image description with the build options
+BUILD_CONFIG = 'build.yml'
+# Tools which build, load and push the container image
+FLAKE_CTL = 'flake-ctl'
+PODMAN = 'podman'
+# Options of the build which the appstore provides itself, requires
+# or resolves
+KIWI_IMAGE_OPTION = '--kiwi-image'
+OUTFILE_OPTION = '--outfile'
+SHARED_PATH_OPTION = '--shared-path'
+# Suffix of the checksum file created next to an image
+CHECKSUM_SUFFIX = '.sha256'
+# Tag the images are pushed with
+IMAGE_TAG = 'latest'
+# Credentials of the registry, shared by podman login and podman push
+AUTH_FILE = Path('~/.config/containers/auth.json').expanduser()
+
+app = typer.Typer(
+    help='Build and deploy the images of the podman appstore',
+    add_completion=False,
+    no_args_is_help=True
+)
+
+
+def fail(message: str) -> NoReturn:
+    typer.secho(f'Error: {message}', fg=typer.colors.RED, err=True)
+    raise typer.Exit(1)
+
+
+def read_yaml(config_file: Path) -> Dict:
+    """
+    Read the given YAML file, which has to provide a mapping
+    """
+    try:
+        with open(config_file) as config:
+            data = yaml.safe_load(config) or {}
+    except (OSError, yaml.YAMLError) as issue:
+        fail(f'Failed to read {config_file}: {issue}')
+    if not isinstance(data, dict):
+        fail(f'{config_file}: expected a mapping')
+    return data
+
+
+def read_build_options(build_config: Path) -> List[str]:
+    """
+    Provide the arguments of 'flake-ctl podman build' configured in
+    the given build.yml file
+
+    An option can be configured together with its value in one
+    entry, e.g "--box tumbleweed". The entries are split into the
+    arguments the way a shell would split them
+    """
+    options = read_yaml(build_config).get('options') or []
+    if not isinstance(options, list) or \
+       not all(isinstance(option, str) for option in options):
+        fail(f'{build_config}: options has to be a list of strings')
+    arguments: List[str] = []
+    for option in options:
+        try:
+            arguments += shlex.split(option)
+        except ValueError as issue:
+            fail(f'{build_config}: invalid option {option!r}: {issue}')
+    return arguments
+
+
+def get_build_arguments(description: Path) -> List[str]:
+    """
+    Provide the arguments of 'flake-ctl podman build' configured in
+    the build.yml file of the given image description
+
+    The relative host path of a --shared-path option is resolved
+    from the appstore directory, the build runs elsewhere
+    """
+    build_config = description / BUILD_CONFIG
+    arguments = read_build_options(build_config)
+    if get_option_value(arguments, KIWI_IMAGE_OPTION) is not None:
+        fail(
+            f'{build_config}: {KIWI_IMAGE_OPTION} is provided by '
+            'the appstore, it is the image description'
+        )
+    if not get_option_value(arguments, OUTFILE_OPTION):
+        fail(f'{build_config}: {OUTFILE_OPTION} is required')
+    resolved: List[str] = []
+    arguments_iter = iter(arguments)
+    for argument in arguments_iter:
+        if argument == SHARED_PATH_OPTION:
+            resolved += [
+                argument, resolve_shared_path(next(arguments_iter, ''))
+            ]
+        elif argument.startswith(f'{SHARED_PATH_OPTION}='):
+            resolved.append('{0}={1}'.format(
+                SHARED_PATH_OPTION,
+                resolve_shared_path(argument.split('=', 1)[1])
+            ))
+        else:
+            resolved.append(argument)
+    return resolved
+
+
+def resolve_shared_path(shared_path: str) -> str:
+    """
+    Resolve the host path of the given HOST_PATH[:BOX_PATH] value
+    from the appstore directory, unless it is absolute
+    """
+    host_path, separator, box_path = shared_path.partition(':')
+    if host_path and not os.path.isabs(host_path):
+        host_path = str(APPSTORE_DIR / host_path)
+    return f'{host_path}{separator}{box_path}'
+
+
+def get_option_value(arguments: List[str], option: str) -> Optional[str]:
+    """
+    Provide the value of the given option in the given arguments,
+    given as "--option value" or "--option=value", or None
+    """
+    for index, argument in enumerate(arguments):
+        if argument == option:
+            return arguments[index + 1] if index + 1 < len(arguments) else ''
+        if argument.startswith(f'{option}='):
+            return argument.split('=', 1)[1]
+    return None
+
+
+def get_repository(image: Path) -> str:
+    """
+    Provide the repository the given image is pushed to: the path of
+    the image description in the appstore whose build.yml creates an
+    --outfile of the name of the image, e.g ai/claude
+    """
+    repositories = []
+    for build_config in sorted(APPSTORE_DIR.rglob(BUILD_CONFIG)):
+        outfile = get_option_value(
+            read_build_options(build_config), OUTFILE_OPTION
+        )
+        if outfile and Path(outfile).name == image.name:
+            repositories.append(
+                build_config.parent.relative_to(APPSTORE_DIR).as_posix()
+            )
+    if not repositories:
+        fail(
+            f'No image description in {APPSTORE_DIR} builds {image.name}, '
+            f'see {OUTFILE_OPTION} in {BUILD_CONFIG}'
+        )
+    if len(repositories) > 1:
+        fail(f'{image.name} is built by more than one image description: '
+             f'{", ".join(repositories)}')
+    return repositories[0]
+
+
+def get_deploy_config(config: Path) -> Dict:
+    """
+    Provide the deploy section of the given appstore configuration,
+    which has to name the registry
+    """
+    deploy_config = read_yaml(config).get('deploy') or {}
+    if not isinstance(deploy_config, dict):
+        fail(f'{config}: deploy has to be a mapping')
+    if not deploy_config.get('ecr'):
+        fail(f'{config}: no registry configured as deploy.ecr')
+    return deploy_config
+
+
+def get_ecr_public_client(deploy_config: Dict) -> Any:
+    """
+    Provide an ECR Public client of the AWS profile and region of the
+    given deploy configuration
+    """
+    # boto3 is only needed to access the registry
+    import boto3
+    from botocore.exceptions import BotoCoreError
+
+    try:
+        return boto3.Session(
+            profile_name=deploy_config.get('login_profile'),
+            region_name=deploy_config.get('region')
+        ).client('ecr-public')
+    except BotoCoreError as issue:
+        fail(f'Failed to access {deploy_config["ecr"]}: {issue}')
+
+
+def get_login_password(deploy_config: Dict) -> str:
+    """
+    Request the password to login to the registry from ECR Public,
+    like 'aws ecr-public get-login-password' does it. The token of
+    the authorization is USER:PASSWORD, base64 encoded
+    """
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    ecr_public = get_ecr_public_client(deploy_config)
+    try:
+        token = ecr_public.get_authorization_token()[
+            'authorizationData'
+        ]['authorizationToken']
+    except (BotoCoreError, ClientError) as issue:
+        fail(f'Failed to get the login password: {issue}')
+    return base64.b64decode(token).decode().split(':', 1)[-1]
+
+
+def format_size(size: float) -> str:
+    """
+    Provide the given number of bytes in a human readable form
+    """
+    for unit in ('B', 'KiB', 'MiB', 'GiB'):
+        if size < 1024:
+            break
+        size /= 1024
+    else:
+        unit = 'TiB'
+    return f'{size:.0f} {unit}' if unit == 'B' else f'{size:.1f} {unit}'
+
+
+def verify_checksum(image: Path, checksum_file: Path) -> None:
+    """
+    Verify the given image against its checksum file, which is in
+    the format of sha256sum: "CHECKSUM  FILENAME"
+    """
+    try:
+        record = checksum_file.read_text().split()
+    except OSError as issue:
+        fail(f'Failed to read {checksum_file}: {issue}')
+    if not record:
+        fail(f'{checksum_file}: no checksum found')
+    if len(record) > 1 and record[1].lstrip('*') != image.name:
+        fail(f'{checksum_file}: checksum of {record[1]}, not of {image.name}')
+    digest = hashlib.sha256()
+    with open(image, 'rb') as image_data:
+        for chunk in iter(lambda: image_data.read(1 << 20), b''):
+            digest.update(chunk)
+    if digest.hexdigest() != record[0]:
+        fail(f'{image} does not match its checksum in {checksum_file}')
+
+
+def run(call: List[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    """
+    Run the given call and fail if it fails. Its output goes to the
+    terminal unless it is captured through the given arguments
+    """
+    typer.echo(f'Calling: {shlex.join(call)}')
+    try:
+        result = subprocess.run(call, **kwargs)
+    except OSError as issue:
+        fail(f'Failed to call {call[0]}: {issue}')
+    if result.returncode != 0:
+        if result.stderr:
+            typer.echo(result.stderr, err=True, nl=False)
+        fail(f'Command failed: {shlex.join(call)}')
+    return result
+
+
+def load_image(image: Path) -> str:
+    """
+    Load the given image archive into the local container registry
+    and provide the name of the image it contains, as podman reports
+    it, e.g "Loaded image: localhost/claude:latest"
+    """
+    result = run(
+        [PODMAN, 'load', '-i', str(image)],
+        capture_output=True, text=True
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith('Loaded image'):
+            names = line.split(':', 1)[1].split(',')
+            if names[0].strip():
+                return names[0].strip()
+    fail(f'No image name found in the output of podman load: {result.stdout}')
+
+
+@app.command()
+def build(
+    description: Path = typer.Argument(
+        ..., exists=True, file_okay=False, resolve_path=True,
+        help='Path to the image description with its build.yml file'
+    ),
+    target_dir: Path = typer.Option(
+        Path('.'), exists=True, file_okay=False, resolve_path=True,
+        help='Directory a relative --outfile of build.yml is created in'
+    )
+) -> None:
+    """
+    Build the container image of the given image description
+    """
+    arguments = get_build_arguments(description)
+    run(
+        [
+            FLAKE_CTL, 'podman', 'build',
+            KIWI_IMAGE_OPTION, str(description)
+        ] + arguments,
+        cwd=target_dir
+    )
+    image = target_dir / str(get_option_value(arguments, OUTFILE_OPTION))
+    typer.echo(f'Container image: {image}')
+    typer.echo(f'Deploy with: appstore deploy {image}')
+
+
+@app.command()
+def deploy(
+    image: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, resolve_path=True,
+        help='Path to the container image archive'
+    ),
+    config: Path = typer.Option(
+        APPSTORE_CONFIG, exists=True, dir_okay=False,
+        help='Appstore configuration with the registry information'
+    )
+) -> None:
+    """
+    Push the given container image to the registry of the appstore
+    """
+    deploy_config = get_deploy_config(config)
+    registry = deploy_config['ecr']
+    target = f'{registry}/{get_repository(image)}:{IMAGE_TAG}'
+
+    checksum_file = image.with_name(image.name + CHECKSUM_SUFFIX)
+    if checksum_file.is_file():
+        typer.echo(f'Verifying {image.name}...')
+        verify_checksum(image, checksum_file)
+
+    # load to local registry
+    source = load_image(image)
+    run([PODMAN, 'image', 'prune', '--force'])
+
+    # push to public registry
+    password = get_login_password(deploy_config)
+    AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            PODMAN, 'login', '--authfile', str(AUTH_FILE),
+            '--username', deploy_config.get('ecr_user') or 'AWS',
+            '--password-stdin', registry
+        ],
+        input=password, capture_output=True, text=True
+    )
+    run([PODMAN, 'push', '--authfile', str(AUTH_FILE), source, target])
+    typer.echo(f'Deployed: {target}')
+
+
+@app.command('list')
+def list_registry(
+    config: Path = typer.Option(
+        APPSTORE_CONFIG, exists=True, dir_okay=False,
+        help='Appstore configuration with the registry information'
+    )
+) -> None:
+    """
+    Show the repositories of the registry of the appstore
+    """
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    deploy_config = get_deploy_config(config)
+    registry = deploy_config['ecr']
+    ecr_public = get_ecr_public_client(deploy_config)
+    typer.echo(f'{registry}:')
+    count = 0
+    try:
+        repositories = [
+            repository
+            for page in ecr_public.get_paginator(
+                'describe_repositories'
+            ).paginate()
+            for repository in page['repositories']
+            if repository['repositoryUri'].startswith(f'{registry}/')
+        ]
+        for repository in sorted(
+            repositories, key=lambda repository: repository['repositoryName']
+        ):
+            images = [
+                image
+                for page in ecr_public.get_paginator(
+                    'describe_images'
+                ).paginate(repositoryName=repository['repositoryName'])
+                for image in page['imageDetails']
+            ]
+            count += 1
+            if not images:
+                typer.echo('{0:16}  {1:>10}  {2}  (no images)'.format(
+                    '-', '-', repository['repositoryName']
+                ))
+                continue
+            latest = max(images, key=lambda image: image['imagePushedAt'])
+            pushed_at = latest['imagePushedAt'].astimezone()
+            typer.echo('{0}  {1:>10}  {2}:{3}'.format(
+                pushed_at.strftime('%Y-%m-%d %H:%M'),
+                format_size(latest.get('imageSizeInBytes', 0)),
+                repository['repositoryName'],
+                ','.join(latest.get('imageTags') or ['<untagged>'])
+            ))
+    except (BotoCoreError, ClientError) as issue:
+        fail(f'Failed to list {registry}: {issue}')
+    typer.echo('{0} repositor{1}'.format(count, 'y' if count == 1 else 'ies'))
+
+
+if __name__ == '__main__':
+    app()

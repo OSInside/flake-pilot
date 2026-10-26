@@ -1,0 +1,4 @@
+deploy:
+  s3: flake-appstore
+  login_profile: suse-bci
+  region: us-east-2

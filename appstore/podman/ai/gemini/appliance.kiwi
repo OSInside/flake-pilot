@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<image schemaversion="7.5" name="kiwi-test-image-gemini">
+<image schemaversion="7.5" name="gemini">
     <description type="system">
         <author>Marcus Schäfer</author>
         <contact>marcus.schaefer@suse.com</contact>

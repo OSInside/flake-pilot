@@ -1,0 +1,3 @@
+options:
+  - "--box tumbleweed"
+  - "--outfile leap.x86_64-1.16.0-0.tar.xz"

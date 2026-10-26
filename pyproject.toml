@@ -29,6 +29,11 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.9"
+# appstore/firecracker/appstore and appstore/podman/appstore: build
+# and deploy tools of the firecracker and the podman appstore
+typer = ">=0.9.0"
+boto3 = ">=1.26.0"
+PyYAML = ">=5.4.0"
 
 [tool.poetry.group.docs]
 [tool.poetry.group.docs.dependencies]

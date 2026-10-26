@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<image schemaversion="7.5" name="kiwi-test-image-aws-cli">
+<image schemaversion="7.5" name="aws">
     <description type="system">
         <author>Marcus Schäfer</author>
         <contact>marcus.schaefer@suse.com</contact>
         <specification>aws cli</specification>
     </description>
     <preferences>
-        <version>2.1.0</version>
+        <version>1.16.0</version>
         <packagemanager>zypper</packagemanager>
         <rpm-excludedocs>true</rpm-excludedocs>
         <rpm-check-signatures>false</rpm-check-signatures>

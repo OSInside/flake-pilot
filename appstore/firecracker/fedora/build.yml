@@ -1,0 +1,3 @@
+options:
+  - "--box universal"
+  - "--outfile fedora.x86_64-1.46.0-0.tar.xz"

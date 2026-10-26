@@ -1,0 +1,5 @@
+deploy:
+  ecr: public.ecr.aws/b9k1j9y6
+  ecr_user: AWS
+  login_profile: suse-bci
+  region: us-east-1

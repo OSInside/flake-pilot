@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2026 Marcus Schäfer
+#
+# This file is part of flake-pilot
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+"""
+Build and deploy the images of the firecracker appstore
+
+appstore build /path/to/image/description
+
+  Build the KIS image of the given image description through
+  'flake-ctl firecracker build'. The options of the build are
+  read from the build.yml file of the description, e.g:
+
+    options:
+      - "--box tumbleweed"
+      - "--outfile leap.x86_64-1.16.0-0.tar.xz"
+
+  The image description is passed as --kiwi-image and must not
+  be part of the options, --outfile is required. A relative
+  --outfile is created in the target directory, the current
+  directory by default. The build creates a checksum file named
+  like the outfile plus a '.sha256' suffix next to it.
+
+appstore deploy /path/to/image
+
+  Upload the given KIS image along with its checksum file to the
+  S3 bucket of the appstore, such that it can be pulled through
+  'flake-ctl firecracker pull --kis-image URL'. The image is
+  verified against the checksum file first. The upload information
+  is read from the appstore.yml file next to this tool, e.g:
+
+    deploy:
+      s3: flake-appstore
+      login_profile: suse-flake
+      region: us-east-2
+
+  The login_profile is the AWS profile of the credentials, e.g
+  as configured in ~/.aws/config. Without it the default
+  credentials of boto3 are used. The progress of each upload
+  is shown.
+
+appstore list
+
+  Show the contents of the S3 bucket of the appstore, configured
+  in appstore.yml as well: the date of the last change in local
+  time, the size and the name of each file
+"""
+import hashlib
+import shlex
+import subprocess
+import threading
+from pathlib import Path
+from typing import Any, Dict, List, NoReturn, Tuple
+
+import typer
+import yaml
+
+# Configuration file of the appstore with the upload information
+APPSTORE_CONFIG = Path(__file__).resolve().parent / 'appstore.yml'
+# Configuration file of an image description with the build options
+BUILD_CONFIG = 'build.yml'
+# Tool which builds the KIS image
+FLAKE_CTL = 'flake-ctl'
+# Options of the build which the appstore provides itself or requires
+KIWI_IMAGE_OPTION = '--kiwi-image'
+OUTFILE_OPTION = '--outfile'
+# Suffix of the checksum file created next to a KIS image
+CHECKSUM_SUFFIX = '.sha256'
+
+app = typer.Typer(
+    help='Build and deploy the images of the firecracker appstore',
+    add_completion=False,
+    no_args_is_help=True
+)
+
+
+def fail(message: str) -> NoReturn:
+    typer.secho(f'Error: {message}', fg=typer.colors.RED, err=True)
+    raise typer.Exit(1)
+
+
+def read_yaml(config_file: Path) -> Dict:
+    """
+    Read the given YAML file, which has to provide a mapping
+    """
+    try:
+        with open(config_file) as config:
+            data = yaml.safe_load(config) or {}
+    except (OSError, yaml.YAMLError) as issue:
+        fail(f'Failed to read {config_file}: {issue}')
+    if not isinstance(data, dict):
+        fail(f'{config_file}: expected a mapping')
+    return data
+
+
+def get_build_arguments(description: Path) -> List[str]:
+    """
+    Provide the arguments of 'flake-ctl firecracker build' configured
+    in the build.yml file of the given image description
+
+    An option can be configured together with its value in one
+    entry, e.g "--box tumbleweed". The entries are split into the
+    arguments the way a shell would split them
+    """
+    build_config = description / BUILD_CONFIG
+    options = read_yaml(build_config).get('options') or []
+    if not isinstance(options, list) or \
+       not all(isinstance(option, str) for option in options):
+        fail(f'{build_config}: options has to be a list of strings')
+    arguments: List[str] = []
+    for option in options:
+        try:
+            arguments += shlex.split(option)
+        except ValueError as issue:
+            fail(f'{build_config}: invalid option {option!r}: {issue}')
+    if get_option_value(arguments, KIWI_IMAGE_OPTION) is not None:
+        fail(
+            f'{build_config}: {KIWI_IMAGE_OPTION} is provided by '
+            'the appstore, it is the image description'
+        )
+    if not get_option_value(arguments, OUTFILE_OPTION):
+        fail(f'{build_config}: {OUTFILE_OPTION} is required')
+    return arguments
+
+
+def get_option_value(arguments: List[str], option: str):
+    """
+    Provide the value of the given option in the given arguments,
+    given as "--option value" or "--option=value", or None
+    """
+    for index, argument in enumerate(arguments):
+        if argument == option:
+            return arguments[index + 1] if index + 1 < len(arguments) else ''
+        if argument.startswith(f'{option}='):
+            return argument.split('=', 1)[1]
+    return None
+
+
+def format_size(size: float) -> str:
+    """
+    Provide the given number of bytes in a human readable form
+    """
+    for unit in ('B', 'KiB', 'MiB', 'GiB'):
+        if size < 1024:
+            break
+        size /= 1024
+    else:
+        unit = 'TiB'
+    return f'{size:.0f} {unit}' if unit == 'B' else f'{size:.1f} {unit}'
+
+
+def get_s3_client(config: Path) -> Tuple[Any, str]:
+    """
+    Provide an S3 client of the AWS profile and region configured in
+    the deploy section of the given appstore configuration, along
+    with the name of the bucket configured there
+    """
+    # boto3 is only needed to access the bucket
+    import boto3
+    from botocore.exceptions import BotoCoreError
+
+    deploy_config = read_yaml(config).get('deploy') or {}
+    if not isinstance(deploy_config, dict):
+        fail(f'{config}: deploy has to be a mapping')
+    bucket = deploy_config.get('s3')
+    if not bucket:
+        fail(f'{config}: no S3 bucket configured as deploy.s3')
+    try:
+        s3 = boto3.Session(
+            profile_name=deploy_config.get('login_profile'),
+            region_name=deploy_config.get('region')
+        ).client('s3')
+    except BotoCoreError as issue:
+        fail(f'Failed to access s3://{bucket}: {issue}')
+    return s3, bucket
+
+
+def upload_file(
+    s3: Any, bucket: str, source: Path, content_type: str
+) -> None:
+    """
+    Upload the given file to the given bucket, named like the file,
+    and show the progress of the upload
+
+    boto3 reports the progress from the threads of the transfer,
+    which can run in parallel for a large file. The reports are
+    therefore passed to the progress bar one at a time
+    """
+    size = source.stat().st_size
+    lock = threading.Lock()
+    with typer.progressbar(
+        length=size, label=f'{source.name} ({format_size(size)})'
+    ) as progress:
+        def report(transferred: int) -> None:
+            with lock:
+                progress.update(transferred)
+        s3.upload_file(
+            str(source), bucket, source.name,
+            ExtraArgs={'ContentType': content_type}, Callback=report
+        )
+
+
+def verify_checksum(image: Path, checksum_file: Path) -> None:
+    """
+    Verify the given image against its checksum file, which is in
+    the format of sha256sum: "CHECKSUM  FILENAME"
+    """
+    try:
+        record = checksum_file.read_text().split()
+    except OSError as issue:
+        fail(f'Failed to read {checksum_file}: {issue}')
+    if not record:
+        fail(f'{checksum_file}: no checksum found')
+    if len(record) > 1 and record[1].lstrip('*') != image.name:
+        fail(f'{checksum_file}: checksum of {record[1]}, not of {image.name}')
+    digest = hashlib.sha256()
+    with open(image, 'rb') as image_data:
+        for chunk in iter(lambda: image_data.read(1 << 20), b''):
+            digest.update(chunk)
+    if digest.hexdigest() != record[0]:
+        fail(f'{image} does not match its checksum in {checksum_file}')
+
+
+@app.command()
+def build(
+    description: Path = typer.Argument(
+        ..., exists=True, file_okay=False, resolve_path=True,
+        help='Path to the image description with its build.yml file'
+    ),
+    target_dir: Path = typer.Option(
+        Path('.'), exists=True, file_okay=False, resolve_path=True,
+        help='Directory a relative --outfile of build.yml is created in'
+    )
+) -> None:
+    """
+    Build the KIS image of the given image description
+    """
+    arguments = get_build_arguments(description)
+    call = [
+        FLAKE_CTL, 'firecracker', 'build',
+        KIWI_IMAGE_OPTION, str(description)
+    ] + arguments
+    typer.echo(f'Calling: {shlex.join(call)}')
+    try:
+        result = subprocess.run(call, cwd=target_dir)
+    except OSError as issue:
+        fail(f'Failed to call {FLAKE_CTL}: {issue}')
+    if result.returncode != 0:
+        fail(f'Build of {description} failed')
+    image = target_dir / get_option_value(arguments, OUTFILE_OPTION)
+    typer.echo(f'KIS image: {image}')
+    typer.echo(f'Deploy with: appstore deploy {image}')
+
+
+@app.command()
+def deploy(
+    image: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, resolve_path=True,
+        help='Path to the KIS image, its .sha256 file has to be next to it'
+    ),
+    config: Path = typer.Option(
+        APPSTORE_CONFIG, exists=True, dir_okay=False,
+        help='Appstore configuration with the S3 bucket information'
+    )
+) -> None:
+    """
+    Upload the given KIS image and its checksum file to the appstore
+    """
+    from boto3.s3.transfer import S3UploadFailedError
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    s3, bucket = get_s3_client(config)
+    checksum_file = image.with_name(image.name + CHECKSUM_SUFFIX)
+    if not checksum_file.is_file():
+        fail(f'Checksum file {checksum_file} not found')
+    typer.echo(f'Verifying {image.name}...')
+    verify_checksum(image, checksum_file)
+
+    typer.echo(f'Uploading to s3://{bucket}')
+    try:
+        # The image comes first, a checksum file is never published
+        # without the image it belongs to
+        upload_file(s3, bucket, image, 'application/octet-stream')
+        upload_file(s3, bucket, checksum_file, 'text/plain')
+    except (BotoCoreError, ClientError, S3UploadFailedError) as issue:
+        fail(f'Upload to s3://{bucket} failed: {issue}')
+    typer.echo(f'Deployed: s3://{bucket}/{image.name}')
+
+
+@app.command('list')
+def list_bucket(
+    config: Path = typer.Option(
+        APPSTORE_CONFIG, exists=True, dir_okay=False,
+        help='Appstore configuration with the S3 bucket information'
+    )
+) -> None:
+    """
+    Show the contents of the S3 bucket of the appstore
+    """
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    s3, bucket = get_s3_client(config)
+    try:
+        objects = [
+            entry
+            for page in s3.get_paginator('list_objects_v2').paginate(
+                Bucket=bucket
+            )
+            for entry in page.get('Contents', [])
+        ]
+    except (BotoCoreError, ClientError) as issue:
+        fail(f'Failed to list s3://{bucket}: {issue}')
+    typer.echo(f's3://{bucket}:')
+    for entry in objects:
+        typer.echo('{0}  {1:>10}  {2}'.format(
+            entry['LastModified'].astimezone().strftime('%Y-%m-%d %H:%M'),
+            format_size(entry['Size']), entry['Key']
+        ))
+    typer.echo('{0} file{1}, {2}'.format(
+        len(objects), '' if len(objects) == 1 else 's',
+        format_size(sum(entry['Size'] for entry in objects))
+    ))
+
+
+if __name__ == '__main__':
+    app()

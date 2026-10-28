@@ -21,7 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-pub const VAR_EXPANSION_LIMIT: i32 = 10;
 // Name and path of the program which creates the sandbox
 pub const BWRAP: &str = "bwrap";
 pub use flakes::defaults::BWRAP_PATH;
@@ -40,11 +39,9 @@ pub const SANDBOX_NOT_STARTED: &str = "0";
 // sandbox, it is writable and keeps what is written to it in a
 // tmpfs which is gone along with the sandbox
 pub const BWRAP_BIND_OPTION: &str = "--bind";
-// Option which stacks another layer on top of the rootfs. A flake
-// can configure it to add layers to the root of the sandbox. The
-// layers are part of the overlay created by the pilot or the
-// helper and are not passed to bwrap
-pub const BWRAP_OVERLAY_SRC_OPTION: &str = "--overlay-src";
+// Option which stacks another layer on top of the rootfs, see
+// flakes::bubblewrap::split_options()
+pub use flakes::defaults::BWRAP_OVERLAY_SRC_OPTION;
 // Option which selects the working directory in the sandbox
 pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
 // Mount point of the root filesystem of the sandbox
@@ -62,6 +59,10 @@ pub use flakes::defaults::{
     OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME, OVERLAY_LOWER_NAME,
     OVERLAY_EMPTY_NAME
 };
+// Variable the helper sets for the pilot it starts on the root
+// filesystem it mounted for the flake, see
+// bubblewrap::start_in_mounted_root()
+pub use flakes::defaults::SANDBOX_MOUNTED_VAR;
 // Permissions of the directories of the overlay setup. Nobody but
 // the user of the sandbox has access to them
 pub const OVERLAY_DIR_MODE: &str = "700";

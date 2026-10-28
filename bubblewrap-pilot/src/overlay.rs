@@ -188,7 +188,7 @@ pub fn has_mounts_below(
     namespace of a user. The mounts of the host are locked in it,
     and the kernel refuses an overlay which would reveal what is
     covered by them. Such a root filesystem of a sandbox is mounted
-    by the helper instead, see its sandbox-run command
+    by the helper instead, see its bubblewrap-pilot command
     !*/
     let mountinfo = fs::read_to_string(defaults::PROC_MOUNTINFO).map_err(
         |error| mount_error(

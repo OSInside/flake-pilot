@@ -31,14 +31,16 @@ use flakes::io::IO;
 use flakes::error::FlakeError;
 use flakes::config::get_bubblewrap_ids_dir;
 use flakes::helper::helper_call;
+use flakes::bubblewrap::split_options;
+use flakes::registration;
 
 use lazy_static::lazy_static;
-use regex::Regex;
 use uzers::get_current_username;
 
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
@@ -47,9 +49,6 @@ lazy_static! {
     static ref CALLING_USER: String = get_current_username()
         .map(|user| user.to_string_lossy().to_string())
         .unwrap_or_default();
-
-    /// Reference of an environment variable in a runtime option
-    static ref VAR_PATTERN: Regex = Regex::new(r"%([A-Z]+)").unwrap();
 }
 
 pub fn create(program_name: &str) -> Result<String, FlakeError> {
@@ -173,19 +172,13 @@ pub fn start(
     see overlay::mount(). A rootfs or a layer with mount points
     below it cannot be overlaid in a user namespace, e.g the root
     of the host. The helper creates the mount namespace of such a
-    sandbox, mounts the overlay in it and calls bwrap there with
-    the privileges of the caller, see overlay::has_mounts_below()
+    sandbox, mounts the overlay in it and starts the pilot there
+    with the privileges of the caller, which then calls bwrap, see
+    overlay::has_mounts_below() and start_in_mounted_root()
     !*/
-    // The root of the sandbox is referenced as %OVERLAYROOT in
-    // the options which create it
-    env::set_var(
-        defaults::OVERLAY_ROOT_VAR,
-        overlay::get_dir(defaults::OVERLAY_MERGED_NAME)
-    );
-    match prepare_sandbox() {
-        Ok((call, engine_arguments)) => run_sandbox(
-            program_name, sandbox_id_file, call, engine_arguments
-        ),
+    set_overlay_root_var();
+    match prepare_sandbox(program_name) {
+        Ok(call) => run_sandbox(sandbox_id_file, call),
         Err(error) => {
             // Without a root filesystem there is no sandbox and
             // therefore also no instance of it
@@ -195,11 +188,66 @@ pub fn start(
     }
 }
 
-fn prepare_sandbox() -> Result<(Command, Vec<String>), FlakeError> {
+pub fn start_in_mounted_root(program_name: &str) -> Result<ExitCode, FlakeError> {
+    /*!
+    Replace this pilot by bwrap, which creates the sandbox on the
+    root filesystem mounted by the helper
+
+    The helper runs this pilot for a flake with mount points below
+    its root filesystem, see prepare_sandbox(). It
+    takes the rootfs and the layers from the registration, mounts
+    them in the mount namespace of the sandbox and starts the pilot
+    in it, with the privileges of the caller. The instance of the
+    flake is recorded by the pilot which called the helper
+    !*/
+    set_overlay_root_var();
+    let RuntimeSection { bubblewrap, .. } = config().runtime();
+    let (_, engine_arguments) = get_engine_arguments(bubblewrap)?;
+    let mut call = Command::new(defaults::BWRAP_PATH);
+    add_sandbox_arguments(&mut call, program_name, engine_arguments);
+    if Lookup::is_debug() {
+        debug!("{:?} {:?}", call.get_program(), call.get_args());
+    }
+    Err(call.exec().into())
+}
+
+pub fn is_mounted_by_helper() -> bool {
+    /*!
+    Check if this pilot was started by the helper in the mount
+    namespace of a sandbox whose root filesystem it has mounted,
+    see start_in_mounted_root()
+
+    The variable is not trusted for anything but the choice to call
+    bwrap right away. A caller who sets it gets a sandbox without
+    a root filesystem, with no other privileges than its own
+    !*/
+    env::var_os(defaults::SANDBOX_MOUNTED_VAR).is_some()
+}
+
+fn set_overlay_root_var() {
+    /*!
+    Provide the root of the sandbox, it is referenced as
+    %OVERLAYROOT in the options which create the sandbox
+    !*/
+    env::set_var(
+        defaults::OVERLAY_ROOT_VAR,
+        overlay::get_dir(defaults::OVERLAY_MERGED_NAME)
+    );
+}
+
+fn prepare_sandbox(program_name: &str) -> Result<Command, FlakeError> {
     /*!
     Provide the root filesystem of the sandbox and the call which
-    creates the sandbox on it, along with the bwrap options which
-    are not consumed for the root filesystem
+    creates the sandbox on it
+
+    A flake with mount points below its root filesystem is handed
+    over to the helper as a whole, see its bubblewrap-pilot command.
+    The helper takes the rootfs, the layers and the bwrap options
+    from the registration and only passes the arguments of the
+    caller on to the application. This applies to a system wide
+    flake, whose registration belongs to root and which a sudo rule
+    can grant as a single application, as well as to a flake of
+    the caller
     !*/
     let RuntimeSection { bubblewrap, .. } = config().runtime();
     let (layers, engine_arguments) = get_engine_arguments(bubblewrap)?;
@@ -210,53 +258,57 @@ fn prepare_sandbox() -> Result<(Command, Vec<String>), FlakeError> {
         overlay::mount(
             rootfs, &layers, tmpfs_size.as_deref(), get_sandbox_user()
         )?;
-        return Ok((Command::new(defaults::BWRAP_PATH), engine_arguments))
+        let mut call = Command::new(defaults::BWRAP_PATH);
+        add_sandbox_arguments(&mut call, program_name, engine_arguments);
+        return Ok(call)
     }
     if Lookup::is_debug() {
         debug!("Mount points below the root filesystem, using the helper");
     }
     overlay::create_user_dir(get_sandbox_user())?;
-    let mut call = helper_call("sandbox-run");
-    call.arg("--rootfs").arg(rootfs);
-    for layer in &layers {
-        call.arg("--layer").arg(layer);
-    }
+    // The application comes first, a sudo rule can name it right
+    // after the command, see the reference sudoers file
+    let mut call = helper_call("bubblewrap-pilot");
+    call.arg("--app").arg(registration::program_abs_path());
     if let Some(size) = tmpfs_size {
         call.arg("--size").arg(size);
     }
     if let Ok(term) = env::var("TERM") {
         call.arg("--term").arg(term);
     }
-    // The bwrap arguments follow
-    call.arg("--");
-    Ok((call, engine_arguments))
+    // The arguments of the application follow, unchanged
+    call.arg("--").args(env::args().skip(1));
+    Ok(call)
+}
+
+fn add_sandbox_arguments(
+    call: &mut Command, program_name: &str, engine_arguments: Vec<String>
+) {
+    /*!
+    Complete the given call by the bwrap options which create the
+    sandbox, followed by the application and its arguments
+    !*/
+    call.args(get_sandbox_options(
+        &overlay::get_dir(defaults::OVERLAY_MERGED_NAME), engine_arguments,
+        &get_sandbox_workdir()
+    ));
+    call.arg(get_target_app_path(program_name));
+    call.args(Lookup::get_run_cmdline(Vec::new(), false));
 }
 
 fn run_sandbox(
-    program_name: &str, sandbox_id_file: &str, mut call: Command,
-    engine_arguments: Vec<String>
+    sandbox_id_file: &str, mut call: Command
 ) -> Result<ExitCode, FlakeError> {
     /*!
     Call the application in the sandbox
 
-    The given call creates the sandbox, it is completed by the bwrap
-    options. bwrap sets up the new root system and replaces itself
-    with the application. The process recorded as the instance of
-    the flake is therefore the application running in the sandbox,
-    or the sudo process the helper runs in. The exit code of the
-    application becomes the exit code of the pilot
+    The given call creates the sandbox. bwrap sets up the new root
+    system and replaces itself with the application. The process
+    recorded as the instance of the flake is therefore the
+    application running in the sandbox, or the sudo process the
+    helper runs in. The exit code of the application becomes the
+    exit code of the pilot
     !*/
-    let sandbox_options = get_sandbox_options(
-        &overlay::get_dir(defaults::OVERLAY_MERGED_NAME), engine_arguments,
-        &get_sandbox_workdir()
-    );
-    for option in sandbox_options {
-        call.arg(option);
-    }
-    call.arg(get_target_app_path(program_name));
-    for arg in Lookup::get_run_cmdline(Vec::new(), false) {
-        call.arg(arg);
-    }
     if Lookup::is_debug() {
         debug!("{:?} {:?}", call.get_program(), call.get_args());
     }
@@ -341,26 +393,12 @@ pub fn get_engine_arguments(
         configured_options
     };
 
-    // An option can be configured together with its value(s) in
-    // one entry, e.g "--ro-bind /etc /etc". bwrap expects them
-    // as separate arguments
-    let mut arguments: Vec<String> = Vec::new();
-    for option in engine_options.iter().flat_map(|x| x.split_whitespace()) {
-        arguments.push(expand_variables(option)?);
-    }
-
-    let mut layers: Vec<String> = Vec::new();
-    let mut engine_arguments: Vec<String> = Vec::new();
-    let mut arguments = arguments.into_iter();
-    while let Some(argument) = arguments.next() {
-        if argument == defaults::BWRAP_OVERLAY_SRC_OPTION {
-            if let Some(layer) = arguments.next() {
-                layers.push(layer);
-            }
-        } else {
-            engine_arguments.push(argument);
-        }
-    }
+    let (layers, mut engine_arguments) = split_options(
+        &engine_options, |name| env::var(name).ok()
+    ).map_err(|message| FlakeError::IOError {
+        kind: "Invalid runtime option".to_string(),
+        message
+    })?;
 
     // A cleared environment gets the variables of the allow list
     // again. They are added after all other options and thus after
@@ -414,44 +452,6 @@ pub fn get_sandbox_options(
         sandbox_options.push(workdir.to_string());
     }
     sandbox_options
-}
-
-fn expand_variables(option: &str) -> Result<String, FlakeError> {
-    /*!
-    Resolve the variable references of the given bwrap argument
-
-    A reference in the format %NAME is replaced by the value of
-    the environment variable of that name. A variable which is
-    not set in the environment is provided as a shell style
-    variable reference, $NAME
-    !*/
-    let mut option_value = option.to_string();
-    // The value of a variable can contain another %VAR reference.
-    // Expansion is therefore done repeatedly but only up to a
-    // fixed limit. Without it a variable value referencing itself
-    // would keep this loop running forever
-    let mut expansion_count = 0;
-    while VAR_PATTERN.captures(&option_value.clone()).is_some() {
-        expansion_count += 1;
-        if expansion_count > defaults::VAR_EXPANSION_LIMIT {
-            return Err(FlakeError::IOError {
-                kind: "Invalid runtime option".to_string(),
-                message: format!("Too many variable expansions in: {option}")
-            })
-        }
-        for capture in VAR_PATTERN.captures_iter(&option_value.clone()) {
-            // replace %VAR placeholder(s) with the respective
-            // environment variable value if possible.
-            // If not possible replace by the variable name
-            let var_name = capture.get(1).unwrap().as_str();
-            let var_value = env::var(var_name)
-                .unwrap_or(format!("${var_name}"));
-            option_value = option_value.replace(
-                &format!("%{var_name}"), &var_value
-            );
-        }
-    }
-    Ok(option_value)
 }
 
 fn get_sandbox_workdir() -> String {

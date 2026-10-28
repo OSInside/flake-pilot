@@ -60,12 +60,14 @@ pub const SUDO_TOOL: &str = "/usr/bin/sudo";
 // Name of the sudo process. bubblewrap-pilot records it as the
 // process of a sandbox which is created through the helper
 pub const SUDO_PROCESS_NAME: &str = "sudo";
-// Program which creates the bubblewrap sandboxes. The helper runs
-// it for the caller, see its sandbox-run command
+// Program which creates the bubblewrap sandboxes, called by
+// bubblewrap-pilot
 pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
 // The pilots of the engines, called by the helper on behalf of
-// a user, see the podman-pilot command of the helper
+// a user, see the podman-pilot and bubblewrap-pilot commands of
+// the helper
 pub const PODMAN_PILOT: &str = "/usr/bin/podman-pilot";
+pub const BUBBLEWRAP_PILOT: &str = "/usr/bin/bubblewrap-pilot";
 // Environment variable the helper hands the user ID of its caller
 // to a pilot it runs as root on behalf of that user. It is only
 // read by a process which runs as root
@@ -264,6 +266,19 @@ pub const OVERLAY_UPPER_NAME: &str = "upper";
 pub const OVERLAY_WORK_NAME: &str = "work";
 pub const OVERLAY_LOWER_NAME: &str = "lower";
 pub const OVERLAY_EMPTY_NAME: &str = "empty";
+// Environment variable the helper sets for a bubblewrap-pilot it
+// starts in the mount namespace of a sandbox, after it mounted the
+// root filesystem of the sandbox and dropped its privileges. The
+// pilot then only calls bwrap
+pub const SANDBOX_MOUNTED_VAR: &str = "FLAKE_PILOT_SANDBOX_MOUNTED";
+// Option which stacks another layer on top of the rootfs of a
+// sandbox. A flake can configure it to add layers to the root of
+// the sandbox. The layers are part of the overlay created by
+// bubblewrap-pilot or the helper and are not passed to bwrap
+pub const BWRAP_OVERLAY_SRC_OPTION: &str = "--overlay-src";
+// Max. number of rounds a %VAR reference in a bwrap option of a
+// flake is expanded in, a value can reference another variable
+pub const VAR_EXPANSION_LIMIT: i32 = 10;
 // Memory information of the kernel, the base of a tmpfs size given
 // as percentage
 pub const PROC_MEMINFO: &str = "/proc/meminfo";

@@ -43,8 +43,9 @@
 //!    └── empty          <- second layer of the read only overlay
 //!
 //! Then it drops its privileges for good, turns into the caller
-//! and replaces itself with bwrap, which creates the sandbox in
-//! that namespace. Nothing is mounted on the host, the mounts are
+//! and replaces itself with bubblewrap-pilot, which calls bwrap to
+//! create the sandbox in that namespace, see bubblewrap.rs. Nothing
+//! is mounted on the host, the mounts are
 //! gone along with everything written to them once the sandbox has
 //! terminated. The read only overlay of the rootfs is only created
 //! with layers on top of the rootfs. Layers are mostly part of the
@@ -65,20 +66,18 @@
 //! file descriptor based mount API, prepared, and then attached to
 //! these descriptors. No path is resolved twice. Apart from these
 //! mounts the namespace provides the mounts of the host unchanged.
-//! bwrap and everything it calls run with the no_new_privs flag,
-//! no program run in the namespace can gain privileges. The
-//! arguments of bwrap are passed on as they are, they are evaluated
-//! with the privileges of the caller only.
+//! The pilot and everything it calls run with the no_new_privs
+//! flag, no program run in the namespace can gain privileges. The
+//! arguments of bwrap are evaluated with the privileges of the
+//! caller only.
 //!
 use std::ffi::CString;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::process::CommandExt;
-use std::process::Command;
 
 use flakes::config::get_sandbox_tmpfs_size;
 use flakes::defaults::{
-    BWRAP_PATH, OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME,
+    OVERLAY_BASE_DIR, OVERLAY_USER_DIR_NAME,
     OVERLAY_MERGED_NAME, OVERLAY_UPPER_NAME, OVERLAY_WORK_NAME,
     OVERLAY_LOWER_NAME, OVERLAY_EMPTY_NAME
 };
@@ -115,57 +114,18 @@ const MAX_GROUPS: libc::c_int = 65536;
 // list of the size the previous attempt asked for
 const MAX_GROUP_READS: usize = 4;
 
-pub fn run(
-    caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>,
-    term: Option<&str>, args: &[String]
-) -> bool {
+pub fn mount_root(
+    caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>
+) -> Result<(), String> {
     /*!
     Mount the root filesystem of a sandbox of the caller in a new
-    mount namespace and replace the helper by bwrap, called with the
-    given arguments and the privileges of the caller
+    mount namespace, the helper stays in it
 
     The rootfs is the lowest, read only layer of the overlay. The
     given layers are stacked on top of it in the given order, read
     only as well. The upper and the work directory live in a tmpfs
-    of the given size, see flakes::tmpfs::get_tmpfs_size().
-
-    bwrap gets a fresh environment, like the pilots the helper
-    calls. The variables of the caller are provided to the
-    application through the bwrap options
+    of the given size, see flakes::tmpfs::get_tmpfs_size()
     !*/
-    if let Err(error) = mount_root(caller, rootfs, layers, size) {
-        error!("{error}");
-        return false
-    }
-    if let Err(error) = drop_privileges(caller) {
-        error!("{error}");
-        return false
-    }
-    let term = term.filter(|term| match validate::terminal_type(term) {
-        Ok(()) => true,
-        Err(error) => {
-            warn!("{error}, not passed on");
-            false
-        }
-    });
-    let mut call = Command::new(BWRAP_PATH);
-    call.args(args)
-        .env_clear()
-        .env("PATH", crate::HELPER_PATH)
-        .env("HOME", &caller.home)
-        .env("USER", &caller.name)
-        .env("LOGNAME", &caller.name);
-    if let Some(term) = term {
-        call.env("TERM", term);
-    }
-    let error = call.exec();
-    error!("Failed to execute {BWRAP_PATH}: {error}");
-    false
-}
-
-fn mount_root(
-    caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>
-) -> Result<(), String> {
     let size = get_tmpfs_size(
         size, get_sandbox_tmpfs_size().as_deref(), host_memory()?
     )?;
@@ -241,10 +201,21 @@ fn open_layers_as(
     layer is the first one of the returned layers
     !*/
     // The paths are resolved following symbolic links the caller may
-    // control. They must never be resolved with the privileges of
-    // root, unless the caller is root itself
-    let result = drop_privileges_temporarily(caller)
-        .and_then(|()| open_layers(rootfs, layers));
+    // control
+    as_caller(caller, || open_layers(rootfs, layers))
+}
+
+pub fn as_caller<T>(
+    caller: &Caller, action: impl FnOnce() -> Result<T, String>
+) -> Result<T, String> {
+    /*!
+    Run the given action with the identity of the caller, see
+    drop_privileges_temporarily(), and switch back to root
+    afterwards. A path the caller may control must never be
+    resolved with the privileges of root, unless the caller is
+    root itself
+    !*/
+    let result = drop_privileges_temporarily(caller).and_then(|()| action());
     // Also after a partial switch, which leaves the helper with a
     // part of the identity of the caller
     restore_privileges()?;
@@ -322,7 +293,7 @@ fn open_layers(
     Ok((rootfs_dir, layer_dirs))
 }
 
-fn drop_privileges(caller: &Caller) -> Result<(), String> {
+pub fn drop_privileges(caller: &Caller) -> Result<(), String> {
     /*!
     Turn into the caller for good: its groups, its group and its
     user ID, with no way back. The no_new_privs flag keeps every

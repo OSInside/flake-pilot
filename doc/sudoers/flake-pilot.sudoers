@@ -47,6 +47,14 @@
 #     along with the sandbox. Set sandbox_tmpfs_size in
 #     /etc/flakes.yml to limit it, users can only ask for less.
 #
+#   * Run the bubblewrap flakes registered system wide whose root
+#     filesystem has mount points below it, as the user, in such a
+#     mount namespace. The root filesystem, the bwrap options and
+#     the application in the sandbox are taken from the
+#     registration, which only root can write. The user only passes
+#     arguments to the application. This rule can be limited to
+#     single applications, see below.
+#
 #   * Run the podman flakes registered system wide, as root, in the
 #     podman setup of root. The container and its runtime options
 #     are taken from the registration, which only root can write.
@@ -123,15 +131,38 @@ Cmnd_Alias FLAKE_HELPER_PODMAN = \
 #
 # bubblewrap flakes with mount points below their root filesystem
 # -------------------------------------------------------------------
-# Used by: bubblewrap-pilot, for a rootfs or layer with mount points
-#          below it, e.g the root of the host
-# GRANTS:  a mount namespace with the root filesystem of the sandbox,
-#          in which bwrap runs with the privileges of the caller
+# Used by: bubblewrap-pilot, for a flake registered system wide or by
+#          the user, with a rootfs or layer with mount points below
+#          it, e.g the root of the host
+# GRANTS:  every such system wide flake, run as registered with the
+#          privileges of the caller, and every such flake of the
+#          caller, each in a mount namespace with the root filesystem
+#          of its sandbox
 #
-Cmnd_Alias FLAKE_HELPER_SANDBOX = \
-    /usr/libexec/flake-pilot/flake-pilot-helper sandbox-run *
+# The application is given with --app right after the command, the
+# flake is taken from its registration. The registration of a flake
+# of the user belongs to the user and is read with the identity of
+# the user, it grants nothing the user could not choose anyway. To
+# grant single flakes only, list one entry per application and debug
+# mode instead, e.g for the flake /usr/bin/aws:
+#
+#   Cmnd_Alias FLAKE_HELPER_BUBBLEWRAP = \
+#       /usr/libexec/flake-pilot/flake-pilot-helper \
+#           bubblewrap-pilot --app /usr/bin/aws *, \
+#       /usr/libexec/flake-pilot/flake-pilot-helper \
+#           bubblewrap-pilot --debug --app /usr/bin/aws *
+#
+# Flakes of the users are not granted then, unless their application
+# is listed as well. sudo matches the arguments as one string and '*'
+# also matches white space. This is safe here: the helper refuses
+# another --app and every other way of splitting these words into
+# arguments. Any further argument is the size of the tmpfs, the
+# terminal type or an argument of the application.
+#
+Cmnd_Alias FLAKE_HELPER_BUBBLEWRAP = \
+    /usr/libexec/flake-pilot/flake-pilot-helper bubblewrap-pilot *
 
-%flake-pilot ALL = (root) FLAKE_HELPER_SANDBOX
+%flake-pilot ALL = (root) FLAKE_HELPER_BUBBLEWRAP
 
 #
 # flake-ctl firecracker network add, remove, volume export, release

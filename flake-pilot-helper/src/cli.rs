@@ -145,36 +145,6 @@ pub enum Commands {
         #[clap(long, requires = "config-file")]
         instance: Option<String>,
     },
-    /// Run bwrap for the caller in a mount namespace with the root
-    /// filesystem of the sandbox. Used for a rootfs with mount
-    /// points below it, which bubblewrap-pilot cannot overlay in
-    /// a user namespace
-    SandboxRun {
-        /// Directory tree which is the lowest layer of the overlay
-        #[clap(long)]
-        rootfs: String,
-
-        /// Directory tree stacked on top of the rootfs, read only.
-        /// Given more than once, the layers are stacked in the
-        /// given order
-        #[clap(long = "layer", multiple_occurrences = true)]
-        layers: Vec<String>,
-
-        /// Size of the tmpfs which keeps the writable layer, e.g 2G or
-        /// 25%. It must not exceed the limit configured as
-        /// sandbox_tmpfs_size in /etc/flakes.yml, which is the
-        /// default size
-        #[clap(long)]
-        size: Option<String>,
-
-        /// Terminal type of the caller
-        #[clap(long)]
-        term: Option<String>,
-
-        /// Arguments of bwrap
-        #[clap(last = true)]
-        args: Vec<String>,
-    },
     /// Create the meta data base directories of the pilots, as
     /// configured system wide
     MetaDirsInit,
@@ -193,8 +163,79 @@ pub enum Commands {
         #[clap(last = true)]
         args: Vec<String>,
     },
+    /// Run a bubblewrap flake with mount points below its root
+    /// filesystem for the caller, registered system wide or by the
+    /// caller. The root filesystem, the bwrap options and the
+    /// application are taken from the registration
+    BubblewrapPilot {
+        /// Path of the application on the host, the link to
+        /// bubblewrap-pilot the flake is called by. Given only once,
+        /// a sudo rule can name the application right after the
+        /// command
+        #[clap(long)]
+        app: String,
+
+        /// Size of the tmpfs which keeps the writable layer, e.g 2G or
+        /// 25%. It must not exceed the limit configured as
+        /// sandbox_tmpfs_size in /etc/flakes.yml, which is the
+        /// default size
+        #[clap(long)]
+        size: Option<String>,
+
+        /// Terminal type of the caller
+        #[clap(long)]
+        term: Option<String>,
+
+        /// Arguments of the application
+        #[clap(last = true)]
+        args: Vec<String>,
+    },
 }
 
 pub fn parse_args() -> Cli {
     Cli::parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(
+            std::iter::once("flake-pilot-helper").chain(args.iter().copied())
+        )
+    }
+
+    #[test]
+    fn test_bubblewrap_pilot_app() {
+        // A sudo rule like "bubblewrap-pilot --app /usr/bin/aws *"
+        // matches the arguments as one string. Only a call which
+        // gives the application in exactly these arguments is
+        // accepted, anything matching the rule otherwise is refused
+        let cli = parse(&[
+            "bubblewrap-pilot", "--app", "/usr/bin/aws", "--term", "vt220",
+            "--", "--app", "/usr/bin/bash", "s3", "ls"
+        ]).unwrap();
+        match cli.command {
+            Commands::BubblewrapPilot { app, args, .. } => {
+                assert_eq!("/usr/bin/aws", app);
+                assert_eq!(vec!["--app", "/usr/bin/bash", "s3", "ls"], args);
+            },
+            _ => panic!("bubblewrap-pilot not parsed")
+        }
+        // the application given another time
+        assert!(parse(&[
+            "bubblewrap-pilot", "--app", "/usr/bin/aws", "--app", "/usr/bin/bash"
+        ]).is_err());
+        assert!(parse(&[
+            "bubblewrap-pilot", "--app", "/usr/bin/aws", "--app=/usr/bin/bash"
+        ]).is_err());
+        // the words of the rule joined differently
+        assert!(parse(&["bubblewrap-pilot --app", "/usr/bin/aws"]).is_err());
+        assert!(parse(&["bubblewrap-pilot", "--app /usr/bin/aws", "--"]).is_err());
+        // arguments of the application before the separator
+        assert!(parse(&[
+            "bubblewrap-pilot", "--app", "/usr/bin/aws", "/usr/bin/bash"
+        ]).is_err());
+    }
 }

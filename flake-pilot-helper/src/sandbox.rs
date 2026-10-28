@@ -187,7 +187,10 @@ fn mount_root(
     let (rootfs_dir, layer_dirs) = open_layers_as(caller, rootfs, layers)?;
 
     // 1. The tmpfs, created along with its directories before it
-    //    becomes visible
+    //    becomes visible. It is attached before the overlay is
+    //    created: an overlay refuses upper, work and lower
+    //    directories of a detached mount, and nothing can be
+    //    attached into a detached mount (up to Linux 6.14)
     let tmpfs = create_tmpfs(caller, size.as_deref(), ! layer_dirs.is_empty())
         .map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
     attach_mount(&tmpfs, &user_dir).map_err(

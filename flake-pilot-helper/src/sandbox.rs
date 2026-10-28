@@ -59,7 +59,9 @@
 //!
 //! The directory of the caller belongs to the caller. It is opened
 //! without following a symbolic link and its owner is checked on
-//! the open descriptor. The mounts are created detached with the
+//! the open descriptor. Its parents belong to root and only root
+//! may replace their entries, nobody else can swap the directory
+//! on the path bwrap resolves. The mounts are created detached with the
 //! file descriptor based mount API, prepared, and then attached to
 //! these descriptors. No path is resolved twice. Apart from these
 //! mounts the namespace provides the mounts of the host unchanged.
@@ -104,6 +106,14 @@ const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 
 // Max. number of layers a flake can stack on top of its rootfs
 const MAX_LAYERS: usize = 16;
+
+// Max. number of groups of the caller, NGROUPS_MAX of the kernel.
+// setgroups() refuses more
+const MAX_GROUPS: libc::c_int = 65536;
+
+// Max. number of attempts to read the groups of the caller with a
+// list of the size the previous attempt asked for
+const MAX_GROUP_READS: usize = 4;
 
 pub fn run(
     caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>,
@@ -177,7 +187,10 @@ fn mount_root(
     let (rootfs_dir, layer_dirs) = open_layers_as(caller, rootfs, layers)?;
 
     // 1. The tmpfs, created along with its directories before it
-    //    becomes visible
+    //    becomes visible. It is attached before the overlay is
+    //    created: an overlay refuses upper, work and lower
+    //    directories of a detached mount, and nothing can be
+    //    attached into a detached mount (up to Linux 6.14)
     let tmpfs = create_tmpfs(caller, size.as_deref(), ! layer_dirs.is_empty())
         .map_err(|error| format!("Failed to create the tmpfs: {error}"))?;
     attach_mount(&tmpfs, &user_dir).map_err(
@@ -227,26 +240,71 @@ fn open_layers_as(
     The caller has to be able to reach them itself. The topmost
     layer is the first one of the returned layers
     !*/
+    // The paths are resolved following symbolic links the caller may
+    // control. They must never be resolved with the privileges of
+    // root, unless the caller is root itself
+    let result = drop_privileges_temporarily(caller)
+        .and_then(|()| open_layers(rootfs, layers));
+    // Also after a partial switch, which leaves the helper with a
+    // part of the identity of the caller
+    restore_privileges()?;
+    result
+}
+
+fn drop_privileges_temporarily(caller: &Caller) -> Result<(), String> {
+    /*!
+    Take on the groups, the group and the user ID of the caller as
+    the effective identity, until restore_privileges() is called.
+    The real and the saved user ID stay root, which allows the way
+    back. This changes access checks, not what a process the helper
+    starts may do, see drop_privileges() for that.
+
+    Succeeds only if the effective identity is the one of the caller
+    afterwards. restore_privileges() has to be called also if this
+    failed, the switch may have happened in part
+    !*/
     let groups = caller_groups(caller)?;
     let switched = unsafe {
         libc::setgroups(groups.len(), groups.as_ptr()) == 0
             && libc::setegid(caller.gid) == 0
             && libc::seteuid(caller.uid) == 0
     };
-    let result = if switched {
-        open_layers(rootfs, layers)
-    } else {
-        Err(format!(
+    if ! switched {
+        return Err(format!(
             "Failed to switch to the caller: {}", io::Error::last_os_error()
         ))
+    }
+    if unsafe {
+        libc::geteuid() != caller.uid || libc::getegid() != caller.gid
+    } {
+        return Err(
+            "The effective identity is not the one of the caller".to_string()
+        )
+    }
+    Ok(())
+}
+
+fn restore_privileges() -> Result<(), String> {
+    /*!
+    Switch back to root from drop_privileges_temporarily(). The
+    groups of the caller are dropped, the helper continues as root
+    without supplementary groups, which keeps them from taking part
+    in any later access check
+    !*/
+    // The user ID first, changing the group and the groups needs
+    // the privileges of root
+    let restored = unsafe {
+        libc::seteuid(0) == 0
+            && libc::setegid(0) == 0
+            && libc::setgroups(0, std::ptr::null()) == 0
     };
-    if unsafe { libc::seteuid(0) != 0 || libc::setegid(0) != 0 } {
+    if ! restored {
         return Err(format!(
             "Failed to switch back from the caller: {}",
             io::Error::last_os_error()
         ))
     }
-    result
+    Ok(())
 }
 
 fn open_layers(
@@ -293,10 +351,16 @@ fn caller_groups(caller: &Caller) -> Result<Vec<libc::gid_t>, String> {
     /*!
     Provide the groups the caller is a member of, as listed in the
     group database, along with its primary group
+
+    getgrouplist() provides no error, a list too short is the only
+    failure it reports, along with the required length. That length
+    is bounded by MAX_GROUPS and the number of attempts by
+    MAX_GROUP_READS, a group database which keeps growing or a
+    bogus length cannot keep the helper in the loop
     !*/
     let name = to_c_string(&caller.name).map_err(|error| error.to_string())?;
     let mut count: libc::c_int = 32;
-    loop {
+    for _ in 0..MAX_GROUP_READS {
         let mut groups: Vec<libc::gid_t> = vec![0; count as usize];
         let mut found = count;
         if unsafe {
@@ -311,8 +375,17 @@ fn caller_groups(caller: &Caller) -> Result<Vec<libc::gid_t>, String> {
         if found <= count {
             return Err(format!("Failed to read the groups of {}", caller.name))
         }
+        if found > MAX_GROUPS {
+            return Err(format!(
+                "{} is a member of more than {MAX_GROUPS} groups", caller.name
+            ))
+        }
         count = found;
     }
+    Err(format!(
+        "Failed to read the groups of {}, their number keeps changing",
+        caller.name
+    ))
 }
 
 fn mount_layers(
@@ -402,10 +475,15 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
     /*!
     Open the directory which keeps the sandbox setups of the caller
 
-    The base directory and all of its parents have to belong to
-    root. The directory of the caller has to belong to the caller
-    and must not be writable for others, nobody else may replace
-    the setup directories in it
+    The helper itself attaches the tmpfs to the opened directory and
+    never resolves its path again. bwrap however is given the path
+    of the merged directory and resolves it with the privileges of
+    the caller. Nobody but the caller and root may therefore replace
+    the directory of the caller on that path: it has to belong to
+    the caller, an owner only root can change, and the base
+    directory and all of its parents have to be protected, see
+    open_root_owned_dir(). What the directory contains on the host
+    does not matter, the tmpfs covers it in the namespace
     !*/
     let base_dir = open_root_owned_dir(OVERLAY_BASE_DIR)?;
     let name = format!("{OVERLAY_USER_DIR_NAME}_{}", caller.uid);
@@ -413,10 +491,9 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
         |error| format!("Failed to open {OVERLAY_BASE_DIR}/{name}: {error}")
     )?;
     let attributes = fstat(&user_dir).map_err(|error| error.to_string())?;
-    if attributes.st_uid != caller.uid || attributes.st_mode & 0o022 != 0 {
+    if attributes.st_uid != caller.uid {
         return Err(format!(
-            "{OVERLAY_BASE_DIR}/{name} has to belong to the caller and \
-            must not be writable for others"
+            "{OVERLAY_BASE_DIR}/{name} has to belong to the caller"
         ))
     }
     Ok(user_dir)
@@ -425,7 +502,10 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
 fn open_root_owned_dir(path: &str) -> Result<OwnedFd, String> {
     /*!
     Open the given absolute directory, every component of which has
-    to be a directory owned by root, not a symbolic link
+    to be a directory owned by root, not a symbolic link. Nobody but
+    root may replace the entries of a component: it must not be
+    writable for others, unless it is sticky like /var/tmp, where
+    only the owner of an entry may rename or remove it
     !*/
     let mut directory = open_dir(libc::AT_FDCWD, "/", false).map_err(
         |error| format!("Failed to open /: {error}")
@@ -437,6 +517,13 @@ fn open_root_owned_dir(path: &str) -> Result<OwnedFd, String> {
         let attributes = fstat(&directory).map_err(|error| error.to_string())?;
         if attributes.st_uid != 0 {
             return Err(format!("{component} of {path} does not belong to root"))
+        }
+        if attributes.st_mode & 0o022 != 0
+            && attributes.st_mode & libc::S_ISVTX == 0
+        {
+            return Err(format!(
+                "{component} of {path} is writable for others and not sticky"
+            ))
         }
     }
     Ok(directory)
@@ -601,6 +688,15 @@ mod tests {
             tmp_dir.path(), fs::Permissions::from_mode(0o755)
         ).unwrap();
         let path = tmp_dir.path().to_str().unwrap();
+        assert_eq!(get_current_uid() == 0, open_root_owned_dir(path).is_ok());
+        // writable for others is refused, unless sticky
+        fs::set_permissions(
+            tmp_dir.path(), fs::Permissions::from_mode(0o777)
+        ).unwrap();
+        assert!(open_root_owned_dir(path).is_err());
+        fs::set_permissions(
+            tmp_dir.path(), fs::Permissions::from_mode(0o1777)
+        ).unwrap();
         assert_eq!(get_current_uid() == 0, open_root_owned_dir(path).is_ok());
     }
 

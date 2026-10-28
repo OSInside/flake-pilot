@@ -237,36 +237,71 @@ fn open_layers_as(
     The caller has to be able to reach them itself. The topmost
     layer is the first one of the returned layers
     !*/
+    // The paths are resolved following symbolic links the caller may
+    // control. They must never be resolved with the privileges of
+    // root, unless the caller is root itself
+    let result = drop_privileges_temporarily(caller)
+        .and_then(|()| open_layers(rootfs, layers));
+    // Also after a partial switch, which leaves the helper with a
+    // part of the identity of the caller
+    restore_privileges()?;
+    result
+}
+
+fn drop_privileges_temporarily(caller: &Caller) -> Result<(), String> {
+    /*!
+    Take on the groups, the group and the user ID of the caller as
+    the effective identity, until restore_privileges() is called.
+    The real and the saved user ID stay root, which allows the way
+    back. This changes access checks, not what a process the helper
+    starts may do, see drop_privileges() for that.
+
+    Succeeds only if the effective identity is the one of the caller
+    afterwards. restore_privileges() has to be called also if this
+    failed, the switch may have happened in part
+    !*/
     let groups = caller_groups(caller)?;
     let switched = unsafe {
         libc::setgroups(groups.len(), groups.as_ptr()) == 0
             && libc::setegid(caller.gid) == 0
             && libc::seteuid(caller.uid) == 0
     };
-    // The paths are resolved following symbolic links the caller may
-    // control. They must never be resolved with the privileges of
-    // root, unless the caller is root itself
-    let result = if ! switched {
-        Err(format!(
+    if ! switched {
+        return Err(format!(
             "Failed to switch to the caller: {}", io::Error::last_os_error()
         ))
-    } else if unsafe {
+    }
+    if unsafe {
         libc::geteuid() != caller.uid || libc::getegid() != caller.gid
     } {
-        Err(
-            "Refusing to open the layers without the identity of the caller"
-                .to_string()
+        return Err(
+            "The effective identity is not the one of the caller".to_string()
         )
-    } else {
-        open_layers(rootfs, layers)
+    }
+    Ok(())
+}
+
+fn restore_privileges() -> Result<(), String> {
+    /*!
+    Switch back to root from drop_privileges_temporarily(). The
+    groups of the caller are dropped, the helper continues as root
+    without supplementary groups, which keeps them from taking part
+    in any later access check
+    !*/
+    // The user ID first, changing the group and the groups needs
+    // the privileges of root
+    let restored = unsafe {
+        libc::seteuid(0) == 0
+            && libc::setegid(0) == 0
+            && libc::setgroups(0, std::ptr::null()) == 0
     };
-    if unsafe { libc::seteuid(0) != 0 || libc::setegid(0) != 0 } {
+    if ! restored {
         return Err(format!(
             "Failed to switch back from the caller: {}",
             io::Error::last_os_error()
         ))
     }
-    result
+    Ok(())
 }
 
 fn open_layers(

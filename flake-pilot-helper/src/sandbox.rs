@@ -233,12 +233,22 @@ fn open_layers_as(
             && libc::setegid(caller.gid) == 0
             && libc::seteuid(caller.uid) == 0
     };
-    let result = if switched {
-        open_layers(rootfs, layers)
-    } else {
+    // The paths are resolved following symbolic links the caller may
+    // control. They must never be resolved with the privileges of
+    // root, unless the caller is root itself
+    let result = if ! switched {
         Err(format!(
             "Failed to switch to the caller: {}", io::Error::last_os_error()
         ))
+    } else if unsafe {
+        libc::geteuid() != caller.uid || libc::getegid() != caller.gid
+    } {
+        Err(
+            "Refusing to open the layers without the identity of the caller"
+                .to_string()
+        )
+    } else {
+        open_layers(rootfs, layers)
     };
     if unsafe { libc::seteuid(0) != 0 || libc::setegid(0) != 0 } {
         return Err(format!(

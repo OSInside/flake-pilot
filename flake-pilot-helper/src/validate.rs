@@ -211,6 +211,72 @@ pub fn flake_config_in(
     })
 }
 
+pub fn flake_name(app: &str) -> Result<String, String> {
+    /*!
+    Provide the name of the flake of the given application, the
+    basename of its absolute path on the host. The registration of
+    the flake is named after it
+    !*/
+    absolute_path(app)?;
+    let name = Path::new(app).file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(format!("{app} names no application"))?;
+    application_name(name)?;
+    Ok(name.to_string())
+}
+
+pub fn system_flake(
+    app: &str, pilot: &str, system_flakes_dir: &str
+) -> Result<String, String> {
+    /*!
+    Check that the given application is a flake of the given pilot
+    registered system wide, and provide its name
+
+    The application is a link to the pilot which belongs to root
+    and its registration is a file in the system wide registry which
+    belongs to root as well
+    !*/
+    let name = flake_name(app)?;
+    let link = fs::symlink_metadata(app).map_err(
+        |error| format!("Failed to access {app}: {error}")
+    )?;
+    let target = fs::read_link(app).ok();
+    if ! link.file_type().is_symlink() || link.uid() != 0
+        || target.as_deref() != Some(Path::new(pilot))
+    {
+        return Err(format!("{app} is no link to {pilot} which belongs to root"))
+    }
+    let config_file = format!("{system_flakes_dir}/{name}.yaml");
+    match fs::symlink_metadata(&config_file) {
+        Ok(config) if config.is_file() && config.uid() == 0 => Ok(name),
+        _ => Err(format!(
+            "{name} is not registered system wide, {config_file} is no \
+            file which belongs to root"
+        ))
+    }
+}
+
+pub fn user_flake(app: &str, pilot: &str) -> Result<String, String> {
+    /*!
+    Check that the given application is a link to the given pilot,
+    and provide the name of its flake
+
+    This is the application of a flake of the caller. It is checked
+    with the identity of the caller, see sandbox::as_caller(), the
+    link and the registration belong to the caller
+    !*/
+    let name = flake_name(app)?;
+    let link = fs::symlink_metadata(app).map_err(
+        |error| format!("Failed to access {app}: {error}")
+    )?;
+    if ! link.file_type().is_symlink()
+        || fs::read_link(app).ok().as_deref() != Some(Path::new(pilot))
+    {
+        return Err(format!("{app} is no link to {pilot}"))
+    }
+    Ok(name)
+}
+
 pub fn vm_user(
     caller: &Caller, flake: &FlakeConfig, uid: Option<u32>
 ) -> Result<u32, String> {
@@ -246,6 +312,60 @@ mod tests {
         let mut caller = Caller::from_uid(get_current_uid()).unwrap();
         caller.uid = uid;
         caller
+    }
+
+    #[test]
+    fn test_system_flake() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let base = tmp_dir.path().to_str().unwrap();
+        let pilot = "/usr/bin/podman-pilot";
+        let app = format!("{base}/myapp");
+        symlink(pilot, &app).unwrap();
+        fs::write(format!("{base}/myapp.yaml"), "").unwrap();
+        // only a link and a registration which belong to root are
+        // accepted
+        assert_eq!(
+            get_current_uid() == 0, system_flake(&app, pilot, base).is_ok()
+        );
+        // no link to the given pilot
+        assert!(system_flake(&app, "/usr/bin/bubblewrap-pilot", base).is_err());
+        let other = format!("{base}/other");
+        symlink("/usr/bin/bash", &other).unwrap();
+        assert!(system_flake(&other, pilot, base).is_err());
+        // invalid application names and paths
+        assert!(system_flake("myapp", pilot, base).is_err());
+        assert!(system_flake(&format!("{base}/../myapp"), pilot, base).is_err());
+        assert!(system_flake(&format!("{base}/my app"), pilot, base).is_err());
+    }
+
+    #[test]
+    fn test_flake_name() {
+        assert_eq!(Ok("aws".to_string()), flake_name("/usr/bin/aws"));
+        assert!(flake_name("aws").is_err());
+        assert!(flake_name("/").is_err());
+        assert!(flake_name("/usr/bin/../aws").is_err());
+        assert!(flake_name("/usr/bin/.aws").is_err());
+    }
+
+    #[test]
+    fn test_user_flake() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let base = tmp_dir.path().to_str().unwrap();
+        let pilot = "/usr/bin/bubblewrap-pilot";
+        let app = format!("{base}/myapp");
+        symlink(pilot, &app).unwrap();
+        // a link to the pilot of any owner
+        assert_eq!(Ok("myapp".to_string()), user_flake(&app, pilot));
+        // no link to the given pilot
+        assert!(user_flake(&app, "/usr/bin/podman-pilot").is_err());
+        // no link at all, or a missing one
+        let file = format!("{base}/file");
+        fs::write(&file, "").unwrap();
+        assert!(user_flake(&file, pilot).is_err());
+        assert!(user_flake(&format!("{base}/none"), pilot).is_err());
+        // invalid application names and paths
+        assert!(user_flake("myapp", pilot).is_err());
+        assert!(user_flake(&format!("{base}/../myapp"), pilot).is_err());
     }
 
     #[test]

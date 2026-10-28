@@ -169,37 +169,52 @@ covers. The pilot therefore checks `/proc/self/mountinfo` for mount
 points below the rootfs and the layers, a mount on the directory
 itself does not count. If there is one, the setup is created by the
 helper, see **flake-pilot-helper**\(8), called through **sudo** for
-a caller who is not root:
+a caller who is not root. The flake is handed over to the helper as
+a whole, the pilot only passes the application and the arguments of
+the caller:
 
 .. code:: bash
 
-   sudo /usr/libexec/flake-pilot/flake-pilot-helper sandbox-run \
-       --rootfs DIR [--layer DIR]... [--size SIZE] [--term TERM] \
-       -- BWRAP_ARGUMENTS
+   sudo /usr/libexec/flake-pilot/flake-pilot-helper bubblewrap-pilot \
+       --app APP [--size SIZE] [--term TERM] -- ARGUMENTS
+
+The helper takes the rootfs and the layers from the registration of
+the flake. The registration of a flake registered system wide
+belongs to root. The flakes configuration `~/.config/flakes.yml` and
+the registration of a flake of the caller are read with the identity
+of the caller.
 
 The helper moves into a new mount namespace and makes all of its
 mounts private, nothing propagates to or from the host. It opens
 the directory of the user below `/var/tmp` without following a
-symbolic link, the directory has to belong to the caller and must
-not be writable for others. The rootfs and the layers are opened
-with the identity of the caller, a tree the caller cannot reach is
-refused. The helper mounts the same setup as described above, the
-tmpfs belongs to the caller. Then it drops its privileges for good,
-to the groups, the group and the user ID of the caller, and sets
-the no_new_privs flag, which keeps every program in the namespace
-from gaining privileges, e.g through a setuid program. Finally it
-replaces itself by bwrap. The bwrap arguments are passed on as they
-are, they are evaluated with the privileges of the caller only.
-Nothing is mounted on the host in this case either. The sudo rule
-for the helper is described in the reference policy
-flake-pilot.sudoers shipped with the flake-pilot package.
+symbolic link, the directory has to belong to the caller. Its
+parents have to belong to root and must not be writable for others
+unless they are sticky, like `/var/tmp`. The rootfs and the layers
+are opened with the identity of the caller, a tree the caller cannot
+reach is refused. The helper mounts the same setup as described
+above, the tmpfs belongs to the caller. Then it drops its privileges
+for good, to the groups, the group and the user ID of the caller,
+and sets the no_new_privs flag, which keeps every program in the
+namespace from gaining privileges, e.g through a setuid program.
+Finally it starts bubblewrap-pilot in the mount namespace of the
+sandbox, as the caller. The pilot takes the bwrap options and the
+application in the sandbox from the registration as well, and
+replaces itself by bwrap. The caller can therefore not change what
+runs in the sandbox, only the arguments of the application. For a
+system wide flake this lets a sudo rule grant single flakes, see the
+reference policy flake-pilot.sudoers shipped with the flake-pilot
+package. The instance of the flake is recorded by the pilot which
+called the helper. Nothing is mounted on the host in this case
+either.
 
-The helper starts bwrap with a fresh environment: PATH is set to
-`/usr/sbin:/usr/bin:/sbin:/bin`, HOME, USER and LOGNAME to the
+The pilot started by the helper gets a fresh environment: PATH is
+set to `/usr/sbin:/usr/bin:/sbin:/bin`, HOME, USER and LOGNAME to the
 values of the user database for the caller, and TERM to the one of
-the caller if it is valid. Other variables of the caller only reach
-the application through bwrap options, see the **--clearenv**
-default below.
+the caller if it is valid. A variable the bwrap options of the flake
+reference as %NAME, in the layers as well as in the other options,
+resolves to the value of that environment. With **--clearenv** the
+variables LANG, LC_ALL and TZ of the caller are therefore not set in
+the sandbox of such a flake.
 
 The merged directory of the overlay becomes the root filesystem of
 the sandbox. It is bound writable as the root of the sandbox, which

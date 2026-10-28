@@ -29,16 +29,20 @@
 //! None of them passes an argument of the caller on to a program
 //! unchecked: every argument is validated, and the authority of
 //! the caller over the resource a command operates on is checked
-//! against data which belongs to root. The only exception are the
-//! arguments of bwrap, see the sandbox-run command, which are only
-//! passed on after the helper has dropped its privileges for good
-//! and turned into the caller. A sudo rule for the helper
-//! therefore does not make a user equivalent to root, unlike a
-//! rule for the general purpose programs the helper calls.
+//! against data which belongs to root. The only exception is the
+//! bubblewrap-pilot command: the arguments of the application of a
+//! bubblewrap flake are only passed on after the helper has dropped
+//! its privileges for good and turned into the caller. The
+//! registration of a bubblewrap flake of the caller is read with the
+//! identity of the caller, it provides nothing the caller could not
+//! choose anyway. A sudo rule for the helper therefore does not make
+//! a user equivalent to root, unlike a rule for the general purpose
+//! programs the helper calls.
 //!
 #[macro_use]
 extern crate log;
 
+pub mod bubblewrap;
 pub mod caller;
 pub mod cli;
 pub mod firewall;
@@ -104,13 +108,13 @@ fn main() -> ExitCode {
                 &caller, path, config_file.as_deref(), instance.as_deref()
             )
         },
-        cli::Commands::SandboxRun { rootfs, layers, size, term, args } => {
-            sandbox::run(
-                &caller, rootfs, layers, size.as_deref(), term.as_deref(), args
-            )
-        },
         cli::Commands::PodmanPilot { app, term, args } => {
             podman::run_pilot(&caller, app, debug, term.as_deref(), args)
+        },
+        cli::Commands::BubblewrapPilot { app, size, term, args } => {
+            bubblewrap::run_pilot(
+                &caller, app, size.as_deref(), debug, term.as_deref(), args
+            )
         },
         cli::Commands::MetaDirsInit => meta::init_dirs(&caller)
     };

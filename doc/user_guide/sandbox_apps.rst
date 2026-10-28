@@ -237,8 +237,14 @@ points below it cannot be used this way, e.g the host root. The
 mounts of the host are locked in a user namespace, and the kernel
 refuses an overlay which would reveal what they cover. The launcher
 checks for such mount points, a mount on the directory itself does
-not count. If it finds one, it calls the ``sandbox-run`` command of
-the Flake Pilot helper through ``sudo`` instead:
+not count. If it finds one, it hands the flake over to the
+``bubblewrap-pilot`` command of the Flake Pilot helper through
+``sudo`` instead, along with the arguments of the application:
+
+* The helper reads the tree and the layers from the registration of
+  the flake. The registration of a flake of your own, and your
+  ``~/.config/flakes.yml`` which locates it, are read with your
+  identity.
 
 * The helper moves into a mount namespace of its own whose mounts
   are private, nothing is mounted on the host in this case either.
@@ -249,14 +255,17 @@ the Flake Pilot helper through ``sudo`` instead:
 
 * It then drops its privileges to yours for good, makes sure that no
   program in the namespace can gain privileges, e.g through a setuid
-  program, and replaces itself by ``bwrap``.
+  program, and starts the launcher in the namespace. The launcher
+  takes the ``bwrap`` options from the registration and replaces
+  itself by ``bwrap``.
 
-``bwrap`` is started with a fresh environment which only contains
-``PATH``, your ``HOME``, ``USER`` and ``LOGNAME`` and ``TERM``. With
-the default ``--clearenv`` option the application gets the same
-variables as in any other sandbox, see the standard options above.
-Without it the application only sees that fresh environment. A
-sandbox created this way is shown by ``flake-ctl bubblewrap show``
+The launcher started by the helper gets a fresh environment which
+only contains ``PATH``, your ``HOME``, ``USER`` and ``LOGNAME`` and
+``TERM``. A ``%NAME`` reference in the ``bwrap`` options resolves to
+the value of that environment. With the default ``--clearenv``
+option the application therefore gets these variables, but not
+``LANG``, ``LC_ALL`` and ``TZ``. A sandbox created this way is shown
+by ``flake-ctl bubblewrap show``
 with the process of ``sudo``. It needs a ``sudo`` rule for the
 helper, see :ref:`privileges`.
 

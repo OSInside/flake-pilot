@@ -89,9 +89,16 @@ The root filesystem of a bubblewrap sandbox
   can only ask for less. The helper then drops its privileges to the
   ones of the caller for good, sets ``no_new_privs``, which keeps
   every program in the namespace from gaining privileges, e.g
-  through a setuid program, and replaces itself by ``bwrap``. The
-  ``bwrap`` arguments are passed on as they are and are evaluated
-  with the privileges of the caller only. See :ref:`sandbox-apps`.
+  through a setuid program, and replaces itself by
+  ``bubblewrap-pilot``, which takes the ``bwrap`` options from the
+  registration and replaces itself by ``bwrap``. The tree, the
+  layers and the options are taken from the registration of the
+  flake. The registration of a flake registered system wide has to
+  belong to root, the registration of a flake of the caller is read
+  with the identity of the caller and provides nothing the caller
+  could not choose anyway. The arguments of the caller are only
+  passed to the application, which runs with the privileges of the
+  caller only. See :ref:`sandbox-apps`.
 
 System wide podman flakes
   The application has to be a link to ``podman-pilot`` which belongs
@@ -144,7 +151,7 @@ What Each Feature Needs
      - nothing
    * - bubblewrap flake whose tree or layer has mount points below
        it, e.g ``--rootfs /``
-     - helper, ``sandbox-run`` command
+     - helper, ``bubblewrap-pilot`` command
      - the sandboxes of the caller
    * - ``flake-ctl init`` on a host without the meta data directory
      - helper, ``meta-dirs-init`` command

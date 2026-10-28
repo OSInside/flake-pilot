@@ -67,6 +67,12 @@ fn run() -> Result<ExitCode, FlakeError> {
     !*/
     let program_name = registration::program_name();
 
+    // Started by the helper for a flake with mount points below its
+    // root filesystem, which is mounted already
+    if bubblewrap::is_mounted_by_helper() {
+        return bubblewrap::start_in_mounted_root(&program_name)
+    }
+
     let sandbox_id_file = bubblewrap::create(&program_name)?;
     bubblewrap::start(&program_name, &sandbox_id_file)
 }

@@ -30,10 +30,7 @@
 //! registration, which belongs to root. The arguments of the user
 //! are passed to the application in the container.
 //!
-use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
 use std::process::Command;
 
 use flakes::config::get_flakes_dir;
@@ -57,7 +54,9 @@ pub fn run_pilot(
     the meta data and the containers of the instance after the
     caller given in defaults::CALLER_UID_VAR
     !*/
-    if let Err(error) = check_system_flake(app, &get_flakes_dir(false)) {
+    if let Err(error) = validate::system_flake(
+        app, defaults::PODMAN_PILOT, &get_flakes_dir(false)
+    ) {
         error!("{error}");
         return false
     }
@@ -86,71 +85,4 @@ pub fn run_pilot(
     let error = call.exec();
     error!("Failed to execute {}: {error}", defaults::PODMAN_PILOT);
     false
-}
-
-fn check_system_flake(app: &str, system_flakes_dir: &str) -> Result<(), String> {
-    /*!
-    Check that the given application is a podman flake registered
-    system wide
-
-    The application is a link to podman-pilot which belongs to root
-    and its registration is a file in the system wide registry which
-    belongs to root as well. A flake of a user is run by the pilot
-    with the privileges of that user and needs no helper
-    !*/
-    validate::absolute_path(app)?;
-    let name = Path::new(app).file_name()
-        .and_then(|name| name.to_str())
-        .ok_or(format!("{app} names no application"))?;
-    validate::application_name(name)?;
-    let link = fs::symlink_metadata(app).map_err(
-        |error| format!("Failed to access {app}: {error}")
-    )?;
-    let target = fs::read_link(app).ok();
-    if ! link.file_type().is_symlink() || link.uid() != 0
-        || target.as_deref() != Some(Path::new(defaults::PODMAN_PILOT))
-    {
-        return Err(format!(
-            "{app} is no link to {} which belongs to root",
-            defaults::PODMAN_PILOT
-        ))
-    }
-    let config_file = format!("{system_flakes_dir}/{name}.yaml");
-    match fs::symlink_metadata(&config_file) {
-        Ok(config) if config.is_file() && config.uid() == 0 => Ok(()),
-        _ => Err(format!(
-            "{name} is not registered system wide, {config_file} is no \
-            file which belongs to root"
-        ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::check_system_flake;
-    use std::fs;
-    use std::os::unix::fs::symlink;
-    use uzers::get_current_uid;
-
-    #[test]
-    fn test_check_system_flake() {
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let base = tmp_dir.path().to_str().unwrap();
-        let app = format!("{base}/myapp");
-        symlink("/usr/bin/podman-pilot", &app).unwrap();
-        fs::write(format!("{base}/myapp.yaml"), "").unwrap();
-        // only a link and a registration which belong to root are
-        // accepted
-        assert_eq!(
-            get_current_uid() == 0, check_system_flake(&app, base).is_ok()
-        );
-        // no link to podman-pilot
-        let other = format!("{base}/other");
-        symlink("/usr/bin/bash", &other).unwrap();
-        assert!(check_system_flake(&other, base).is_err());
-        // invalid application names and paths
-        assert!(check_system_flake("myapp", base).is_err());
-        assert!(check_system_flake(&format!("{base}/../myapp"), base).is_err());
-        assert!(check_system_flake(&format!("{base}/my app"), base).is_err());
-    }
 }

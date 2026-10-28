@@ -59,7 +59,9 @@
 //!
 //! The directory of the caller belongs to the caller. It is opened
 //! without following a symbolic link and its owner is checked on
-//! the open descriptor. The mounts are created detached with the
+//! the open descriptor. Its parents belong to root and only root
+//! may replace their entries, nobody else can swap the directory
+//! on the path bwrap resolves. The mounts are created detached with the
 //! file descriptor based mount API, prepared, and then attached to
 //! these descriptors. No path is resolved twice. Apart from these
 //! mounts the namespace provides the mounts of the host unchanged.
@@ -412,10 +414,15 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
     /*!
     Open the directory which keeps the sandbox setups of the caller
 
-    The base directory and all of its parents have to belong to
-    root. The directory of the caller has to belong to the caller
-    and must not be writable for others, nobody else may replace
-    the setup directories in it
+    The helper itself attaches the tmpfs to the opened directory and
+    never resolves its path again. bwrap however is given the path
+    of the merged directory and resolves it with the privileges of
+    the caller. Nobody but the caller and root may therefore replace
+    the directory of the caller on that path: it has to belong to
+    the caller, an owner only root can change, and the base
+    directory and all of its parents have to be protected, see
+    open_root_owned_dir(). What the directory contains on the host
+    does not matter, the tmpfs covers it in the namespace
     !*/
     let base_dir = open_root_owned_dir(OVERLAY_BASE_DIR)?;
     let name = format!("{OVERLAY_USER_DIR_NAME}_{}", caller.uid);
@@ -423,10 +430,9 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
         |error| format!("Failed to open {OVERLAY_BASE_DIR}/{name}: {error}")
     )?;
     let attributes = fstat(&user_dir).map_err(|error| error.to_string())?;
-    if attributes.st_uid != caller.uid || attributes.st_mode & 0o022 != 0 {
+    if attributes.st_uid != caller.uid {
         return Err(format!(
-            "{OVERLAY_BASE_DIR}/{name} has to belong to the caller and \
-            must not be writable for others"
+            "{OVERLAY_BASE_DIR}/{name} has to belong to the caller"
         ))
     }
     Ok(user_dir)
@@ -435,7 +441,10 @@ fn open_user_dir(caller: &Caller) -> Result<OwnedFd, String> {
 fn open_root_owned_dir(path: &str) -> Result<OwnedFd, String> {
     /*!
     Open the given absolute directory, every component of which has
-    to be a directory owned by root, not a symbolic link
+    to be a directory owned by root, not a symbolic link. Nobody but
+    root may replace the entries of a component: it must not be
+    writable for others, unless it is sticky like /var/tmp, where
+    only the owner of an entry may rename or remove it
     !*/
     let mut directory = open_dir(libc::AT_FDCWD, "/", false).map_err(
         |error| format!("Failed to open /: {error}")
@@ -447,6 +456,13 @@ fn open_root_owned_dir(path: &str) -> Result<OwnedFd, String> {
         let attributes = fstat(&directory).map_err(|error| error.to_string())?;
         if attributes.st_uid != 0 {
             return Err(format!("{component} of {path} does not belong to root"))
+        }
+        if attributes.st_mode & 0o022 != 0
+            && attributes.st_mode & libc::S_ISVTX == 0
+        {
+            return Err(format!(
+                "{component} of {path} is writable for others and not sticky"
+            ))
         }
     }
     Ok(directory)
@@ -611,6 +627,15 @@ mod tests {
             tmp_dir.path(), fs::Permissions::from_mode(0o755)
         ).unwrap();
         let path = tmp_dir.path().to_str().unwrap();
+        assert_eq!(get_current_uid() == 0, open_root_owned_dir(path).is_ok());
+        // writable for others is refused, unless sticky
+        fs::set_permissions(
+            tmp_dir.path(), fs::Permissions::from_mode(0o777)
+        ).unwrap();
+        assert!(open_root_owned_dir(path).is_err());
+        fs::set_permissions(
+            tmp_dir.path(), fs::Permissions::from_mode(0o1777)
+        ).unwrap();
         assert_eq!(get_current_uid() == 0, open_root_owned_dir(path).is_ok());
     }
 

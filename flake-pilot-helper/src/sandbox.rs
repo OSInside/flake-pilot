@@ -107,6 +107,14 @@ const OVERLAY_DIR_MODE: libc::mode_t = 0o700;
 // Max. number of layers a flake can stack on top of its rootfs
 const MAX_LAYERS: usize = 16;
 
+// Max. number of groups of the caller, NGROUPS_MAX of the kernel.
+// setgroups() refuses more
+const MAX_GROUPS: libc::c_int = 65536;
+
+// Max. number of attempts to read the groups of the caller with a
+// list of the size the previous attempt asked for
+const MAX_GROUP_READS: usize = 4;
+
 pub fn run(
     caller: &Caller, rootfs: &str, layers: &[String], size: Option<&str>,
     term: Option<&str>, args: &[String]
@@ -305,10 +313,16 @@ fn caller_groups(caller: &Caller) -> Result<Vec<libc::gid_t>, String> {
     /*!
     Provide the groups the caller is a member of, as listed in the
     group database, along with its primary group
+
+    getgrouplist() provides no error, a list too short is the only
+    failure it reports, along with the required length. That length
+    is bounded by MAX_GROUPS and the number of attempts by
+    MAX_GROUP_READS, a group database which keeps growing or a
+    bogus length cannot keep the helper in the loop
     !*/
     let name = to_c_string(&caller.name).map_err(|error| error.to_string())?;
     let mut count: libc::c_int = 32;
-    loop {
+    for _ in 0..MAX_GROUP_READS {
         let mut groups: Vec<libc::gid_t> = vec![0; count as usize];
         let mut found = count;
         if unsafe {
@@ -323,8 +337,17 @@ fn caller_groups(caller: &Caller) -> Result<Vec<libc::gid_t>, String> {
         if found <= count {
             return Err(format!("Failed to read the groups of {}", caller.name))
         }
+        if found > MAX_GROUPS {
+            return Err(format!(
+                "{} is a member of more than {MAX_GROUPS} groups", caller.name
+            ))
+        }
         count = found;
     }
+    Err(format!(
+        "Failed to read the groups of {}, their number keeps changing",
+        caller.name
+    ))
 }
 
 fn mount_layers(

@@ -88,6 +88,8 @@
         <package name="NetworkManager"/>
         <package name="ripgrep"/>
         <package name="fd"/>
+        <package name="unzip"/>
+        <package name="bubblewrap"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

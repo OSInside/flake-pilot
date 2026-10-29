@@ -40,6 +40,7 @@ Available variables are:
     + run= command
     + overlay_root= /dev/block_device
     + nfs= NAME_OR_IP:/export_path:/mount_path[,...]
+    + sci_user= NAME
 
 
 If provided via the overlay_root=/dev/block_device kernel boot
@@ -77,6 +78,18 @@ For the nfs parameter to work the instance needs a working
 network setup, see **flake-ctl-firecracker-network-add**(8), and
 has to provide the NFS client tools. Mounting a filesystem of
 this type requires the ``mount.nfs`` helper program.
+
+If provided via the sci_user= kernel boot parameter, sci calls the
+command as the given user. The user is looked up in ``/etc/passwd``
+and ``/etc/group`` of the instance. The command runs with the user
+and group ID of the user and with all groups the user is a member
+of. ``HOME``, ``USER`` and ``LOGNAME`` are set for the user. If the
+user does not exist in the instance, sci prints a warning in debug
+mode and calls the command as root. The parameter is ignored for a
+command which replaces sci as the init process of the instance,
+e.g systemd. The parameter is set by firecracker-pilot from the
+``user`` setting of the flake registration, see
+**flake-ctl-firecracker-register**\(8)
 
 Before the command is called, sci provides KVM to the instance if
 it can. Unless ``/dev/kvm`` exists already, sci loads the KVM
@@ -136,6 +149,13 @@ ENVIROMENT VARIABLES
 |                      |                   | created. The instance needs a    |
 |                      |                   | working network setup and the    |
 |                      |                   | NFS client tools for this.       |
+|                      |                   |                                  |
++----------------------+-------------------+----------------------------------+
+|                      |                   |                                  |
+|sci_user              | NAME              | user to call the command as. If  |
+|                      |                   | the user does not exist in the   |
+|                      |                   | instance, the command is called  |
+|                      |                   | as root.                         |
 |                      |                   |                                  |
 +----------------------+-------------------+----------------------------------+
 

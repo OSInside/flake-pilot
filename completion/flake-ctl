@@ -53,6 +53,7 @@ __flake_ctl_firecracker_register() {
         --resume
         --pilot-option
         --target
+        --user
         --vm
         --help
     "

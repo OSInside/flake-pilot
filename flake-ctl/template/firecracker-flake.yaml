@@ -7,6 +7,10 @@ vm:
   runtime:
     resume: false
     force_vsock: false
+    # Optional name of the user to call the application as inside
+    # of the VM. If the user does not exist in the VM, the
+    # application is called as root
+    user: ~
     # Optional pilot options which are always effective for this
     # application. The same options can be given at call time and
     # then take precedence over the setting here, e.g:

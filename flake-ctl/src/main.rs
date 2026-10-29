@@ -44,6 +44,7 @@ pub mod setup;
 pub mod volume;
 
 use flakes::config::get_flakes_dir;
+use flakes::lookup::Lookup;
 use flakes::registration::basename;
 use flakes::user::{User, mkdir};
 use uzers::get_current_uid;
@@ -114,7 +115,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 // register
                 cli::Firecracker::Register {
                     vm, app, target, overlay_size, resume,
-                    force_vsock, pilot_option, force
+                    force_vsock, user: guest_user, pilot_option, force
                 } => {
                     // Sanity check: Registering requires the pilot
                     // of this engine and its registration template
@@ -123,6 +124,18 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         defaults::FLAKE_PACKAGE_FIRECRACKER
                     ) {
                         return Ok(ExitCode::FAILURE)
+                    }
+                    // Sanity check: The user name is passed to the
+                    // guest on the kernel commandline of the VM
+                    if let Some(guest_user) = guest_user {
+                        if ! Lookup::is_safe_user_name(guest_user) {
+                            error!(
+                                "Invalid user name '{guest_user}': expected \
+                                up to 32 characters out of [A-Za-z0-9._-], \
+                                starting with [A-Za-z_]"
+                            );
+                            return Ok(ExitCode::FAILURE)
+                        }
                     }
                     if *force {
                         app::remove(
@@ -147,6 +160,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 overlay_size.as_ref(),
                                 *resume,
                                 *force_vsock,
+                                guest_user.as_ref(),
                                 pilot_option.as_ref().cloned(),
                                 user,
                             );

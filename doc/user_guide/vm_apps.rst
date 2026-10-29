@@ -132,6 +132,10 @@ Registration Options in Short
    Use a vsock instead of the serial console to talk to the guest. In
    resume mode a vsock is always required.
 
+``--user``
+   Call the application as this user inside of the VM. If the user
+   does not exist in the VM, the application is called as root.
+
 ``--pilot-option``
    A runtime option of the pilot, e.g ``%port:2000`` to bind the
    guest to host communication of a resume flake to a port of your

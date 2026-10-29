@@ -63,6 +63,11 @@ pub const SCI_RESUME_BOOT_ARG: &str =
     "sci_resume";
 pub const SCI_FORCE_VSOCK_BOOT_ARG: &str =
     "sci_force_vsock";
+// Kernel commandline option which tells sci inside of the guest the
+// name of the user to call the application as. The pilot sets it
+// from the user setting of the runtime section
+pub const SCI_USER_BOOT_ARG: &str =
+    "sci_user";
 // Statistics of the NFS server of the kernel. The record shows up
 // when the nfsd module is loaded and provides the number of
 // server threads which is zero as long as no server was started

@@ -70,6 +70,17 @@ struct TerminalSession {
 // to the terminal of the session it belongs to
 static TERMINAL_SESSIONS: Mutex<Vec<TerminalSession>> = Mutex::new(Vec::new());
 
+// Identity of the user a command is called as
+#[derive(Clone)]
+struct UserIdentity {
+    name: String,
+    uid: libc::uid_t,
+    gid: libc::gid_t,
+    // Supplementary groups of the user, including its primary group
+    groups: Vec<libc::gid_t>,
+    home: String
+}
+
 fn main() {
     /*!
     Simple Command Init (sci) is a tool which executes the provided
@@ -85,6 +96,10 @@ fn main() {
 
     if provided via the nfs=... kernel boot parameter, sci mounts
     the listed NFS volumes before the command is called.
+
+    if provided via the sci_user=... kernel boot parameter, sci
+    calls the command as this user. If the user does not exist
+    in the instance, the command is called as root.
     !*/
     setup_logger();
 
@@ -545,6 +560,18 @@ fn main() {
         ) {
             call.stderr(get_stdio(stderr_stream));
         }
+        if do_exec {
+            // the command replaces sci as the init process of
+            // the instance, which has to run as root
+            if env::var(defaults::USER).is_ok() {
+                debug(&format!(
+                    "WARNING: Ignoring {} for init process {}",
+                    defaults::USER, args[0]
+                ));
+            }
+        } else if let Some(user) = get_user_identity() {
+            set_user_identity(&mut call, &user);
+        }
         let exit_code = if do_exec {
             // replace ourselves, this only returns if the
             // command could not be called
@@ -962,6 +989,114 @@ fn get_call_error_code(error: &std::io::Error) -> i32 {
     }
 }
 
+fn get_user_identity() -> Option<UserIdentity> {
+    /*!
+    Provide the identity of the user given through the
+    sci_user=... cmdline variable
+
+    Without the variable the command is called as root. A user
+    which does not exist in the instance is reported and the
+    command is called as root as well
+    !*/
+    let name = env::var(defaults::USER).ok()?;
+    match lookup_user(&name) {
+        Ok(user) => {
+            debug(&format!(
+                "Calling command as user {} (uid={} gid={})",
+                user.name, user.uid, user.gid
+            ));
+            Some(user)
+        },
+        Err(error) => {
+            debug(&format!(
+                "WARNING: No user {name:?} in this instance: {error}, \
+                calling command as root"
+            ));
+            None
+        }
+    }
+}
+
+fn lookup_user(name: &str) -> std::io::Result<UserIdentity> {
+    /*!
+    Look up the given user in the user and group database
+    of the instance
+    !*/
+    let passwd = fs::read_to_string(defaults::PASSWD)?;
+    // without a group database the user only has its primary group
+    let group = fs::read_to_string(defaults::GROUP).unwrap_or_default();
+    get_user_from_database(name, &passwd, &group).ok_or_else(
+        || std::io::Error::new(
+            std::io::ErrorKind::NotFound, "user does not exist"
+        )
+    )
+}
+
+fn get_user_from_database(
+    name: &str, passwd: &str, group: &str
+) -> Option<UserIdentity> {
+    /*!
+    Provide the identity of the given user from the contents of
+    the passwd and the group file
+
+    A passwd entry is name:password:uid:gid:gecos:home:shell, a
+    group entry is name:password:gid:member,member,... The groups
+    of the user are its primary group and all groups listing the
+    user as a member
+    !*/
+    let (uid, gid, home) = passwd.lines().find_map(|line| {
+        let fields: Vec<&str> = line.split(':').collect();
+        if fields.len() < 7 || fields[0] != name {
+            return None
+        }
+        Some((
+            fields[2].parse::<libc::uid_t>().ok()?,
+            fields[3].parse::<libc::gid_t>().ok()?,
+            fields[5].to_string()
+        ))
+    })?;
+    let mut groups = vec![gid];
+    for line in group.lines() {
+        let fields: Vec<&str> = line.split(':').collect();
+        if fields.len() < 4 || ! fields[3].split(',').any(|member| member == name) {
+            continue
+        }
+        if let Ok(member_gid) = fields[2].parse::<libc::gid_t>() {
+            if ! groups.contains(&member_gid) {
+                groups.push(member_gid)
+            }
+        }
+    }
+    Some(UserIdentity { name: name.to_string(), uid, gid, groups, home })
+}
+
+fn set_user_identity(call: &mut Command, user: &UserIdentity) {
+    /*!
+    Call the given command as the given user
+
+    The groups, the group and the user are switched in this order
+    right before the command gets executed. This is not done via
+    Command::uid(), which drops the supplementary groups. Only
+    system calls are used at this point because the process could
+    be the child of a fork of the multi threaded sci
+    !*/
+    let UserIdentity { uid, gid, groups, .. } = user.clone();
+    call.env("HOME", &user.home)
+        .env("USER", &user.name)
+        .env("LOGNAME", &user.name);
+    unsafe {
+        call.pre_exec(move || {
+            if libc::setgroups(groups.len(), groups.as_ptr()) != 0
+                || libc::setgid(gid) != 0
+                || libc::setuid(uid) != 0
+            {
+                return Err(std::io::Error::last_os_error())
+            }
+            Ok(())
+        });
+    }
+}
+
 fn send_exit_status(port: u32, exit_code: i32) {
     /*!
     Send the exit code of a command to the caller
@@ -1051,6 +1186,12 @@ fn redirect_command(
     // error to its own stream if there is one
     // transfer all channel data when there is data as long as the child exists
     //
+    // The user is looked up before the terminal fork. The child
+    // of the fork should not do it as other threads of sci could
+    // hold locks, e.g of the memory allocator, which are never
+    // released there
+    let user = get_user_identity();
+    //
     // The terminal fork is done while the list of the child
     // processes sci waits for is locked. This makes sure the
     // reaper cannot read the exit status of the new process
@@ -1065,14 +1206,16 @@ fn redirect_command(
     };
     match fork_result {
         Ok(fork) => {
-            redirect_command_to_pty(command, stream, stderr_stream, fork, port)
+            redirect_command_to_pty(
+                command, stream, stderr_stream, fork, port, user.as_ref()
+            )
         },
         Err(error) => {
             debug(&format!(
                 "Terminal allocation failed, using raw channels: {error:?}"
             ));
             let exit_code = redirect_command_to_raw_channels(
-                command, stream, stderr_stream
+                command, stream, stderr_stream, user.as_ref()
             );
             // there is no terminal in this session, drop a window
             // size which arrived for it
@@ -1301,7 +1444,7 @@ fn split_at_eof(data: &[u8]) -> (&[u8], bool) {
 
 fn redirect_command_to_raw_channels(
     command: &[String], mut stream: vsock::VsockStream,
-    stderr_stream: Option<VsockStream>
+    stderr_stream: Option<VsockStream>, user: Option<&UserIdentity>
 ) -> i32 {
     let (program, call_args) = match command.split_first() {
         Some(call) => call,
@@ -1319,6 +1462,9 @@ fn redirect_command_to_raw_channels(
             None => std::process::Stdio::piped()
         });
     call.args(call_args);
+    if let Some(user) = user {
+        set_user_identity(&mut call, user);
+    }
     debug(&format!(
         "SCI CALL: {} -> {:?}", program, call.get_args()
     ));
@@ -1469,7 +1615,8 @@ fn redirect_command_to_raw_channels(
 
 fn redirect_command_to_pty(
     command: &[String], mut stream: vsock::VsockStream,
-    stderr_stream: Option<VsockStream>, pty_fork: Fork, port: u32
+    stderr_stream: Option<VsockStream>, pty_fork: Fork, port: u32,
+    user: Option<&UserIdentity>
 ) -> i32 {
     if let Ok(mut master) = pty_fork.is_parent() {
         // The standard error channel to the caller belongs to the
@@ -1574,6 +1721,9 @@ fn redirect_command_to_pty(
             Some((program, call_args)) => {
                 let mut call = Command::new(program);
                 call.args(call_args);
+                if let Some(user) = user {
+                    set_user_identity(&mut call, user);
+                }
                 debug(&format!(
                     "SCI CALL: {} -> {:?}", program, call.get_args()
                 ));
@@ -2117,6 +2267,7 @@ mod tests {
     use super::get_kvm_module;
     use super::{get_exit_code, get_call_error_code, split_at_eof};
     use super::get_stderr_port;
+    use super::get_user_from_database;
     use std::io::{Error, ErrorKind};
     use std::os::unix::process::ExitStatusExt;
     use std::process::ExitStatus;
@@ -2278,5 +2429,28 @@ mod tests {
         assert_eq!(get_stderr_port(49200), Some(0x8000_c030));
         // a session port with the flag set gets no channel
         assert_eq!(get_stderr_port(0x8000_0001), None);
+    }
+
+    #[test]
+    fn test_get_user_from_database() {
+        let passwd = "root:x:0:0:root:/root:/bin/bash\n\
+            john:x:1000:100:John:/home/john:/bin/bash\n\
+            broken:x:abc:100::/home/broken:/bin/sh\n";
+        let group = "root:x:0:\n\
+            users:x:100:\n\
+            wheel:x:10:root,john\n\
+            video:x:44:johnny\n\
+            kvm:x:36:john\n";
+        let john = get_user_from_database("john", passwd, group).unwrap();
+        assert_eq!(john.name, "john");
+        assert_eq!(john.uid, 1000);
+        assert_eq!(john.gid, 100);
+        assert_eq!(john.groups, vec![100, 10, 36]);
+        assert_eq!(john.home, "/home/john");
+        let root = get_user_from_database("root", passwd, "").unwrap();
+        assert_eq!(root.groups, vec![0]);
+        assert!(get_user_from_database("johnny", passwd, group).is_none());
+        assert!(get_user_from_database("broken", passwd, group).is_none());
+        assert!(get_user_from_database("", passwd, group).is_none());
     }
 }

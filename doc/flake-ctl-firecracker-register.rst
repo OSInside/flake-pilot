@@ -23,6 +23,7 @@ SYNOPSIS
        --force-vsock
        --overlay-size <OVERLAY_SIZE>
        --target <TARGET>
+       --user <USER>
        --vm <VM>
 
 DESCRIPTION
@@ -108,6 +109,17 @@ OPTIONS
   An absolute path to the application in the VM. Use this option if the application path
   on the host should be different to the application path inside of the VM
 
+--user <USER>
+
+  Name of the user to call the application as inside of the VM.
+  The name is stored as ``user`` in the runtime section of the
+  flake configuration. The application runs with the user and
+  group ID and with the groups of this user as they are setup in
+  the VM. If the user does not exist in the VM, the application
+  is called as root and a warning is printed in debug mode.
+  The name may consist of up to 32 characters out of
+  [A-Za-z0-9._-] and has to start with a letter or '_'
+
 --vm <VM>
 
   A virtual machine name. The name must match with a name in the local firecracker
@@ -135,6 +147,10 @@ EXAMPLE
        --app /usr/bin/apt-get \
        --resume \
        --pilot-option '%port:2000'
+
+   $ flake-ctl firecracker register --vm NAME \
+       --app /usr/bin/bash \
+       --user john
 
 AUTHOR
 ------

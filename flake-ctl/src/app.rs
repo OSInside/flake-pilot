@@ -158,6 +158,7 @@ pub fn create_vm_config(
     overlay_size: Option<&String>,
     resume: bool,
     force_vsock: bool,
+    user: Option<&String>,
     pilot_options: Option<Vec<String>>,
     usermode: bool,
 ) -> bool {
@@ -181,6 +182,7 @@ pub fn create_vm_config(
         overlay_size,
         resume,
         force_vsock,
+        user,
         pilot_options,
         usermode,
     ) {

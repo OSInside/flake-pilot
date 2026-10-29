@@ -58,6 +58,8 @@
         <package name="bubblewrap"/>
         <package name="socat"/>
         <package name="ripgrep"/>
+        <package name="fd"/>
+        <package name="unzip"/>
     </packages>
     <packages type="bootstrap">
         <package name="gawk"/>

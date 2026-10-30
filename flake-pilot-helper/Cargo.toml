@@ -1,6 +1,6 @@
 [package]
 name = "flake-pilot-helper"
-version = "3.2.13"
+version = "3.2.14"
 edition = "2021"
 license = "MIT"
 
@@ -10,7 +10,7 @@ log = { version = "0.4" }
 env_logger = { version = "0.9" }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = { version = "0.9" }
-flakes = { version = "3.2.13", path = "../common" }
+flakes = { version = "3.2.14", path = "../common" }
 uzers = { version = "0.12" }
 libc = { version = "0.2" }
 tempfile = { version = "3.4" }

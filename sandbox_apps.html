@@ -1,0 +1,536 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>9. Applications From a Sandbox &mdash; Flake Pilot User Guide</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=1da9b6e9" />
+
+  
+    <link rel="shortcut icon" href="_static/flake-pilot-logo.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=af0fbf4f"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="10. Application Setup" href="application_setup.html" />
+    <link rel="prev" title="8. Firecracker Volumes" href="firecracker_volumes.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Flake Pilot
+              <img src="_static/flake-pilot-logo.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#what-is-flake-pilot">1.1. What Is Flake Pilot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#components">1.2. Components</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-launchers">1.2.1. The Launchers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="introduction.html#the-flake-registration-tool">1.2.2. The Flake Registration Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#use-cases">1.3. Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#choosing-an-engine">1.4. Choosing an Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">2. Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-the-packages">2.1. Installing the Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">2.2. Building From Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#privileges">2.3. Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">2.4. Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="privileges.html">3. Privileges and Trust</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#how-flake-pilot-gets-its-privileges">3.1. How Flake Pilot Gets Its Privileges</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-the-helper-checks">3.2. What the Helper Checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-each-feature-needs">3.3. What Each Feature Needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#what-this-means-in-practice">3.4. What This Means in Practice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="privileges.html#the-reference-policy">3.5. The Reference Policy</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">4. Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#system-wide-and-rootless-registration">4.1. System Wide and Rootless Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#preparing-the-environment">4.2. Preparing the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#creating-the-user-setup">4.3. Creating the User Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#your-first-flake">4.4. Your First Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-continue">4.5. Where to Continue</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="container_apps.html">5. Applications From a Container</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#amazon-s-sdk-utility-as-a-container-app">5.1. Amazon’s SDK Utility as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#an-editor-as-a-delta-container">5.2. An Editor as a Delta Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#claude-ai-as-a-container-app">5.3. Claude AI as a Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#engine-options">5.4. Engine Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#deeper-isolation-with-krun">5.5. Deeper Isolation With krun</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#calling-a-registered-container-app">5.6. Calling a Registered Container App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#pilot-options-as-part-of-the-registration">5.7. Pilot Options as Part of the Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="container_apps.html#updating-the-container-image">5.8. Updating the Container Image</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="vm_apps.html">6. Applications From a Virtual Machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#pulling-an-image">6.1. Pulling an Image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#a-shell-as-a-firecracker-vm-app">6.2. A Shell as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#claude-ai-as-a-firecracker-vm-app">6.3. Claude AI as a Firecracker VM App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vm_apps.html#registration-options-in-short">6.4. Registration Options in Short</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_networking.html">7. Firecracker Networking</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-concept">7.1. The Concept</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#the-firewall-setup">7.1.1. The Firewall Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-commands">7.2. The Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#prepare-the-host">7.2.1. Prepare the Host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#connect-an-application">7.2.2. Connect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#disconnect-an-application">7.2.3. Disconnect an Application</a></li>
+<li class="toctree-l3"><a class="reference internal" href="firecracker_networking.html#delete-the-host-setup">7.2.4. Delete the Host Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_networking.html#the-result-in-the-flake-configuration">7.3. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="firecracker_volumes.html">8. Firecracker Volumes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#export-a-local-path">8.1. Export a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#release-a-local-path">8.2. Release a Local Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#add-a-volume-to-an-application">8.3. Add a Volume to an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#remove-a-volume-from-an-application">8.4. Remove a Volume From an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firecracker_volumes.html#the-result-in-the-flake-configuration">8.5. The Result in the Flake Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">9. Applications From a Sandbox</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#providing-a-root-filesystem-tree">9.1. Providing a Root Filesystem Tree</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-host-root-as-the-tree">9.1.1. The Host Root as the Tree</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#a-shell-as-a-sandbox-app">9.2. A Shell as a Sandbox App</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#adding-paths-from-the-host">9.3. Adding Paths from the Host</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-written-data-is-kept">9.4. Where Written Data Is Kept</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#registration-options-in-short">9.5. Registration Options in Short</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#calling-a-registered-sandbox-app">9.6. Calling a Registered Sandbox App</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="application_setup.html">10. Application Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#listing-applications">10.1. Listing Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#the-flake-registry">10.2. The Flake Registry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#removing-an-application">10.3. Removing an Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="application_setup.html#reference-documentation">10.4. Reference Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="building_images.html">11. How To Build Your Own App Images</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#build-commands">11.1. Build Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="building_images.html#how-the-build-works">11.1.1. How the Build Works</a></li>
+<li class="toctree-l3"><a class="reference internal" href="building_images.html#building-container-images">11.1.2. Building Container Images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="building_images.html#building-vm-images">11.1.3. Building VM Images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="building_images.html#delta-containers">11.2. Delta Containers</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">12. Troubleshooting and Known Issues</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#debugging-a-flake">12.1. Debugging a Flake</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#known-issues">12.2. Known Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#selinux">12.2.1. selinux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#firewalld">12.2.2. firewalld</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html#user-and-group-id-of-an-nfs-volume">12.2.3. User and Group ID of an NFS Volume</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#feedback">12.3. Feedback</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Flake Pilot</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><span class="section-number">9. </span>Applications From a Sandbox</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="firecracker_volumes.html" class="btn btn-neutral float-left" title="8. Firecracker Volumes" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="application_setup.html" class="btn btn-neutral float-right" title="10. Application Setup" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="applications-from-a-sandbox">
+<span id="sandbox-apps"></span><h1><span class="section-number">9. </span>Applications From a Sandbox<a class="headerlink" href="#applications-from-a-sandbox" title="Link to this heading"></a></h1>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p><strong>Abstract</strong></p>
+<p>This chapter shows how to register applications which are provided
+by a directory tree on the host and run in a bubblewrap sandbox.
+All examples register the app for the calling user and expect the
+setup described in <a class="reference internal" href="getting_started.html#getting-started"><span class="std std-ref">Getting Started</span></a>.</p>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">bubblewrap</span></code> engine runs the application in a new root system
+created by the <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> program. The root system is a plain directory
+tree on the host, so the application sees the libraries and the
+tooling of that tree instead of the ones installed on the host. The
+tree is mounted as the read only layer of an overlay, thus the
+application can write anywhere in its root filesystem without the tree
+on the host being modified. The data written this way is kept in
+memory, separately for every sandbox, and is gone when the application
+terminates, see <a class="reference internal" href="#sandbox-written-data"><span class="std std-ref">Where Written Data Is Kept</span></a>.</p>
+<p>Unlike the other engines this one has no image registry. There is
+nothing to pull and nothing to delete, the registration refers to the
+tree by its path. Providing the tree is up to you.</p>
+<section id="providing-a-root-filesystem-tree">
+<h2><span class="section-number">9.1. </span>Providing a Root Filesystem Tree<a class="headerlink" href="#providing-a-root-filesystem-tree" title="Link to this heading"></a></h2>
+<p>Any directory which carries a usable root filesystem will do, e.g an
+existing chroot environment or the unpacked contents of a container
+image:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.local/share/rootfs/leap
+
+podman<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>leap-export<span class="w"> </span>registry.opensuse.org/opensuse/leap:15.6
+podman<span class="w"> </span><span class="nb">export</span><span class="w"> </span>leap-export<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>-x<span class="w"> </span>-C<span class="w"> </span>~/.local/share/rootfs/leap
+podman<span class="w"> </span>rm<span class="w"> </span>leap-export
+</pre></div>
+</div>
+<p>The tree is owned by you and is used as it is. It does not have to
+exist at registration time, a registration against a path which is not
+there yet is written with a warning and the application fails to run
+until the tree is created.</p>
+<section id="the-host-root-as-the-tree">
+<h3><span class="section-number">9.1.1. </span>The Host Root as the Tree<a class="headerlink" href="#the-host-root-as-the-tree" title="Link to this heading"></a></h3>
+<p>The root filesystem on the host, <code class="docutils literal notranslate"><span class="pre">/</span></code>, is a directory tree like any
+other and can be used as well. The application then runs with the
+programs and the libraries it would find anyway, but none of its
+changes reach them:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>register<span class="w"> </span>--rootfs<span class="w"> </span>/<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/protected-shell<span class="w"> </span>--target<span class="w"> </span>/bin/bash
+
+protected-shell
+</pre></div>
+</div>
+<p>This registers an app named <code class="docutils literal notranslate"><span class="pre">protected-shell</span></code> which drops you into
+the bash shell on the host itself. Everything looks familiar, <code class="docutils literal notranslate"><span class="pre">ls</span></code>,
+the home directory and the installed tooling are all there, and a
+write anywhere in the tree succeeds but lands in the overlay of the
+sandbox. Installing a package or deleting a file leaves the host as
+it is. The change only lives in the overlay of this call, the next
+call of <code class="docutils literal notranslate"><span class="pre">protected-shell</span></code> starts from the unmodified host again,
+see <a class="reference internal" href="#sandbox-written-data"><span class="std std-ref">Where Written Data Is Kept</span></a>.</p>
+<p>Unlike a tree of its own, the host root has further mount points
+below it, e.g <code class="docutils literal notranslate"><span class="pre">/proc</span></code> or the subvolumes of a <code class="docutils literal notranslate"><span class="pre">btrfs</span></code> root
+filesystem. Such a tree cannot be provided by the launcher in a user
+namespace, its overlay is mounted by the Flake Pilot helper instead.
+<code class="docutils literal notranslate"><span class="pre">protected-shell</span></code> therefore needs a <code class="docutils literal notranslate"><span class="pre">sudo</span></code> rule for the helper,
+and a caller which is not <code class="docutils literal notranslate"><span class="pre">root</span></code> is asked for its <code class="docutils literal notranslate"><span class="pre">sudo</span></code>
+password, see <a class="reference internal" href="#sandbox-written-data"><span class="std std-ref">Where Written Data Is Kept</span></a> and <a class="reference internal" href="privileges.html#privileges"><span class="std std-ref">Privileges and Trust</span></a>.</p>
+<p>This is useful to try out a command which is supposed to modify the
+system, or to hand a directory to a program which should read it but
+not touch anything else. The paths whose changes should be kept are
+added explicitly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>register<span class="w"> </span>--rootfs<span class="w"> </span>/<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/protected-shell<span class="w"> </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--bind %HOME/work %HOME/work"</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Keeping the changes on the host root in an overlay protects the
+files on the host, it does not make the call a security boundary.
+A path which is explicitly bound writable is modified for real.
+The sandbox shares
+the kernel and, unless further <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> options restrict it, the
+network and the other namespaces of the caller. For a stricter
+separation use a tree of its own, or the <code class="docutils literal notranslate"><span class="pre">firecracker</span></code> engine,
+see <a class="reference internal" href="vm_apps.html#vm-apps"><span class="std std-ref">Applications From a Virtual Machine</span></a>.</p>
+</div>
+</section>
+</section>
+<section id="a-shell-as-a-sandbox-app">
+<span id="sandbox-example-leapshell"></span><h2><span class="section-number">9.2. </span>A Shell as a Sandbox App<a class="headerlink" href="#a-shell-as-a-sandbox-app" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>register<span class="w"> </span>--rootfs<span class="w"> </span>~/.local/share/rootfs/leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/leapshell<span class="w"> </span>--target<span class="w"> </span>/bin/bash
+
+leapshell
+</pre></div>
+</div>
+<p>This registers an app named <code class="docutils literal notranslate"><span class="pre">leapshell</span></code> to the system. Once called,
+<code class="docutils literal notranslate"><span class="pre">bwrap</span></code> creates a sandbox whose root filesystem is the <code class="docutils literal notranslate"><span class="pre">leap</span></code> tree
+and drops you into the bash shell of that tree. <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> itself
+creates the sandbox through user namespaces and needs no privileges.
+The overlay of the tree is mounted prior to the call, in a user and
+mount namespace the launcher creates for the sandbox, and needs no
+privileges either. As long as the tree has no mount points below it,
+no <code class="docutils literal notranslate"><span class="pre">sudo</span></code> rule is involved, see <a class="reference internal" href="privileges.html#privileges"><span class="std std-ref">Privileges and Trust</span></a>.</p>
+<p>Nothing on the host is visible inside except for the pseudo
+filesystems, which is the point of the separate root. The paths the
+application actually needs are handed to it explicitly.</p>
+</section>
+<section id="adding-paths-from-the-host">
+<h2><span class="section-number">9.3. </span>Adding Paths from the Host<a class="headerlink" href="#adding-paths-from-the-host" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">--opt</span></code> passes an option to <code class="docutils literal notranslate"><span class="pre">bwrap</span></code>, most of the time a mount
+specification. An option which starts with a dash has to be escaped
+with a backslash so that it is not read as an option of the register
+command itself:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>register<span class="w"> </span>--rootfs<span class="w"> </span>~/.local/share/rootfs/leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/mybuild<span class="w"> </span>--target<span class="w"> </span>/usr/bin/make<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--ro-bind /etc/resolv.conf /etc/resolv.conf"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--bind %HOME/work /work"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--pilot-option<span class="w"> </span><span class="s2">"%chdir:/work"</span>
+
+mybuild
+</pre></div>
+</div>
+<p>This registers an app named <code class="docutils literal notranslate"><span class="pre">mybuild</span></code> which calls <code class="docutils literal notranslate"><span class="pre">make</span></code> inside of
+the sandbox. The name resolution on the host is shared read only, the
+<code class="docutils literal notranslate"><span class="pre">work</span></code> directory of the calling user is shared writable as <code class="docutils literal notranslate"><span class="pre">/work</span></code>
+and the program is called in that directory.</p>
+<p>A value starting with <code class="docutils literal notranslate"><span class="pre">%</span></code> is replaced by the environment variable of
+the same name at call time, <code class="docutils literal notranslate"><span class="pre">%HOME</span></code> above. A placeholder which does
+not resolve stays as the plain variable name.</p>
+<p>The options given this way are <strong>added</strong> to the standard options of
+the sandbox:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>--dev<span class="w"> </span>/dev<span class="w"> </span>--proc<span class="w"> </span>/proc<span class="w"> </span>--tmpfs<span class="w"> </span>/tmp<span class="w"> </span>--unshare-pid<span class="w"> </span>--unshare-ipc
+--unshare-uts<span class="w"> </span>--new-session<span class="w"> </span>--die-with-parent<span class="w"> </span>--clearenv
+</pre></div>
+</div>
+<p>They provide the pseudo filesystems, a writable <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>, private
+process ID, IPC and host name namespaces and the termination of the
+sandbox together with the pilot. The application runs in a session of
+its own and can therefore not inject input into your terminal. As a
+consequence an interactive shell in the sandbox has no job control.
+The environment of the application is cleared, only <code class="docutils literal notranslate"><span class="pre">PATH</span></code>,
+<code class="docutils literal notranslate"><span class="pre">HOME</span></code>, <code class="docutils literal notranslate"><span class="pre">USER</span></code>, <code class="docutils literal notranslate"><span class="pre">LOGNAME</span></code>, <code class="docutils literal notranslate"><span class="pre">TERM</span></code>, <code class="docutils literal notranslate"><span class="pre">LANG</span></code>, <code class="docutils literal notranslate"><span class="pre">LC_ALL</span></code> and
+<code class="docutils literal notranslate"><span class="pre">TZ</span></code> are set again with your values. A variable you set with a
+<code class="docutils literal notranslate"><span class="pre">--setenv</span></code> option of your own keeps that value, any other variable
+the application needs has to be given that way. All of the options
+are written to the flake configuration and can be changed there like
+any other setting, see <a class="reference internal" href="application_setup.html#application-setup"><span class="std std-ref">Application Setup</span></a>.</p>
+<p>The option which mounts the root filesystem of the sandbox is not
+part of that list. It is always added by the launcher, ahead of every
+other option, because it refers to the overlay it creates for the
+sandbox. The root of the sandbox is available to the other options
+as <code class="docutils literal notranslate"><span class="pre">%OVERLAYROOT</span></code>.</p>
+<p>An <code class="docutils literal notranslate"><span class="pre">--overlay-src</span></code> option of your own adds a directory to that
+root instead of mounting it at a path of its own. Such an option is
+not passed to <code class="docutils literal notranslate"><span class="pre">bwrap</span></code>, the directory becomes a layer of the overlay
+and is stacked on top of the rootfs:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>register<span class="w"> </span>--rootfs<span class="w"> </span>~/.local/share/rootfs/leap<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/leapshell<span class="w"> </span>--target<span class="w"> </span>/bin/bash<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--opt<span class="w"> </span><span class="s2">"\--overlay-src </span><span class="nv">$HOME</span><span class="s2">/leap-extra"</span>
+</pre></div>
+</div>
+<p>Everything below <code class="docutils literal notranslate"><span class="pre">leap-extra</span></code> then shows up in the sandbox as if it
+were part of the tree, files of the same path win over the ones of
+the rootfs. Like the rootfs the directory is a read only layer, it is
+not modified by the application.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This differs from the other engines, where <code class="docutils literal notranslate"><span class="pre">--opt</span></code> replaces the
+defaults of the template. Sandbox options are mostly mounts which
+add up to a working setup rather than alternatives to it.</p>
+</div>
+</section>
+<section id="where-written-data-is-kept">
+<span id="sandbox-written-data"></span><h2><span class="section-number">9.4. </span>Where Written Data Is Kept<a class="headerlink" href="#where-written-data-is-kept" title="Link to this heading"></a></h2>
+<p>Everything the application writes to its root filesystem ends up in a
+tmpfs, nothing of it is written to disk. The tmpfs and the overlay are
+not mounted on the host. Prior to the call of <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> the launcher
+moves into a user and mount namespace of its own, which maps only
+your user and group, and mounts them there. <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> creates the
+sandbox in that namespace. The tmpfs is mounted on a directory below
+<code class="docutils literal notranslate"><span class="pre">/var/tmp</span></code> which is named after the ID of the calling user, e.g
+<code class="docutils literal notranslate"><span class="pre">/var/tmp/bwrap_1000</span></code>. Only that user has access to the directory,
+and on the host it stays empty. Nobody on the host can see or access
+the mounts, and every sandbox has a namespace of its own, two
+sandboxes of the same user do not share them although they are
+mounted on the same directory.</p>
+<p>When the application terminates, the mounts are gone along with
+everything written to them. The next call starts from the unmodified
+tree again, whether it is called with an <code class="docutils literal notranslate"><span class="pre">&#64;NAME</span></code> selector or not.</p>
+<p>There are two exceptions. Data written below <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> with the
+default options is kept in a tmpfs created by <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> and is gone
+when the application terminates as well. Data written to a path
+which is bound writable from the host changes that path on the host
+and is kept.</p>
+<p>The namespace needs a host which allows unprivileged user namespaces,
+which <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> without the setuid bit needs anyway, and a kernel
+which allows overlay mounts in a user namespace, Linux 5.11 or newer.</p>
+<p>A tree, or a directory added with <code class="docutils literal notranslate"><span class="pre">--overlay-src</span></code>, which has mount
+points below it cannot be used this way, e.g the host root. The
+mounts of the host are locked in a user namespace, and the kernel
+refuses an overlay which would reveal what they cover. The launcher
+checks for such mount points, a mount on the directory itself does
+not count. If it finds one, it hands the flake over to the
+<code class="docutils literal notranslate"><span class="pre">bubblewrap-pilot</span></code> command of the Flake Pilot helper through
+<code class="docutils literal notranslate"><span class="pre">sudo</span></code> instead, along with the arguments of the application:</p>
+<ul class="simple">
+<li><p>The helper reads the tree and the layers from the registration of
+the flake. The registration of a flake of your own, and your
+<code class="docutils literal notranslate"><span class="pre">~/.config/flakes.yml</span></code> which locates it, are read with your
+identity.</p></li>
+<li><p>The helper moves into a mount namespace of its own whose mounts
+are private, nothing is mounted on the host in this case either.</p></li>
+<li><p>It opens the tree and the layers with your identity, a tree you
+cannot reach yourself is refused, and mounts the same setup as
+described above on your directory below <code class="docutils literal notranslate"><span class="pre">/var/tmp</span></code>.</p></li>
+<li><p>It then drops its privileges to yours for good, makes sure that no
+program in the namespace can gain privileges, e.g through a setuid
+program, and starts the launcher in the namespace. The launcher
+takes the <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> options from the registration and replaces
+itself by <code class="docutils literal notranslate"><span class="pre">bwrap</span></code>.</p></li>
+</ul>
+<p>The launcher started by the helper gets a fresh environment which
+only contains <code class="docutils literal notranslate"><span class="pre">PATH</span></code>, your <code class="docutils literal notranslate"><span class="pre">HOME</span></code>, <code class="docutils literal notranslate"><span class="pre">USER</span></code> and <code class="docutils literal notranslate"><span class="pre">LOGNAME</span></code> and
+<code class="docutils literal notranslate"><span class="pre">TERM</span></code>. A <code class="docutils literal notranslate"><span class="pre">%NAME</span></code> reference in the <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> options resolves to
+the value of that environment. With the default <code class="docutils literal notranslate"><span class="pre">--clearenv</span></code>
+option the application therefore gets these variables, but not
+<code class="docutils literal notranslate"><span class="pre">LANG</span></code>, <code class="docutils literal notranslate"><span class="pre">LC_ALL</span></code> and <code class="docutils literal notranslate"><span class="pre">TZ</span></code>. A sandbox created this way is shown
+by <code class="docutils literal notranslate"><span class="pre">flake-ctl</span> <span class="pre">bubblewrap</span> <span class="pre">show</span></code>
+with the process of <code class="docutils literal notranslate"><span class="pre">sudo</span></code>. It needs a <code class="docutils literal notranslate"><span class="pre">sudo</span></code> rule for the
+helper, see <a class="reference internal" href="privileges.html#privileges"><span class="std std-ref">Privileges and Trust</span></a>.</p>
+<p>The administrator sets the size of the tmpfs with the
+<code class="docutils literal notranslate"><span class="pre">sandbox_tmpfs_size</span></code> setting in <code class="docutils literal notranslate"><span class="pre">/etc/flakes.yml</span></code>, e.g:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">generic</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">sandbox_tmpfs_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2G</span>
+</pre></div>
+</div>
+<p>Without the setting the kernel default applies, half of the memory
+of the host. Every tmpfs gets the configured size unless the flake
+asks for a smaller one with the <code class="docutils literal notranslate"><span class="pre">%tmpfs_size</span></code> pilot option. A
+number with a <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">m</span></code>, <code class="docutils literal notranslate"><span class="pre">g</span></code> or <code class="docutils literal notranslate"><span class="pre">t</span></code> suffix or a percentage of
+the memory of the host using the <code class="docutils literal notranslate"><span class="pre">%</span></code> suffix is accepted, a size
+above the limit is refused:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>leapshell<span class="w"> </span>%tmpfs_size:512M
+</pre></div>
+</div>
+<p>For a sandbox the launcher mounts itself the limit is applied by the
+launcher. As you create the tmpfs in a namespace of your own, it is a
+default of the system there rather than a privilege boundary. The
+memory of the tmpfs is accounted to your processes and is released
+when the sandbox terminates. For a sandbox mounted by the helper the
+limit is enforced by the helper.</p>
+<p>Former versions kept the written data across calls, on disk in the
+directories <code class="docutils literal notranslate"><span class="pre">leapshell_rw</span></code> and <code class="docutils literal notranslate"><span class="pre">leapshell_work</span></code> or in tmpfs
+mounts on the host, <code class="docutils literal notranslate"><span class="pre">leapshell_overlay</span></code> and <code class="docutils literal notranslate"><span class="pre">leapshell_merged</span></code>,
+below <code class="docutils literal notranslate"><span class="pre">/var/tmp/bwrap_1000</span></code>. They are not used anymore. A tmpfs
+mount left on the host by a former version stays until the host is
+rebooted or <code class="docutils literal notranslate"><span class="pre">root</span></code> removes it, the remaining directories can be
+deleted by you. The <code class="docutils literal notranslate"><span class="pre">%discard</span></code> pilot option of former versions is
+gone as well. A pilot option which is unknown is ignored, a flake
+registered with it keeps working.</p>
+</section>
+<section id="registration-options-in-short">
+<h2><span class="section-number">9.5. </span>Registration Options in Short<a class="headerlink" href="#registration-options-in-short" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">--rootfs</span></code></dt><dd><p>The absolute path of the directory tree on the host which becomes
+the root filesystem of the sandbox.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--app</span></code> and <code class="docutils literal notranslate"><span class="pre">--target</span></code></dt><dd><p>The path of the application on the host and the program to call
+inside of the sandbox, like for container flakes.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--opt</span></code></dt><dd><p>An option of <code class="docutils literal notranslate"><span class="pre">bwrap</span></code> and its values, added to the standard
+options listed above. Can be given more than once. See
+<code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">1</span> <span class="pre">bwrap</span></code> for what is available.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--pilot-option</span></code></dt><dd><p>A runtime option of the pilot, e.g <code class="docutils literal notranslate"><span class="pre">%chdir:/work</span></code>. The option is
+stored in the <code class="docutils literal notranslate"><span class="pre">pilot_options</span></code> list of the flake configuration and
+is effective on every call. The same option given at call time
+takes precedence. The option can be specified multiple times.</p>
+</dd>
+</dl>
+<p>See <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">flake-ctl-bubblewrap-register</span></code> for the complete list.</p>
+</section>
+<section id="calling-a-registered-sandbox-app">
+<h2><span class="section-number">9.6. </span>Calling a Registered Sandbox App<a class="headerlink" href="#calling-a-registered-sandbox-app" title="Link to this heading"></a></h2>
+<p>Arguments given to the app are passed on to the program inside of the
+sandbox, with two exceptions which are read by the launcher itself:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">&#64;NAME</span></code></dt><dd><p>A selector which allows to distribute the exact same program call
+to different instances, e.g <code class="docutils literal notranslate"><span class="pre">leapshell</span> <span class="pre">&#64;one</span></code>. Each instance gets
+a sandbox of its own. Calling the same instance twice at the same
+time is refused.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">%OPTION</span></code></dt><dd><p>A runtime option of the pilot, e.g <code class="docutils literal notranslate"><span class="pre">%chdir:/work</span></code> to call the
+program in a directory of the sandbox instead of its root
+directory. See <code class="docutils literal notranslate"><span class="pre">man</span> <span class="pre">8</span> <span class="pre">bubblewrap-pilot</span></code> for the complete list.</p>
+</dd>
+</dl>
+<p>A sandbox exists as long as the application running in it. The
+instances of the current setup are listed via:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>show
+</pre></div>
+</div>
+<p>Removing a registration deletes the symlink and the flake
+configuration. The root filesystem tree belongs to you and is never
+touched by it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>flake-ctl<span class="w"> </span>bubblewrap<span class="w"> </span>remove<span class="w"> </span>--app<span class="w"> </span><span class="nv">$HOME</span>/bin/leapshell
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="firecracker_volumes.html" class="btn btn-neutral float-left" title="8. Firecracker Volumes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="application_setup.html" class="btn btn-neutral float-right" title="10. Application Setup" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Marcus Schäfer.
+      <span class="lastupdated">Last updated on October 2026.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

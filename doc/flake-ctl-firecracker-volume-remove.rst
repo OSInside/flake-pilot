@@ -25,7 +25,7 @@ DESCRIPTION
 
 Delete the given volume(s) from the flake configuration of the
 given firecracker flake application. This reverts what
-**flake-ctl-firecracker-volume-add**(8) has performed. A volume
+**flake-ctl-firecracker-volume-add**\(8) has performed. A volume
 is matched by its host and guest path, no matter which server it
 is currently provided from.
 
@@ -37,8 +37,8 @@ were added.
 As the command only modifies the flake configuration of the
 application no privileged operations are required. The NFS
 export of the host path, see
-**flake-ctl-firecracker-volume-release**(8), and the network
-setup, see **flake-ctl-firecracker-network-remove**(8), are not
+**flake-ctl-firecracker-volume-release**\(8), and the network
+setup, see **flake-ctl-firecracker-network-remove**\(8), are not
 touched, they may still be needed by other applications or
 instances.
 

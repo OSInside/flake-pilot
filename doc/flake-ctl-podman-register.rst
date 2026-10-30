@@ -135,7 +135,7 @@ OPTIONS
   Resume the container from previous execution. If the container is
   still running, the app will be executed inside of this container
   instance. The instance stays behind after the application ended
-  and can be deleted with **flake-ctl-podman-reset**(8)
+  and can be deleted with **flake-ctl-podman-reset**\(8)
 
 --container <CONTAINER>
 

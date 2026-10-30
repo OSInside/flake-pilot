@@ -25,7 +25,7 @@ DESCRIPTION
 
 Delete the network setup of the given firecracker flake
 application. All of the setup created with
-**flake-ctl-firecracker-network-add**(8) is reverted. The host side
+**flake-ctl-firecracker-network-add**\(8) is reverted. The host side
 is deleted by the helper, see **flake-pilot-helper**\(8):
 
 1. The rules which allow the VM the services of the host. All rules

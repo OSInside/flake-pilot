@@ -71,7 +71,7 @@ config
 
 address
   Address of the VM in the private network between the host and
-  the VMs, see **flake-ctl-firecracker-network-add**(8). An
+  the VMs, see **flake-ctl-firecracker-network-add**\(8). An
   instance which is not connected to a network shows no address,
   neither does an instance with a dynamic setup, e.g ``ip=dhcp``
 
@@ -83,7 +83,7 @@ tap
 
 volumes
   The NFS volumes attached to the instance, see
-  **flake-ctl-firecracker-volume-add**(8). Each volume is shown
+  **flake-ctl-firecracker-volume-add**\(8). Each volume is shown
   in the ``SERVER:HOST_PATH:GUEST_PATH`` notation it is
   configured in. In the table and the csv format the volumes are
   provided as a comma separated list, the json format provides
@@ -94,7 +94,7 @@ storage
   Path of the storage volume of the instance. firecracker-pilot
   creates this ext4 filesystem image on the first start of an
   instance whose flake is registered with an **overlay_size**,
-  see **flake-ctl-firecracker-register**(8). The volume is named
+  see **flake-ctl-firecracker-register**\(8). The volume is named
   after the instance and is stored below
   `.config/flakes/firecracker/storage` in the home directory of
   the user the instance belongs to. The home directory is read
@@ -118,7 +118,7 @@ size
   of the volume
 
 The network and the volumes are read from the kernel commandline
-of the VM the same way **firecracker-pilot**(8) does when it
+of the VM the same way **firecracker-pilot**\(8) does when it
 starts the instance. For an instance called with the **@NAME**
 pilot option this includes the settings from the section of that
 instance, which take the place of the settings of the
@@ -134,7 +134,7 @@ Please note, a meta data file also exists for an instance which
 is no longer running. firecracker-pilot does not delete it, the
 file is reused when the instance is started again. It is deleted
 when the flake gets removed with
-**flake-ctl-firecracker-remove**(8). Therefore the command can
+**flake-ctl-firecracker-remove**\(8). Therefore the command can
 also show instances in the ``stopped`` status.
 
 OPTIONS

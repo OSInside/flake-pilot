@@ -75,7 +75,7 @@ which fails to mount, is skipped and the remaining volumes are
 still mounted.
 
 For the nfs parameter to work the instance needs a working
-network setup, see **flake-ctl-firecracker-network-add**(8), and
+network setup, see **flake-ctl-firecracker-network-add**\(8), and
 has to provide the NFS client tools. Mounting a filesystem of
 this type requires the ``mount.nfs`` helper program.
 

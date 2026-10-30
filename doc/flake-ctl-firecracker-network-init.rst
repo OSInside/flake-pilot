@@ -65,7 +65,7 @@ of the host, the interface has to exist. Both are recorded in the
 network state file along with the services of the host given by
 ``--host-resolver`` and ``--host-dhcp`` and the networks of the egress
 policy given by ``--egress-deny``. Connecting an application to
-the host network with **flake-ctl-firecracker-network-add**(8) takes
+the host network with **flake-ctl-firecracker-network-add**\(8) takes
 them from there: the address of the application, the route to it and
 its firewall rules are only ever created within the recorded network.
 
@@ -85,7 +85,7 @@ rules and do not use this command.
 
 Setting up the host is only one part of the networking setup. The
 network configuration of the VM itself is part of the flake
-configuration of the application. See **flake-ctl-firecracker-register**(8)
+configuration of the application. See **flake-ctl-firecracker-register**\(8)
 and the ``Firecracker Networking`` section of the flake-pilot README
 for the complete setup.
 
@@ -179,7 +179,7 @@ again, e.g after a reboot, without moving the applications to another
 network. Only a recorded network which collides with a network of the
 host, e.g because the host was connected to it afterwards, is
 replaced. In that case the applications have to be connected again
-with **flake-ctl-firecracker-network-add**(8) to receive an address
+with **flake-ctl-firecracker-network-add**\(8) to receive an address
 of the new network.
 
 OPTIONS

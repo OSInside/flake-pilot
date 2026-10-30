@@ -65,7 +65,7 @@ behind, thus a directory only exists if the export in it is complete.
 
 The resulting directory tree is a plain file system tree and not an
 OCI container anymore. It can for example be used as the root file
-system of a sandbox application, see **flake-ctl-bubblewrap-register**(8)
+system of a sandbox application, see **flake-ctl-bubblewrap-register**\(8)
 
 OPTIONS
 -------

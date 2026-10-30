@@ -29,7 +29,7 @@ application. The command writes a flake-pilot managed entry to
 identified by its address in the private firecracker network, read
 from the address allocations in the network state file
 ``/var/lib/firecracker/network-state.yaml`` which
-**flake-ctl-firecracker-network-add**(8) writes. The ``ip=`` boot
+**flake-ctl-firecracker-network-add**\(8) writes. The ``ip=`` boot
 option in the flake configuration is not used for this, the flake
 configuration of a user belongs to that user while the state file
 belongs to root. The application, or the given instance of it,

@@ -229,7 +229,7 @@ OPTIONS
 
   Absolute path of the application on the host. The application
   has to be registered as a VM application, see
-  **flake-ctl-firecracker-register**(8)
+  **flake-ctl-firecracker-register**\(8)
 
 --instance <INSTANCE>
 

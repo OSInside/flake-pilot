@@ -24,7 +24,7 @@ DESCRIPTION
 
 Stop and delete the container instance of an application which
 was registered with the **--resume** option of
-**flake-ctl-podman-register**(8).
+**flake-ctl-podman-register**\(8).
 
 A resume flake does not create a new container for every call of
 the application. The container of the first call is kept in

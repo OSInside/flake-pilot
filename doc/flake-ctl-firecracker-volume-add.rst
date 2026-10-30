@@ -37,16 +37,16 @@ The server the volume is mounted from is the gateway address of
 the private network between the host and the VMs. That address
 is read from the ``rd.route=`` boot option which is written to
 the flake configuration by
-**flake-ctl-firecracker-network-add**(8). The network setup
+**flake-ctl-firecracker-network-add**\(8). The network setup
 therefore has to be created for the application, or for the
 given instance, before a volume can be added.
 
 Multiple volumes are folded into a single ``nfs=`` option as a
-comma separated list, which is the format **sci**(8) reads the
+comma separated list, which is the format **sci**\(8) reads the
 volumes of a VM instance from.
 
 The host path of a volume also has to be exported through NFS,
-see **flake-ctl-firecracker-volume-export**(8). The application
+see **flake-ctl-firecracker-volume-export**\(8). The application
 does not have to be running when the command is called, the
 volume becomes available the next time the instance is started.
 
@@ -76,8 +76,8 @@ OPTIONS
 
   Absolute path of the application on the host. The application
   has to be registered as a VM application, see
-  **flake-ctl-firecracker-register**(8), and connected to the
-  host network, see **flake-ctl-firecracker-network-add**(8)
+  **flake-ctl-firecracker-register**\(8), and connected to the
+  host network, see **flake-ctl-firecracker-network-add**\(8)
 
 --volume <VOLUME>
 

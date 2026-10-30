@@ -112,7 +112,9 @@ fn main() -> ExitCode {
             podman::run_pilot(&caller, app, debug, term.as_deref(), args)
         },
         cli::Commands::BubblewrapPilot { app, size, term, args } => {
-            bubblewrap::run_pilot(
+            // The exit code of the application in the sandbox is
+            // the exit code of the helper
+            return bubblewrap::run_pilot(
                 &caller, app, size.as_deref(), debug, term.as_deref(), args
             )
         },

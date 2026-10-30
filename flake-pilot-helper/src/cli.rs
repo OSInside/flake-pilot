@@ -165,8 +165,10 @@ pub enum Commands {
     },
     /// Run a bubblewrap flake with mount points below its root
     /// filesystem for the caller, registered system wide or by the
-    /// caller. The root filesystem, the bwrap options and the
-    /// application are taken from the registration
+    /// caller, and the flakes of root whose mounts persist on the
+    /// host. The root filesystem, the bwrap options, the directories
+    /// whose mounts persist and the application are taken from the
+    /// registration
     BubblewrapPilot {
         /// Path of the application on the host, the link to
         /// bubblewrap-pilot the flake is called by. Given only once,

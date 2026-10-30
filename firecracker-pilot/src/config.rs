@@ -132,6 +132,14 @@ pub struct RuntimeSection<'a> {
     #[serde(default)]
     pub force_vsock: bool,
 
+    /// Optional name of the user to call the application as
+    /// inside of the VM. If the user does not exist in the VM,
+    /// the application is called as root
+    ///
+    /// Default: root
+    #[serde(default, borrow)]
+    pub user: Option<&'a str>,
+
     /// Optional pilot options in the format:
     /// - %name or %name:value
     ///

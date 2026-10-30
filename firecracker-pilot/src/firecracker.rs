@@ -143,6 +143,13 @@ pub fn create(program_name: &String) -> Result<(String, String), FlakeError> {
         # Default: false
         force_vsock: true|false
 
+        # Name of the user to call the application as inside
+        # of the VM. If the user does not exist in the VM, the
+        # application is called as root
+        #
+        # Default: root
+        user: name
+
         # Pilot options which are always effective for this
         # application. The same options can be given at call
         # time and then take precedence over the setting here
@@ -1117,7 +1124,7 @@ pub fn create_firecracker_config(
     )?;
     let mut boot_args: Vec<String> = Vec::new();
     let RuntimeSection {
-        resume, force_vsock, firecracker: engine_section, ..
+        resume, force_vsock, user, firecracker: engine_section, ..
     } = config().runtime();
 
     // set kernel_image_path
@@ -1190,6 +1197,10 @@ pub fn create_firecracker_config(
     // Otherwise e.g a resume mode sci keeps the instance running
     // after the command while the pilot does not use it again
     boot_args.append(&mut get_sci_mode_boot_args(resume, force_vsock));
+    // sci calls the application as the configured user
+    if let Some(user) = user {
+        boot_args.push(get_sci_user_boot_arg(user)?);
+    }
     if ! firecracker_config.boot_source.boot_args.is_empty() {
         firecracker_config.boot_source.boot_args.push(' ');
     }
@@ -1350,6 +1361,27 @@ pub fn get_sci_mode_boot_args(resume: bool, force_vsock: bool) -> Vec<String> {
         boot_args.push(format!("{}=1", defaults::SCI_FORCE_VSOCK_BOOT_ARG));
     }
     boot_args
+}
+
+pub fn get_sci_user_boot_arg(user: &str) -> Result<String, FlakeError> {
+    /*!
+    Provide the kernel commandline option which tells sci the
+    name of the user to call the application as
+
+    The name becomes part of the kernel commandline. A name which
+    could break it up, e.g by whitespace, is refused
+    !*/
+    if ! Lookup::is_safe_user_name(user) {
+        return Err(FlakeError::IOError {
+            kind: "InvalidUserName".to_string(),
+            message: format!(
+                "Invalid user name '{user}' in the runtime section: \
+                expected up to 32 characters out of [A-Za-z0-9._-], \
+                starting with [A-Za-z_]"
+            )
+        })
+    }
+    Ok(format!("{}={user}", defaults::SCI_USER_BOOT_ARG))
 }
 
 pub fn is_sci_mode_boot_arg(boot_arg: &str) -> bool {

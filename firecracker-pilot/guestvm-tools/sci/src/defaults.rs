@@ -33,6 +33,15 @@ pub const SCI: &str = "/usr/sbin/sci";
 // Marker in the environment of sci which tells that the switch
 // root into the overlay was done already
 pub const OVERLAY_SWITCHED: &str = "sci_overlay_switched";
+// Name of the user to call the command as, given through the
+// sci_user=... cmdline variable. Without it the command is called
+// as root
+pub const USER: &str = "sci_user";
+// User and group database of the instance. sci reads them on its
+// own instead of using NSS. A statically linked sci could not load
+// the NSS modules of the glibc in the instance
+pub const PASSWD: &str = "/etc/passwd";
+pub const GROUP: &str = "/etc/group";
 pub const OVERLAY_MOUNT: &str = "/overlayroot";
 pub const OVERLAY_ROOT: &str = "/overlayroot/rootfs";
 // Permissions of the root directory of the instance

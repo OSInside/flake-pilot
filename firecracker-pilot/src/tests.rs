@@ -26,7 +26,9 @@ use crate::config::config_from_str;
 use crate::firecracker::get_network_init_command;
 use crate::firecracker::get_nfs_server_start_command;
 use crate::firecracker::get_nfs_volumes;
-use crate::firecracker::{get_sci_mode_boot_args, is_sci_mode_boot_arg};
+use crate::firecracker::{
+    get_sci_mode_boot_args, get_sci_user_boot_arg, is_sci_mode_boot_arg
+};
 use crate::firecracker::get_nfsd_threads;
 use crate::firecracker::has_network_setup;
 use crate::firecracker::nfsd_is_running;
@@ -363,6 +365,43 @@ fn test_sci_mode_boot_args() {
         get_sci_mode_boot_args(true, true),
         vec!["sci_resume=1", "sci_force_vsock=1"]
     );
+}
+
+#[test]
+fn test_sci_user_boot_arg() {
+    assert_eq!(get_sci_user_boot_arg("john").unwrap(), "sci_user=john");
+    for user in ["", "john doe", "john\"", "1john"] {
+        assert!(get_sci_user_boot_arg(user).is_err(), "{}", user);
+    }
+}
+
+#[test]
+fn test_configured_user() {
+    let cfg = config_from_str(
+            r#"vm:
+ name: JoJo
+ host_app_path: /myapp
+ runtime:
+  user: john
+  firecracker:
+   rootfs_image_path: /rootfs
+   kernel_image_path: /kernel
+   boot_args:
+     - "init=/usr/sbin/sci"
+"#,
+    );
+    assert_eq!(Some("john"), cfg.runtime().user);
+}
+
+#[test]
+fn test_no_user_configured() {
+    let cfg = config_from_str(
+            r#"vm:
+ name: JoJo
+ host_app_path: /myapp
+"#,
+    );
+    assert_eq!(None, cfg.runtime().user);
 }
 
 #[test]

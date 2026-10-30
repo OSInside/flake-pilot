@@ -194,6 +194,12 @@ pub enum Firecracker {
         #[clap(long)]
         overlay_size: Option<String>,
 
+        /// Name of the user to call the application as inside
+        /// of the VM. If the user does not exist in the VM, the
+        /// application is called as root
+        #[clap(long)]
+        user: Option<String>,
+
         /// Pilot option, and optional value, in the format
         /// %name or %name:value. Pilot options are not passed
         /// to the application call but control the behavior of

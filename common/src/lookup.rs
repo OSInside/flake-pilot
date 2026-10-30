@@ -85,6 +85,22 @@ impl Lookup {
         )
     }
 
+    pub fn is_safe_user_name(name: &str) -> bool {
+        /*!
+        Check the name of a user to call an application as
+
+        The name is passed to the guest on the kernel commandline
+        of a VM. Therefore only the characters of a portable user
+        name are allowed, which rules out whitespace and quoting.
+        Like useradd does it, the name may not start with a digit,
+        '.' or '-' and is limited to 32 characters
+        !*/
+        let mut chars = name.chars();
+        name.len() <= 32
+            && chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    }
+
     pub fn get_pilot_run_options(
         default_options: Vec<&str>
     ) -> HashMap<String, String> {
@@ -142,5 +158,23 @@ impl Lookup {
         found when it gets called. Only executable files count
         !*/
         which::which(command).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Lookup;
+
+    #[test]
+    fn test_is_safe_user_name() {
+        for name in ["root", "_apt", "john.doe", "user-1", "Admin_2"] {
+            assert!(Lookup::is_safe_user_name(name), "{name}");
+        }
+        for name in [
+            "", "1user", "-user", ".user", "john doe", "user\"",
+            "user=x", "a/b", "abcdefghijklmnopqrstuvwxyz0123456"
+        ] {
+            assert!(! Lookup::is_safe_user_name(name), "{name}");
+        }
     }
 }

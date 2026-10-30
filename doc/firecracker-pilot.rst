@@ -84,6 +84,13 @@ can be set for the firecracker engine:
         # Default: false
         resume: true|false
 
+        # Name of the user to call the application as inside
+        # of the VM. If the user does not exist in the VM, the
+        # application is called as root
+        #
+        # Default: root
+        user: name
+
         # Optional pilot options in the format:
         # - %name or %name:value
         # Pilot options are not passed to the application call

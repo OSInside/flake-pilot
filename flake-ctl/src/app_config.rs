@@ -84,6 +84,7 @@ pub struct AppFireCracker {
 pub struct AppFireCrackerRuntime {
     pub resume: Option<bool>,
     pub force_vsock: Option<bool>,
+    pub user: Option<String>,
     pub pilot_options: Option<Vec<String>>,
     pub firecracker: Option<AppFireCrackerEngine>,
 }
@@ -295,6 +296,7 @@ impl AppConfig {
         overlay_size: Option<&String>,
         resume: bool,
         force_vsock: bool,
+        user: Option<&String>,
         pilot_options: Option<Vec<String>>,
         usermode: bool,
     ) -> Result<(), GenericError> {
@@ -317,6 +319,9 @@ impl AppConfig {
         }
         if force_vsock {
             runtime.force_vsock = Some(force_vsock);
+        }
+        if let Some(user) = user {
+            runtime.user = Some(user.to_string());
         }
         if let Some(pilot_options) = &pilot_options {
             runtime.pilot_options = Some(

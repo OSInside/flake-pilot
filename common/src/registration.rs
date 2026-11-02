@@ -46,12 +46,17 @@
 //!
 use std::env;
 use std::fs;
+use std::io::{self, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::config::get_flakes_dir;
 use crate::defaults;
+
+// Upper limit for the size of a single yaml file of a registration
+const MAX_CONFIG_SIZE: u64 = 1024 * 1024;
 
 pub fn program_abs_path() -> String {
     /*!
@@ -151,6 +156,38 @@ pub fn config_files(usermode: bool) -> Vec<PathBuf> {
     config_files
 }
 
+pub fn read_config_file(path: impl AsRef<Path>) -> io::Result<String> {
+    /*!
+    Read the given yaml file of a registration
+
+    Only a regular file of at most MAX_CONFIG_SIZE bytes is read.
+    The device gets opened in O_NONBLOCK such that e.g. an open
+    on a FIFO does not block the reader forever. After opening
+    the handle is checked to be a real file such that e.g reading
+    from /dev/zero won't read until the memory is exhausted.
+    !*/
+    // O_NONBLOCK: opening a FIFO must not block, harmless for regular files
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
+    // Checked on the opened file, the path could be replaced meanwhile
+    if ! file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput, "Not a regular file"
+        ))
+    }
+    let mut content = String::new();
+    file.take(MAX_CONFIG_SIZE + 1).read_to_string(&mut content)?;
+    if content.len() as u64 > MAX_CONFIG_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("File exceeds the limit of {MAX_CONFIG_SIZE} bytes")
+        ))
+    }
+    Ok(content)
+}
+
 pub fn merge_config(config_file: &str, config_dirs: &[String]) -> String {
     /*!
     Read the given registration together with its drop-in files
@@ -161,7 +198,7 @@ pub fn merge_config(config_file: &str, config_dirs: &[String]) -> String {
     ready to be send to the yaml parser. Files which cannot be
     read are skipped
     !*/
-    let base_yaml = fs::read_to_string(config_file);
+    let base_yaml = read_config_file(config_file);
     let extra_yamls = config_dirs.iter().flat_map(|config_dir| {
         let mut dir_yamls: Vec<_> = fs::read_dir(config_dir)
             .into_iter()
@@ -173,7 +210,7 @@ pub fn merge_config(config_file: &str, config_dirs: &[String]) -> String {
         dir_yamls
     });
     base_yaml.into_iter().chain(
-        extra_yamls.flat_map(fs::read_to_string)
+        extra_yamls.flat_map(read_config_file)
     ).collect()
 }
 
@@ -279,11 +316,17 @@ fn is_direct_call() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
     use std::fs;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::symlink;
+
+    use tempfile::tempdir;
 
     use super::{
         basename, config_dir, config_dirs, config_file, merge_config,
-        program_abs_path, try_config_from_str
+        program_abs_path, read_config_file, try_config_from_str,
+        MAX_CONFIG_SIZE
     };
     use std::collections::HashMap;
 
@@ -354,5 +397,55 @@ mod tests {
         );
         fs::remove_dir_all(&root).unwrap();
         assert_eq!("base: 1\nflakes_b: 1\nflakes_c: 1\nlocal_a: 1\n", merged);
+    }
+
+    #[test]
+    fn test_read_config_file() {
+        let workdir = tempdir().unwrap();
+        let config = workdir.path().join("app.yaml");
+        fs::write(&config, "app: 1\n").unwrap();
+        assert_eq!("app: 1\n", read_config_file(&config).unwrap());
+        // a link to a regular file is fine
+        let link = workdir.path().join("link.yaml");
+        symlink(&config, &link).unwrap();
+        assert_eq!("app: 1\n", read_config_file(&link).unwrap());
+        // a file of exactly the limit is fine, one byte more is not
+        let large = workdir.path().join("large.yaml");
+        fs::write(&large, vec![b'#'; MAX_CONFIG_SIZE as usize]).unwrap();
+        assert!(read_config_file(&large).is_ok());
+        fs::write(&large, vec![b'#'; MAX_CONFIG_SIZE as usize + 1]).unwrap();
+        assert!(read_config_file(&large).is_err());
+    }
+
+    #[test]
+    fn test_read_config_file_no_regular_file() {
+        // Neither is read: /dev/zero is endless and a
+        // FIFO blocks until there is a writer
+        let workdir = tempdir().unwrap();
+        let zero = workdir.path().join("zero.yaml");
+        symlink("/dev/zero", &zero).unwrap();
+        let fifo = workdir.path().join("fifo.yaml");
+        let fifo_path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(0, unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) });
+        for path in [&zero, &fifo, &workdir.path().to_path_buf()] {
+            assert!(read_config_file(path).is_err(), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn test_merge_config_skips_no_regular_file() {
+        let workdir = tempdir().unwrap();
+        let config_dir = workdir.path().join("app.d");
+        fs::create_dir(&config_dir).unwrap();
+        let base_file = workdir.path().join("app.yaml");
+        fs::write(&base_file, "base: 1\n").unwrap();
+        symlink("/dev/zero", config_dir.join("a.yaml")).unwrap();
+        fs::create_dir(config_dir.join("b.yaml")).unwrap();
+        fs::write(config_dir.join("c.yaml"), "c: 1\n").unwrap();
+        let merged = merge_config(
+            &base_file.to_string_lossy(),
+            &[config_dir.to_string_lossy().to_string()]
+        );
+        assert_eq!("base: 1\nc: 1\n", merged);
     }
 }

@@ -247,7 +247,7 @@ fn user_flakes_dir(caller: &Caller) -> Result<String, String> {
     !*/
     let config_file = caller.home.join(defaults::FLAKES_CONFIG_USER);
     let origin = config_file.to_string_lossy().to_string();
-    let yaml = fs::read_to_string(&config_file).map_err(
+    let yaml = registration::read_config_file(&config_file).map_err(
         |error| format!("Failed to read {origin}: {error}")
     )?;
     let config: FlakesConfig = registration::try_config_from_str(&yaml, &origin)?;

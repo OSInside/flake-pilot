@@ -53,7 +53,11 @@
 //! contains another.
 //!
 //! The rootfs and the layers are opened with the identity of the
-//! caller, a tree the caller cannot reach is refused. The overlay
+//! caller, a tree the caller cannot reach and read is refused. The
+//! O_PATH descriptor of a directory only requires search permission
+//! on the directories above it, the access to the directory itself
+//! is therefore checked on the descriptor, still with the identity
+//! of the caller, before the helper switches back to root. The overlay
 //! grants no access the caller does not have on the trees: access
 //! to their content through the overlay is checked against their
 //! own permissions. All mounts are created nosuid and nodev.
@@ -197,8 +201,9 @@ fn open_layers_as(
 ) -> Result<(OwnedFd, Vec<OwnedFd>), String> {
     /*!
     Open the rootfs and the layers with the identity of the caller.
-    The caller has to be able to reach them itself. The topmost
-    layer is the first one of the returned layers
+    The caller has to be able to reach and read them itself, see
+    open_layer(). The topmost layer is the first one of the
+    returned layers
     !*/
     // The paths are resolved following symbolic links the caller may
     // control
@@ -281,16 +286,30 @@ fn restore_privileges() -> Result<(), String> {
 fn open_layers(
     rootfs: &str, layers: &[String]
 ) -> Result<(OwnedFd, Vec<OwnedFd>), String> {
-    let rootfs_dir = open_dir(libc::AT_FDCWD, rootfs, true).map_err(
+    let rootfs_dir = open_layer(rootfs).map_err(
         |error| format!("Failed to open rootfs {rootfs}: {error}")
     )?;
     let mut layer_dirs: Vec<OwnedFd> = Vec::new();
     for layer in layers.iter().rev() {
-        layer_dirs.push(open_dir(libc::AT_FDCWD, layer, true).map_err(
+        layer_dirs.push(open_layer(layer).map_err(
             |error| format!("Failed to open layer {layer}: {error}")
         )?);
     }
     Ok((rootfs_dir, layer_dirs))
+}
+
+fn open_layer(path: &str) -> io::Result<OwnedFd> {
+    /*!
+    Open the given directory of the rootfs or of a layer, see
+    open_dir(), and check that the effective identity may read
+    and search it, see check_access(). Called with the identity
+    of the caller, the overlay is created with the privileges of
+    root later on and must not provide a tree the caller cannot
+    read itself
+    !*/
+    let directory = open_dir(libc::AT_FDCWD, path, true)?;
+    check_access(&directory, libc::R_OK | libc::X_OK)?;
+    Ok(directory)
 }
 
 pub fn drop_privileges(caller: &Caller) -> Result<(), String> {
@@ -517,6 +536,26 @@ fn open_dir(dirfd: RawFd, name: &str, follow: bool) -> io::Result<OwnedFd> {
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
+fn check_access(descriptor: &OwnedFd, mode: libc::c_int) -> io::Result<()> {
+    /*!
+    Check that the effective identity has the given access to the
+    file of the given descriptor, an O_PATH descriptor as well
+
+    faccessat2() checks the file the descriptor refers to, through
+    AT_EMPTY_PATH, the path is not resolved again. AT_EACCESS makes
+    it use the effective IDs, the real user ID of the helper stays
+    root, see drop_privileges_temporarily(). The system call is used
+    directly, faccessat() of the C library falls back to compare the
+    mode bits on its own when the kernel does not provide it
+    !*/
+    syscall_ok(unsafe {
+        libc::syscall(
+            libc::SYS_faccessat2, descriptor.as_raw_fd(), c"".as_ptr(), mode,
+            libc::AT_EACCESS | libc::AT_EMPTY_PATH
+        )
+    })
+}
+
 fn fstat(descriptor: &OwnedFd) -> io::Result<libc::stat> {
     let mut attributes: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(descriptor.as_raw_fd(), &mut attributes) } != 0 {
@@ -687,5 +726,28 @@ mod tests {
         let (_, layer_dirs) = open_layers(base, &layers).unwrap();
         assert_eq!(2, layer_dirs.len());
         assert!(open_layers(&format!("{base}/none"), &[]).is_err());
+    }
+
+    #[test]
+    fn test_open_layers_access() {
+        // The O_PATH descriptor of a directory which cannot be read
+        // or searched is provided, the access check refuses it
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let base = tmp_dir.path().to_str().unwrap();
+        let layer = format!("{base}/layer");
+        fs::create_dir(&layer).unwrap();
+        let is_root = get_current_uid() == 0;
+        for mode in [0o300, 0o600, 0o000] {
+            fs::set_permissions(
+                &layer, fs::Permissions::from_mode(mode)
+            ).unwrap();
+            assert!(open_dir(libc::AT_FDCWD, &layer, true).is_ok());
+            assert_eq!(is_root, open_layers(&layer, &[]).is_ok(), "{mode:o}");
+            assert_eq!(
+                is_root, open_layers(base, &[layer.clone()]).is_ok(), "{mode:o}"
+            );
+        }
+        fs::set_permissions(&layer, fs::Permissions::from_mode(0o500)).unwrap();
+        assert!(open_layers(&layer, &[]).is_ok());
     }
 }

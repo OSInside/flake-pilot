@@ -60,7 +60,6 @@ pi install npm:@inobit/pi-themes
 pi install npm:@twogiants/pi-anthropic-vertex
 pi install npm:@monotykamary/pi-retry
 pi install npm:pi-llama-chooser
-# pi install npm:pi-permission-modes
 pi install npm:@narumitw/pi-plan-mode
 pi install npm:@juicesharp/rpiv-ask-user-question
 pi install npm:@juicesharp/rpiv-todo
@@ -69,12 +68,10 @@ pi install npm:@dietrichgebert/ponytail
 pi install npm:pi-web-access
 
 # Gemini model providers
-git clone -b changelog-unreleased https://github.com/openSUSE-Python/pi-gemini-acp \
-  ~/checkout/pi-gemini-acp
-pi install ~/checkout/pi-gemini-acp
+# pi install npm:pi-gemini-acp
 
 # Agy model providers
-pi install npm:@estebanforge/pi-antigravity-bridge
+# pi install npm:@estebanforge/pi-antigravity-bridge
 
 # deepseek models
 mkdir -p /home/ai/.pi/agent

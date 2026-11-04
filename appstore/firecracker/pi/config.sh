@@ -66,3 +66,9 @@ pi install npm:pi-web-access
 )
 
 chown -R ai:users /home/ai
+
+#======================================
+# Allow the ai user to use sudo
+#--------------------------------------
+chown root:root /etc/sudoers.d/ai
+chmod 0440 /etc/sudoers.d/ai

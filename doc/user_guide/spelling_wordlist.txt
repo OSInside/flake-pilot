@@ -44,3 +44,9 @@ appstore
 boxbuild
 RFC
 subvolumes
+Claude
+Copilot
+DeepSeek
+GitHub
+preconfigured
+openSUSE

@@ -115,6 +115,9 @@ of the owner of that directory, and :ref:`firecracker-networking`
 connects it to everything the host reaches through its outgoing
 interface. :ref:`vm-apps` shows the complete example and
 :ref:`isolation-limits` summarizes what remains reachable.
+:ref:`best-practices-ai` describes the recommended setup for the
+pre-built AI images, including the network, a shared directory and
+the login.
 
 An Application Collection With Podman
 =====================================
@@ -244,6 +247,7 @@ as the user who calls the flake, while it is provisioned.
    sandbox_apps
    application_setup
    building_images
+   best_practices
    troubleshooting
 
 Resources

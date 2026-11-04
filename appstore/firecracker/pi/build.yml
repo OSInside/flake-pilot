@@ -1,0 +1,3 @@
+options:
+  - "--box tumbleweed"
+  - "--outfile pi.x86_64-1.5.0-0.tar.xz"

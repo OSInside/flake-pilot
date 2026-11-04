@@ -198,7 +198,18 @@ OPTIONS
 @NAME
 
   This allows users to distribute the exact same program call to different
-  instances when using a non resume based flake setup.
+  instances. Each instance runs in a VM of its own and gets its own meta
+  data, vsock socket, TAP device name and storage volume, e.g
+  `myapp@one.vmid` and `myapp@one.ext4`. Calls with another or
+  without a @NAME argument are executed in their own instance. If
+  the VM of the selected instance is still running, a call fails in
+  a flake setup which is not resume based, and is executed inside of
+  that VM in a resume based flake setup. The name may consist of
+  alphanumeric characters and the characters '=', '_' and '-'. A
+  network setup or volumes for an instance are configured with the
+  **--instance** option of
+  **flake-ctl-firecracker-network-add**\(8) and
+  **flake-ctl-firecracker-volume-add**\(8)
 
 %port:number
 

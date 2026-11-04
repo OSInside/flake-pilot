@@ -65,6 +65,19 @@ Check the listing for the current version of the image you want to
 use. The examples below use the ``claude`` image; for another image
 replace the image name, the application name and the archive name.
 
+.. note::
+
+   The pre-built images are based on openSUSE Leap, but Firecracker
+   images can be built for any distribution, e.g Fedora. The base
+   images in
+   https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker/leap
+   and
+   https://github.com/OSInside/flake-pilot/tree/main/appstore/firecracker/fedora
+   show the setup for both distributions, :ref:`building-images`
+   explains how to build an image. Images for other distributions
+   can be added on request, open an issue at
+   https://github.com/OSInside/flake-pilot/issues.
+
 Pull the Image
 --------------
 

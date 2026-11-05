@@ -119,3 +119,14 @@ pub const RETRIES: u32 =
     60;
 pub const VM_WAIT_TIMEOUT_MSEC: u64 =
     1000;
+// Interval to retry connecting to an instance which is not yet
+// ready for connections, e.g because it is still booting. The
+// retries end once CONNECT_TIMEOUT_MSEC has passed
+pub const CONNECT_RETRY_INTERVAL_MSEC: u64 = 100;
+pub const CONNECT_TIMEOUT_MSEC: u64 =
+    RETRIES as u64 * VM_WAIT_TIMEOUT_MSEC;
+// Size of the buffer the I/O of a command called through a vsock
+// is passed on with. A read provides the data which is available,
+// thus a single key stroke is still passed on immediately while
+// bulk output is passed on in large chunks
+pub const IO_BUFFER_SIZE: usize = 65536;

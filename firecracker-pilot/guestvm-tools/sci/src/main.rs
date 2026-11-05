@@ -463,8 +463,12 @@ fn main() {
                             if ok {
                                 let thread_handle = thread::spawn(move || {
                                     let mut retry_count = 0;
+                                    let start = time::Instant::now();
+                                    let timeout = time::Duration::from_millis(
+                                        defaults::CONNECT_TIMEOUT_MSEC
+                                    );
                                     loop {
-                                        if retry_count == defaults::RETRIES {
+                                        if start.elapsed() >= timeout {
                                             break
                                         }
                                         match VsockStream::connect_with_cid_port(
@@ -498,7 +502,7 @@ fn main() {
                                                     "[{retry_count}] VSOCK-CONNECT failed with: {error}"
                                                 ));
                                                 let some_time = time::Duration::from_millis(
-                                                    defaults::VM_WAIT_TIMEOUT_MSEC
+                                                    defaults::CONNECT_RETRY_INTERVAL_MSEC
                                                 );
                                                 thread::sleep(some_time);
                                             }
@@ -1490,7 +1494,7 @@ fn redirect_command_to_raw_channels(
             set_output_terminal_flags(stdout_fd);
 
             // main send/recv loop
-            let mut buffer = [0_u8; 1];
+            let mut buffer = vec![0_u8; defaults::IO_BUFFER_SIZE];
             loop {
                 // prepare file descriptors to be watched for by select()
                 let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();
@@ -1640,7 +1644,7 @@ fn redirect_command_to_pty(
         register_terminal_session(port, stdout_fd);
 
         // main send/recv loop
-        let mut buffer = [0_u8; 1];
+        let mut buffer = vec![0_u8; defaults::IO_BUFFER_SIZE];
         loop {
             // prepare file descriptors to be watched for by select()
             let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();

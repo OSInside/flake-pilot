@@ -741,11 +741,29 @@ pub fn get_exec_port() -> u32 {
     port
 }
 
+pub fn connect_timeout() -> time::Duration {
+    /*!
+    Provide the time to try connecting to an instance
+    !*/
+    time::Duration::from_millis(defaults::CONNECT_TIMEOUT_MSEC)
+}
+
+pub fn connect_retry_interval() -> time::Duration {
+    /*!
+    Provide the time to wait between two connection attempts
+    !*/
+    time::Duration::from_millis(defaults::CONNECT_RETRY_INTERVAL_MSEC)
+}
+
 pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
     /*!
     Check if instance connection is OK
+
+    An instance which is not yet ready for connections, e.g
+    because it is still booting, is retried in short intervals
+    such that the connection is made as soon as it is ready
     !*/
-    let mut retry_count = 0;
+    let start = time::Instant::now();
     let vsock_uds_path = get_vsock_uds_path(program_name)?;
     // The socket provides command execution inside of the VM.
     // Only the owner of the VM instance is allowed to talk to it.
@@ -757,7 +775,7 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
         .unwrap_or_default();
     chmod(&vsock_uds_path, "600", User::from(calling_user.as_str()))?;
     loop {
-        if retry_count == defaults::RETRIES {
+        if start.elapsed() >= connect_timeout() {
             if Lookup::is_debug() {
                 debug!("Max retries for VM connection check exceeded")
             }
@@ -785,17 +803,13 @@ pub fn check_connected(program_name: &String) -> Result<(), FlakeError> {
             stream.shutdown(Shutdown::Both).unwrap();
         }
         // VM not yet ready for connections
-        let some_time = time::Duration::from_millis(
-            defaults::VM_WAIT_TIMEOUT_MSEC
-        );
         if Lookup::is_debug() {
             debug!(
                 "Sleeping(check_connected): {}ms",
-                defaults::VM_WAIT_TIMEOUT_MSEC
+                defaults::CONNECT_RETRY_INTERVAL_MSEC
             );
         }
-        thread::sleep(some_time);
-        retry_count += 1
+        thread::sleep(connect_retry_interval())
     }
 }
 
@@ -806,13 +820,13 @@ pub fn send_command_to_instance(
     Send command to the VM via a vsock
     !*/
     let mut status_code;
-    let mut retry_count = 0;
+    let start = time::Instant::now();
     let mut run: Vec<String> = vec![get_target_app_path(program_name)];
 
     run = Lookup::get_run_cmdline(run, false);
     loop {
         status_code = 1;
-        if retry_count == defaults::RETRIES {
+        if start.elapsed() >= connect_timeout() {
             if Lookup::is_debug() {
                 debug!("Max retries for VM command transfer exceeded");
             }
@@ -850,20 +864,16 @@ pub fn send_command_to_instance(
         }
         if status_code == 1 {
             // VM not yet ready for connections
-            let some_time = time::Duration::from_millis(
-                defaults::VM_WAIT_TIMEOUT_MSEC
-            );
             if Lookup::is_debug() {
                 debug!(
                     "Sleeping(send_command_to_instance): {}ms",
-                    defaults::VM_WAIT_TIMEOUT_MSEC
+                    defaults::CONNECT_RETRY_INTERVAL_MSEC
                 );
             }
-            thread::sleep(some_time);
+            thread::sleep(connect_retry_interval())
         } else {
             break
         }
-        retry_count += 1
     }
     status_code
 }
@@ -1904,10 +1914,13 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<Option<i32>> {
     has ended, sci connects a second time to send the exit status
     of the command which is returned by the thread
     !*/
-    let mut socket = String::new();
-    socket.push_str(socket_path);
-    let handle = move |socket: String| {
-        match UnixListener::bind(socket) {
+    // Bind in the calling thread such that the socket exists once
+    // the command is sent to the instance. Otherwise sci could try
+    // to connect before the listener is ready and would have to
+    // wait for its next retry
+    let listener = UnixListener::bind(socket_path);
+    thread::spawn(move || {
+        match listener {
             Ok(listener) => {
                 if let Some(stream) = listener.incoming().next() {
                     match stream {
@@ -1926,8 +1939,7 @@ pub fn stream_listener(socket_path: &str) -> thread::JoinHandle<Option<i32>> {
             }
         }
         None
-    };
-    thread::spawn(move || {handle(socket)})
+    })
 }
 
 pub fn stream_io(mut stream: UnixStream) {
@@ -1953,7 +1965,7 @@ pub fn stream_io(mut stream: UnixStream) {
     let _terminal_mode = TerminalMode::raw(stdin_fd);
 
     // main send/recv loop
-    let mut buffer = [0_u8; 1];
+    let mut buffer = vec![0_u8; defaults::IO_BUFFER_SIZE];
     loop {
         // prepare file descriptors to be watched for by select()
         let raw_fdset = std::mem::MaybeUninit::<libc::fd_set>::uninit();

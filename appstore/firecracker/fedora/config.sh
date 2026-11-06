@@ -40,5 +40,3 @@ fi
 rm /usr/lib/dracut/modules.d/*systemd-networkd/99-wait-online-dracut.conf
 rm /usr/lib/dracut/modules.d/*network-manager/nm-wait-online-initrd.service
 rm /usr/lib/dracut/modules.d/*network-manager/NetworkManager-wait-online-initrd-dracut.conf
-
-ssh-keygen -A

@@ -69,7 +69,7 @@ __flake_ctl_firecracker_show() {
 
 __flake_ctl_firecracker_network() {
     if [ "${COMP_WORDS[3]}" = "init" ];then
-        __comp_reply_unused "--outgoing-interface --host-resolver --host-dhcp --egress-deny --help"
+        __comp_reply_unused "--outgoing-interface --host-resolver --host-dhcp --egress-deny --egress-allow --help"
         return 0
     fi
     if [ "${COMP_WORDS[3]}" = "add" ] || [ "${COMP_WORDS[3]}" = "remove" ];then

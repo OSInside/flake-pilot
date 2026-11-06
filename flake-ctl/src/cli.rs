@@ -417,13 +417,25 @@ pub enum Network {
         /// Network the traffic of the VMs to the outside world
         /// must not go to. Either link-local, which covers the
         /// metadata service of a cloud at 169.254.169.254, private,
-        /// which covers the private networks of RFC 1918, or a
-        /// network as ADDRESS[/PREFIX_LEN]. Can be specified
-        /// multiple times. Without this option the VMs may reach
-        /// every network the host reaches through the outgoing
-        /// interface
+        /// which covers the private networks of RFC 1918, a
+        /// network as ADDRESS[/PREFIX_LEN], a HOSTNAME, which
+        /// denies the IPv4 addresses it resolves to at the time
+        /// of the call, or @FILE, which reads one such entry per
+        /// line. Can be specified multiple times. Without this
+        /// option the VMs may reach every network the host
+        /// reaches through the outgoing interface
         #[clap(long, multiple_occurrences = true)]
         egress_deny: Vec<String>,
+
+        /// Network the traffic of the VMs to the outside world
+        /// is limited to, given like --egress-deny. Can be
+        /// specified multiple times. With this option the traffic
+        /// to every network which is not allowed is dropped, a
+        /// network given by --egress-deny stays denied. Unless
+        /// --host-resolver is given, the public name server of
+        /// the VMs is allowed along with the given networks
+        #[clap(long, multiple_occurrences = true)]
+        egress_allow: Vec<String>,
     },
     /// Connect a VM application to the host network
     Add {

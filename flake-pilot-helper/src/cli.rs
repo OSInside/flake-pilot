@@ -70,6 +70,14 @@ pub enum Commands {
         /// Given more than once, all of them are denied
         #[clap(long, multiple_occurrences = true)]
         egress_deny: Vec<String>,
+
+        /// Network the traffic of the VMs to the outside world is
+        /// limited to: link-local, private or ADDRESS[/PREFIX_LEN].
+        /// Given more than once, all of them are allowed. Given at
+        /// all, the traffic to every other network is dropped. A
+        /// network given by --egress-deny stays denied
+        #[clap(long, multiple_occurrences = true)]
+        egress_allow: Vec<String>,
     },
     /// Delete the network setup of the host
     NetworkCleanup,

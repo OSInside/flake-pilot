@@ -29,6 +29,7 @@
 //! state and from the address allocations, never from a rule
 //! specification of the caller.
 //!
+use std::io::Write;
 use std::net::Ipv4Addr;
 use std::process::{Command, Stdio};
 
@@ -46,9 +47,8 @@ use crate::run::run_ok;
 // Position a rule is created at in its chain. Accepting rules are
 // inserted at the top, dropping rules are appended. This keeps
 // every accepting rule in front of the drop rules, no matter in
-// which order the rules are created. The egress chain is the other
-// way round: the drop rules of the egress policy are inserted at
-// the top, in front of the rule which accepts everything else
+// which order the rules are created. The egress chain is not built
+// this way, it is written as a whole, see write_egress_chain()
 pub enum RulePosition {
     Top,
     Bottom
@@ -72,7 +72,7 @@ pub fn get_firewall_chains() -> [(&'static str, &'static str); 4] {
 }
 
 pub fn get_firewall_rules(
-    network: &str, outgoing_interface: &str, egress_deny: &[Ipv4Network]
+    network: &str, outgoing_interface: &str
 ) -> Vec<(FirewallRule, RulePosition)> {
     /*!
     Provide the rules of the host firewall setup and the position
@@ -88,20 +88,11 @@ pub fn get_firewall_rules(
     dropped as well, except for answers to traffic of the host and
     the services connect() allows for each instance
 
-    The rules of the egress chain are listed first, the chain is
-    complete before traffic is passed to it
+    The rules of the egress chain are not part of them, the chain
+    is written before these rules are created, see setup_firewall()
     !*/
     let tap_match = get_tap_match();
-    let mut rules: Vec<(FirewallRule, RulePosition)> = get_egress_rules(
-        egress_deny
-    ).into_iter().map(|rule| (rule, RulePosition::Top)).collect();
-    rules.extend([
-        (
-            FirewallRule::new("filter", FIREWALL_EGRESS_CHAIN, &[
-                "-j", "ACCEPT"
-            ]),
-            RulePosition::Bottom
-        ),
+    vec![
         (get_masquerade_rule(network, outgoing_interface), RulePosition::Bottom),
         (get_egress_jump_rule(network, outgoing_interface), RulePosition::Top),
         (
@@ -134,8 +125,7 @@ pub fn get_firewall_rules(
             FirewallRule::new("filter", FIREWALL_INPUT_CHAIN, &["-j", "DROP"]),
             RulePosition::Bottom
         )
-    ]);
-    rules
+    ]
 }
 
 pub fn get_egress_jump_rule(
@@ -152,20 +142,150 @@ pub fn get_egress_jump_rule(
     ])
 }
 
-pub fn get_egress_rules(egress_deny: &[Ipv4Network]) -> Vec<FirewallRule> {
+pub fn get_egress_rules(
+    egress_deny: &[Ipv4Network], egress_allow: &[Ipv4Network]
+) -> Vec<FirewallRule> {
     /*!
-    Provide the rules of the egress policy
+    Provide the rules of the egress chain, in the order they have
+    to be in
 
-    The traffic of the VMs to the given networks is dropped, all
-    other traffic which enters the egress chain is accepted by its
-    last rule. The rules are given in the notation iptables lists
-    them with, see delete_stale_egress_rules()
+    The traffic of the VMs to the denied networks is dropped first.
+    Without allowed networks all other traffic is accepted by the
+    last rule of the chain. With allowed networks, only the traffic
+    to them is accepted and the last rule drops everything else. A
+    network which is denied therefore stays denied, even if it is
+    part of an allowed one. The allow list can only narrow down what
+    the VMs reach, never extend it.
+
+    The rules are given in the notation iptables lists them with,
+    see egress_chain_matches()
     !*/
-    egress_deny.iter()
-        .map(|network| FirewallRule::new("filter", FIREWALL_EGRESS_CHAIN, &[
-            "-d", &network.to_string(), "-j", "DROP"
-        ]))
-        .collect()
+    let rule = |network: &Ipv4Network, target: &str| FirewallRule::new(
+        "filter", FIREWALL_EGRESS_CHAIN,
+        &["-d", &network.to_string(), "-j", target]
+    );
+    let mut rules: Vec<FirewallRule> = egress_deny.iter()
+        .map(|network| rule(network, "DROP"))
+        .collect();
+    rules.extend(egress_allow.iter().map(|network| rule(network, "ACCEPT")));
+    rules.push(FirewallRule::new("filter", FIREWALL_EGRESS_CHAIN, &[
+        "-j", if egress_allow.is_empty() { "ACCEPT" } else { "DROP" }
+    ]));
+    rules
+}
+
+pub fn get_egress_restore_input(rules: &[FirewallRule]) -> String {
+    /*!
+    Provide the input of iptables-restore which replaces the rules
+    of the egress chain by the given ones
+
+    With --noflush only the chains which are declared in the input
+    are flushed, the egress chain is the only one. The rules come
+    from validated networks only, see get_egress_rules()
+    !*/
+    let mut input = format!("*filter\n:{FIREWALL_EGRESS_CHAIN} - [0:0]\n");
+    for rule in rules {
+        input.push_str(
+            &format!("-A {} {}\n", rule.chain, rule.spec.join(" "))
+        );
+    }
+    input.push_str("COMMIT\n");
+    input
+}
+
+pub fn write_egress_chain(
+    egress_deny: &[Ipv4Network], egress_allow: &[Ipv4Network]
+) -> bool {
+    /*!
+    Replace the rules of the egress chain by the ones of the given
+    egress policy, see get_egress_rules()
+
+    The rules decide by their order which traffic passes. Adding and
+    deleting them one by one would let traffic pass, or drop it, by
+    a mix of the former and the new policy while the chain is
+    changed. iptables-restore replaces the chain in one transaction
+    instead, the traffic passes either the former or the new policy
+    !*/
+    let input = get_egress_restore_input(
+        &get_egress_rules(egress_deny, egress_allow)
+    );
+    info!(
+        "Writing {FIREWALL_EGRESS_CHAIN} chain: {} denied, {} allowed \
+        network(s)...", egress_deny.len(), egress_allow.len()
+    );
+    let mut call = Command::new(defaults::IPTABLES_RESTORE_TOOL);
+    call.arg("--wait").arg("--noflush")
+        .stdin(Stdio::piped()).stdout(Stdio::null());
+    let mut child = match call.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            error!("Failed to write {FIREWALL_EGRESS_CHAIN} chain: {error:?}");
+            return false
+        }
+    };
+    let written = match child.stdin.take() {
+        Some(mut stdin) => stdin.write_all(input.as_bytes()),
+        None => Err(std::io::Error::other("no stdin"))
+    };
+    // stdin is closed at this point, iptables-restore reads to its end
+    match (written, child.wait()) {
+        (Ok(_), Ok(status)) if status.success() => true,
+        (Err(error), _) | (_, Err(error)) => {
+            error!("Failed to write {FIREWALL_EGRESS_CHAIN} chain: {error:?}");
+            false
+        },
+        (_, Ok(status)) => {
+            error!("Failed to write {FIREWALL_EGRESS_CHAIN} chain: {status}");
+            false
+        }
+    }
+}
+
+pub fn egress_chain_matches(
+    listed: &[Vec<String>], egress_deny: &[Ipv4Network],
+    egress_allow: &[Ipv4Network]
+) -> bool {
+    /*!
+    Check if the listed rules of the egress chain are the ones of
+    the given egress policy
+
+    The drop rules of the denied networks come first, followed by
+    the accept rules of the allowed networks and the last rule of
+    the chain, see get_egress_rules(). Within the drop rules and
+    within the accept rules the order does not matter. Former
+    versions inserted the drop rules one by one at the top, which
+    listed them in reverse order
+    !*/
+    let wanted: Vec<Vec<String>> = get_egress_rules(egress_deny, egress_allow)
+        .into_iter().map(|rule| rule.spec).collect();
+    if listed.len() != wanted.len() {
+        return false
+    }
+    let same_rules = |listed: &[Vec<String>], wanted: &[Vec<String>]| {
+        wanted.iter().all(|spec| listed.contains(spec))
+    };
+    let allow_start = egress_deny.len();
+    let allow_end = allow_start + egress_allow.len();
+    same_rules(&listed[..allow_start], &wanted[..allow_start])
+        && same_rules(
+            &listed[allow_start..allow_end], &wanted[allow_start..allow_end]
+        )
+        && listed[allow_end..] == wanted[allow_end..]
+}
+
+pub fn get_chain_rules(table: &str, chain: &str) -> Option<Vec<Vec<String>>> {
+    /*!
+    Provide the rules of the given chain in the notation iptables
+    lists them with, see get_listed_rules()
+    !*/
+    let mut call = iptables(table);
+    call.arg("-S").arg(chain).stderr(Stdio::null());
+    match call.output() {
+        Ok(output) if output.status.success() => Some(get_listed_rules(
+            &String::from_utf8_lossy(&output.stdout), chain
+        )),
+        _ => None
+    }
 }
 
 pub fn get_guest_service_rules(
@@ -217,33 +337,35 @@ pub fn get_guest_service_rules(
 
 pub fn setup_firewall(
     network: &Ipv4Network, outgoing_interface: &str,
-    egress_deny: &[Ipv4Network]
+    egress_deny: &[Ipv4Network], egress_allow: &[Ipv4Network]
 ) -> bool {
     /*!
     Create the chains and rules of the host firewall setup
 
     The chains are created first and are entered from the builtin
     chains last, traffic is therefore only passed to them once they
-    are complete. Chains and rules which already exist are kept,
-    this allows to call the setup more than once. The drop rules of
-    a former egress policy are deleted once the rules of the given
-    one are in place
+    are complete. The egress chain is written as a whole before
+    traffic is passed to it, a former egress policy is replaced in
+    one step, see write_egress_chain(). All other chains and rules
+    which already exist are kept, this allows to call the setup
+    more than once
     !*/
     for (table, chain) in get_firewall_chains() {
         if ! create_chain(table, chain) {
             return false
         }
     }
+    if ! write_egress_chain(egress_deny, egress_allow) {
+        return false
+    }
     for (rule, position) in get_firewall_rules(
-        &network.to_string(), outgoing_interface, egress_deny
+        &network.to_string(), outgoing_interface
     ) {
         if ! add_rule(&rule, position) {
             return false
         }
     }
-    if ! delete_stale_egress_rules(egress_deny)
-        || ! delete_unfiltered_forward_rules()
-    {
+    if ! delete_unfiltered_forward_rules() {
         return false
     }
     for rule in get_jump_rules() {
@@ -273,16 +395,18 @@ pub fn delete_firewall() -> bool {
 
 pub fn firewall_is_active(
     network: &Ipv4Network, outgoing_interface: &str,
-    egress_deny: &[Ipv4Network]
+    egress_deny: &[Ipv4Network], egress_allow: &[Ipv4Network]
 ) -> bool {
     /*!
     Check if the host firewall setup is complete, the chains are
     present and are entered from the builtin chains
 
     With an egress policy, the traffic of the VMs has to be passed
-    to the egress chain and the drop rules of the policy have to be
-    present. A setup created before the egress policy existed has
-    no egress chain, it is complete without a policy
+    to the egress chain and the chain has to hold the rules of the
+    policy, see egress_chain_matches(). The chain is read in one
+    call, a policy may consist of many networks. A setup created
+    before the egress policy existed has no egress chain, it is
+    complete without a policy
     !*/
     let chains_exist = get_firewall_chains().iter()
         .filter(|(_, chain)| *chain != FIREWALL_EGRESS_CHAIN)
@@ -290,25 +414,14 @@ pub fn firewall_is_active(
     if ! chains_exist || ! get_jump_rules().iter().all(rule_exists) {
         return false
     }
-    egress_deny.is_empty() || (
-        rule_exists(
-            &get_egress_jump_rule(&network.to_string(), outgoing_interface)
-        ) && get_egress_rules(egress_deny).iter().all(rule_exists)
+    if egress_deny.is_empty() && egress_allow.is_empty() {
+        return true
+    }
+    rule_exists(
+        &get_egress_jump_rule(&network.to_string(), outgoing_interface)
+    ) && get_chain_rules("filter", FIREWALL_EGRESS_CHAIN).is_some_and(
+        |listed| egress_chain_matches(&listed, egress_deny, egress_allow)
     )
-}
-
-pub fn delete_stale_egress_rules(egress_deny: &[Ipv4Network]) -> bool {
-    /*!
-    Delete the drop rules of the egress chain which are not part of
-    the given egress policy
-    !*/
-    let wanted: Vec<Vec<String>> = get_egress_rules(egress_deny).into_iter()
-        .map(|rule| rule.spec)
-        .collect();
-    delete_listed_rules("filter", FIREWALL_EGRESS_CHAIN, |spec| {
-        spec.last().is_some_and(|target| target == "DROP")
-            && ! wanted.iter().any(|wanted_spec| wanted_spec == spec)
-    })
 }
 
 pub fn delete_unfiltered_forward_rules() -> bool {
@@ -524,13 +637,9 @@ pub fn delete_listed_rules(
     each rule is matched by its specification without the leading
     '-A CHAIN'
     !*/
-    let mut call = iptables(table);
-    call.arg("-S").arg(chain).stderr(Stdio::null());
-    let rules = match call.output() {
-        Ok(output) if output.status.success() => {
-            get_listed_rules(&String::from_utf8_lossy(&output.stdout), chain)
-        },
-        _ => {
+    let rules = match get_chain_rules(table, chain) {
+        Some(rules) => rules,
+        None => {
             warn!("Failed to read the rules of the {chain} chain");
             return false
         }
@@ -572,8 +681,9 @@ mod tests {
     use flakes::network::{HostServices, Ipv4Network};
 
     use super::{
-        get_egress_rules, get_firewall_rules, get_guest_service_rules,
-        get_listed_rules, RulePosition
+        egress_chain_matches, get_egress_restore_input, get_egress_rules,
+        get_firewall_rules, get_guest_service_rules, get_listed_rules,
+        RulePosition
     };
 
     fn network(network: &str) -> Ipv4Network {
@@ -586,10 +696,7 @@ mod tests {
 
     #[test]
     fn test_firewall_rules() {
-        let rules = get_firewall_rules(
-            "172.16.0.0/24", "eth0",
-            &[network("169.254.0.0/16"), network("10.0.0.0/8")]
-        );
+        let rules = get_firewall_rules("172.16.0.0/24", "eth0");
         let rule_args = |chain: &str| -> Vec<(String, bool)> {
             rules.iter()
                 .filter(|(rule, _)| rule.chain == chain)
@@ -607,24 +714,9 @@ mod tests {
             )],
             rule_args("FLAKE_PILOT_NAT")
         );
-        // the egress chain drops the traffic to the denied networks
-        // in front of the rule which accepts everything else
-        assert_eq!(
-            vec![
-                ("-d 169.254.0.0/16 -j DROP".to_string(), true),
-                ("-d 10.0.0.0/8 -j DROP".to_string(), true),
-                ("-j ACCEPT".to_string(), false)
-            ],
-            rule_args("FLAKE_PILOT_EGRESS")
-        );
-        // the egress chain is complete before traffic is passed to it
-        let last_egress_rule = rules.iter()
-            .rposition(|(rule, _)| rule.chain == "FLAKE_PILOT_EGRESS");
-        let egress_jump_rule = rules.iter()
-            .position(|(rule, _)| rule.spec.ends_with(&[
-                "-j".to_string(), "FLAKE_PILOT_EGRESS".to_string()
-            ]));
-        assert!(last_egress_rule.unwrap() < egress_jump_rule.unwrap());
+        // the egress chain is written as a whole, apart from these
+        // rules
+        assert!(rule_args("FLAKE_PILOT_EGRESS").is_empty());
         // accepting rules are created at the top, the drop rules
         // for everything else to and from a VM at the bottom. The
         // traffic to the outside world is only accepted after it
@@ -657,31 +749,106 @@ mod tests {
             ],
             rule_args("FLAKE_PILOT_INPUT")
         );
-        // without an egress policy everything passes the egress chain
-        let rules = get_firewall_rules("172.16.0.0/24", "eth0", &[]);
-        assert_eq!(
-            vec!["-j ACCEPT"],
-            rules.iter()
-                .filter(|(rule, _)| rule.chain == "FLAKE_PILOT_EGRESS")
-                .map(|(rule, _)| rule.spec.join(" "))
+    }
+
+    #[test]
+    fn test_egress_rules() {
+        let specs = |deny: &[Ipv4Network], allow: &[Ipv4Network]| {
+            get_egress_rules(deny, allow).iter()
+                .inspect(|rule| assert_eq!("FLAKE_PILOT_EGRESS", rule.chain))
+                .map(|rule| rule.spec.join(" "))
                 .collect::<Vec<_>>()
+        };
+        // without an egress policy everything passes the egress chain
+        assert_eq!(vec!["-j ACCEPT"], specs(&[], &[]));
+        // the traffic to the denied networks is dropped in front of
+        // the rule which accepts everything else
+        assert_eq!(
+            vec![
+                "-d 169.254.0.0/16 -j DROP",
+                "-d 10.0.0.0/8 -j DROP",
+                "-j ACCEPT"
+            ],
+            specs(&[network("169.254.0.0/16"), network("10.0.0.0/8")], &[])
+        );
+        // with an allow list only the traffic to the allowed
+        // networks passes, the denied networks stay denied
+        assert_eq!(
+            vec![
+                "-d 47.0.0.0/8 -j DROP",
+                "-d 8.8.8.8/32 -j ACCEPT",
+                "-d 0.0.0.0/0 -j ACCEPT",
+                "-j DROP"
+            ],
+            specs(
+                &[network("47.0.0.0/8")],
+                &[network("8.8.8.8"), network("0.0.0.0/0")]
+            )
         );
     }
 
     #[test]
-    fn test_egress_rules_are_listed_as_created() {
-        // stale drop rules are recognized by comparing the listed
-        // rules of the egress chain with the created ones
-        let rule_list = "-N FLAKE_PILOT_EGRESS\n\
+    fn test_egress_restore_input() {
+        // only the egress chain is declared and therefore replaced,
+        // its rules are written in their order
+        assert_eq!(
+            "*filter\n\
+            :FLAKE_PILOT_EGRESS - [0:0]\n\
+            -A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 203.0.113.0/24 -j ACCEPT\n\
+            -A FLAKE_PILOT_EGRESS -j DROP\n\
+            COMMIT\n",
+            get_egress_restore_input(&get_egress_rules(
+                &[network("169.254.0.0/16")], &[network("203.0.113.0/24")]
+            ))
+        );
+    }
+
+    #[test]
+    fn test_egress_chain_matches() {
+        let listed = |rule_list: &str| get_listed_rules(
+            &format!("-N FLAKE_PILOT_EGRESS\n{rule_list}"),
+            "FLAKE_PILOT_EGRESS"
+        );
+        let deny = [network("169.254.0.0/16"), network("100.100.100.200")];
+        let allow = [network("203.0.113.0/24")];
+        // the rules are listed in the notation they are created with
+        let denied = listed(
+            "-A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 100.100.100.200/32 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -j ACCEPT\n"
+        );
+        assert!(egress_chain_matches(&denied, &deny, &[]));
+        // former versions listed the drop rules in reverse order
+        let reversed = listed(
+            "-A FLAKE_PILOT_EGRESS -d 100.100.100.200/32 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -j ACCEPT\n"
+        );
+        assert!(egress_chain_matches(&reversed, &deny, &[]));
+        // a missing, stale or additional rule does not match
+        assert!(! egress_chain_matches(&denied, &deny[..1], &[]));
+        assert!(! egress_chain_matches(&denied, &deny, &allow));
+        assert!(! egress_chain_matches(
+            &listed("-A FLAKE_PILOT_EGRESS -j ACCEPT\n"), &deny, &[]
+        ));
+        let allowed = listed(
+            "-A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 100.100.100.200/32 -j DROP\n\
+            -A FLAKE_PILOT_EGRESS -d 203.0.113.0/24 -j ACCEPT\n\
+            -A FLAKE_PILOT_EGRESS -j DROP\n"
+        );
+        assert!(egress_chain_matches(&allowed, &deny, &allow));
+        assert!(! egress_chain_matches(&allowed, &deny, &[]));
+        // an allow rule in front of a drop rule would let the
+        // traffic to the denied network pass
+        let allowed_first = listed(
+            "-A FLAKE_PILOT_EGRESS -d 203.0.113.0/24 -j ACCEPT\n\
             -A FLAKE_PILOT_EGRESS -d 169.254.0.0/16 -j DROP\n\
             -A FLAKE_PILOT_EGRESS -d 100.100.100.200/32 -j DROP\n\
-            -A FLAKE_PILOT_EGRESS -j ACCEPT\n";
-        assert_eq!(
-            get_listed_rules(rule_list, "FLAKE_PILOT_EGRESS")[..2].to_vec(),
-            get_egress_rules(&[
-                network("169.254.0.0/16"), network("100.100.100.200")
-            ]).into_iter().map(|rule| rule.spec).collect::<Vec<_>>()
+            -A FLAKE_PILOT_EGRESS -j DROP\n"
         );
+        assert!(! egress_chain_matches(&allowed_first, &deny, &allow));
     }
 
     #[test]

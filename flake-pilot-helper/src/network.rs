@@ -69,7 +69,8 @@ pub struct VmInstance<'a> {
 
 pub fn init(
     caller: &Caller, network: &str, outgoing_interface: &str,
-    host_resolver: bool, host_dhcp: bool, egress_deny: &[String]
+    host_resolver: bool, host_dhcp: bool, egress_deny: &[String],
+    egress_allow: &[String]
 ) -> bool {
     /*!
     Prepare the host for NAT based VM networking
@@ -85,8 +86,10 @@ pub fn init(
     selects from, and it must not collide with a network the host
     is connected to. The outgoing interface has to exist. Both are
     recorded in the network state along with the services of the
-    host the VMs use and the networks of the egress policy, see
-    flakes::network::get_egress_networks(). connect() takes them
+    host the VMs use and the denied and allowed networks of the
+    egress policy, see flakes::network::get_egress_networks() and
+    firewall::get_egress_rules(). The allowed networks only narrow
+    down what the VMs reach, never extend it. connect() takes them
     from there and nowhere else: the address of a VM, the route to
     it and its firewall rules are only ever created within the
     recorded network.
@@ -107,6 +110,13 @@ pub fn init(
     }
     let egress_deny = match get_egress_networks(egress_deny) {
         Ok(egress_deny) => egress_deny,
+        Err(error) => {
+            error!("{error}");
+            return false
+        }
+    };
+    let egress_allow = match get_egress_networks(egress_allow) {
+        Ok(egress_allow) => egress_allow,
         Err(error) => {
             error!("{error}");
             return false
@@ -144,10 +154,15 @@ pub fn init(
     state.egress_deny = egress_deny.iter()
         .map(ToString::to_string)
         .collect();
+    state.egress_allow = egress_allow.iter()
+        .map(ToString::to_string)
+        .collect();
     if ! write_network_state(&state) {
         return false
     }
-    if ! setup_firewall(&network, outgoing_interface, &egress_deny) {
+    if ! setup_firewall(
+        &network, outgoing_interface, &egress_deny, &egress_allow
+    ) {
         return false
     }
     delete_legacy_rules(outgoing_interface);
@@ -250,9 +265,11 @@ pub fn connect(
         }
     };
     let services = state.get_services();
-    let egress_deny = match state.get_egress_deny() {
-        Some(egress_deny) => egress_deny,
-        None => {
+    let (egress_deny, egress_allow) = match (
+        state.get_egress_deny(), state.get_egress_allow()
+    ) {
+        (Some(egress_deny), Some(egress_allow)) => (egress_deny, egress_allow),
+        _ => {
             error!("The recorded egress policy is invalid");
             error!("Please run 'flake-ctl firecracker network init' again");
             return false
@@ -260,7 +277,9 @@ pub fn connect(
     };
     let outgoing_interface = state.outgoing_interface.as_deref()
         .unwrap_or_default();
-    if ! firewall_is_active(&network, outgoing_interface, &egress_deny) {
+    if ! firewall_is_active(
+        &network, outgoing_interface, &egress_deny, &egress_allow
+    ) {
         error!("The firewall setup of the host is not active");
         error!(
             "Please run 'flake-ctl firecracker network init' first, \

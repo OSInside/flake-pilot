@@ -150,6 +150,16 @@ your local network, from the private networks as well:
    flake-ctl firecracker network init \
        --egress-deny link-local --egress-deny private
 
+If the tool only needs a known set of services, e.g the API of its
+model provider, allow only those. Everything else, including services
+the tool contacts without being asked, is dropped then:
+
+.. code-block:: bash
+
+   flake-ctl firecracker network init \
+       --egress-deny link-local --egress-deny private \
+       --egress-allow api.example.com
+
 :ref:`firecracker-networking` explains the setup and the policy.
 
 Share One Directory With the Host

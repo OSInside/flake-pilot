@@ -23,7 +23,8 @@
 //
 use flakes::helper::helper_call;
 use flakes::network::{
-    get_default_route_interface, get_egress_networks, get_free_network,
+    add_networks, get_default_route_interface, get_egress_entry_networks,
+    get_egress_preset_names, get_free_network,
     get_nameserver, get_network_config_file, get_preferred_network,
     get_tap_name,
     lock_network_state, network_collides, read_network_config,
@@ -34,7 +35,7 @@ use flakes::registration;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use uzers::{get_current_uid, get_user_by_name, get_user_by_uid};
@@ -46,7 +47,7 @@ use crate::defaults;
 
 pub fn init(
     outgoing_interface: Option<&str>, services: HostServices,
-    egress_deny: &[String], usermode: bool
+    egress_deny: &[String], egress_allow: &[String], usermode: bool
 ) -> bool {
     /*!
     Prepare the host for NAT based VM networking
@@ -63,7 +64,10 @@ pub fn init(
     itself is created by the helper, see its network-init command.
     The helper checks the network and the interface again and
     records them along with the given services of the host and the
-    networks of the given egress policy in the network state. The
+    denied and allowed networks of the given egress policy in the
+    network state. Host names and files of the egress policy are
+    resolved here, see get_egress_policy_networks(), the helper
+    only receives networks. The
     setup of the single flakes, done by add(), uses what is
     recorded there.
 
@@ -76,8 +80,15 @@ pub fn init(
     firewall is managed by another tool, the rules have to be
     created with that tool instead
     !*/
-    let egress_networks = match get_egress_networks(egress_deny) {
-        Ok(egress_networks) => egress_networks,
+    let egress_deny = match get_egress_policy_networks(egress_deny) {
+        Ok(egress_deny) => egress_deny,
+        Err(error) => {
+            error!("{error}");
+            return false
+        }
+    };
+    let mut egress_allow = match get_egress_policy_networks(egress_allow) {
+        Ok(egress_allow) => egress_allow,
         Err(error) => {
             error!("{error}");
             return false
@@ -93,6 +104,11 @@ pub fn init(
         Some(network) => network,
         None => return false
     };
+    if let Some(nameserver) = allow_nameserver(
+        &mut egress_allow, &network, services
+    ) {
+        info!("Allowing the name server {nameserver} of the VMs");
+    }
     let mut call = helper_call("network-init");
     call.arg("--network").arg(network.to_string())
         .arg("--outgoing-interface").arg(&outgoing_interface);
@@ -102,8 +118,11 @@ pub fn init(
     if services.dhcp {
         call.arg("--host-dhcp");
     }
-    for egress_network in &egress_networks {
+    for egress_network in &egress_deny {
         call.arg("--egress-deny").arg(egress_network.to_string());
+    }
+    for egress_network in &egress_allow {
+        call.arg("--egress-allow").arg(egress_network.to_string());
     }
     if ! run_helper(&mut call, "prepare the host network") {
         return false
@@ -122,16 +141,209 @@ pub fn init(
         "  DHCP server of the host: {}",
         if services.dhcp { "yes" } else { "no" }
     );
-    if egress_networks.is_empty() {
-        info!("  egress denied: none");
-    } else {
+    info!("  egress denied: {}", format_networks(&egress_deny, "none"));
+    info!("  egress allowed: {}", format_networks(&egress_allow, "all"));
+    true
+}
+
+pub fn get_egress_policy_networks(
+    entries: &[String]
+) -> Result<Vec<Ipv4Network>, String> {
+    /*!
+    Provide the networks of the given entries of the egress policy
+
+    In addition to the entries the helper takes, see
+    flakes::network::get_egress_entry_networks(), an entry can be:
+
+    * HOSTNAME: the IPv4 addresses the name resolves to on the host
+      at the time of the call. A name which is resolved to other
+      addresses later on is not followed, the policy has to be
+      created again for that. Names of a service which is spread
+      over many addresses, e.g a storage service of a cloud, are
+      better covered by the networks of that service
+
+    * @FILE: the entries of the given file, one per line. Empty
+      lines and everything following a '#' are skipped. A file
+      cannot name another file. This allows to keep long lists of
+      networks, e.g the published address ranges of a cloud
+      provider, apart from the command line
+
+    The entries are resolved by the calling user. The helper only
+    receives the resulting networks, it neither resolves names nor
+    reads files on behalf of the caller. Networks which are given
+    more than once are only listed once
+    !*/
+    get_egress_policy_networks_with(entries, &resolve_host_name)
+}
+
+fn get_egress_policy_networks_with(
+    entries: &[String], resolve: &dyn Fn(&str) -> Result<Vec<Ipv4Addr>, String>
+) -> Result<Vec<Ipv4Network>, String> {
+    /*!
+    Provide the networks of the given entries of the egress policy,
+    host names are resolved with the given resolver, see
+    get_egress_policy_networks()
+    !*/
+    let mut networks: Vec<Ipv4Network> = Vec::new();
+    for entry in entries {
+        match entry.strip_prefix('@') {
+            Some(file) => {
+                for (line_number, file_entry) in read_egress_file(file)? {
+                    let file_networks = get_egress_policy_entry_networks(
+                        &file_entry, resolve
+                    ).map_err(
+                        |error| format!("{file}, line {line_number}: {error}")
+                    )?;
+                    add_networks(&mut networks, file_networks);
+                }
+            },
+            None => add_networks(
+                &mut networks, get_egress_policy_entry_networks(entry, resolve)?
+            )
+        }
+    }
+    Ok(networks)
+}
+
+fn get_egress_policy_entry_networks(
+    entry: &str, resolve: &dyn Fn(&str) -> Result<Vec<Ipv4Addr>, String>
+) -> Result<Vec<Ipv4Network>, String> {
+    /*!
+    Provide the networks of one entry of the egress policy which
+    is not a file, see get_egress_policy_networks()
+    !*/
+    if let Some(networks) = get_egress_entry_networks(entry) {
+        return Ok(networks)
+    }
+    if is_host_name(entry) {
+        let addresses = resolve(entry)?;
         info!(
-            "  egress denied: {}",
-            egress_networks.iter()
+            "Egress policy: {entry} resolves to {}",
+            addresses.iter()
                 .map(ToString::to_string).collect::<Vec<_>>().join(", ")
         );
+        return Ok(
+            addresses.into_iter()
+                .map(|address| Ipv4Network::new(address, 32))
+                .collect()
+        )
     }
-    true
+    Err(format!(
+        "Invalid egress policy entry {entry:?}: expected one of {}, \
+        ADDRESS[/PREFIX_LEN], HOSTNAME or @FILE",
+        get_egress_preset_names().join(", ")
+    ))
+}
+
+fn read_egress_file(file: &str) -> Result<Vec<(usize, String)>, String> {
+    /*!
+    Read the entries of the given egress policy file along with
+    their line number, see get_egress_policy_networks()
+    !*/
+    let content = fs::read_to_string(file).map_err(
+        |error| format!("Failed to read egress policy file {file}: {error}")
+    )?;
+    let mut entries = Vec::new();
+    for (index, line) in content.lines().enumerate() {
+        let entry = line.split('#').next().unwrap_or_default().trim();
+        if entry.is_empty() {
+            continue
+        }
+        if entry.starts_with('@') {
+            return Err(format!(
+                "{file}, line {}: an egress policy file cannot name \
+                another file", index + 1
+            ))
+        }
+        entries.push((index + 1, entry.to_string()));
+    }
+    Ok(entries)
+}
+
+pub fn is_host_name(name: &str) -> bool {
+    /*!
+    Check if the given name is a fully qualified host name
+
+    The name consists of at least two labels of letters, digits
+    and hyphens, a label neither starts nor ends with a hyphen.
+    The last label is not numeric, which tells a name apart from
+    an IPv4 address. A single label is not taken as a host name,
+    it is more likely a mistyped name of a set of networks
+    !*/
+    let name = name.strip_suffix('.').unwrap_or(name);
+    let labels: Vec<&str> = name.split('.').collect();
+    name.len() <= 253
+        && labels.len() >= 2
+        && labels.iter().all(|label| {
+            ! label.is_empty() && label.len() <= 63
+                && ! label.starts_with('-') && ! label.ends_with('-')
+                && label.chars().all(
+                    |letter| letter.is_ascii_alphanumeric() || letter == '-'
+                )
+        })
+        && ! labels.last().unwrap_or(&"").chars()
+            .all(|letter| letter.is_ascii_digit())
+}
+
+fn resolve_host_name(name: &str) -> Result<Vec<Ipv4Addr>, String> {
+    /*!
+    Provide the IPv4 addresses the given host name resolves to
+    !*/
+    let resolved = (name, 0).to_socket_addrs().map_err(
+        |error| format!("Failed to resolve egress policy host {name}: {error}")
+    )?;
+    let mut addresses: Vec<Ipv4Addr> = resolved
+        .filter_map(|address| match address {
+            SocketAddr::V4(address) => Some(*address.ip()),
+            SocketAddr::V6(_) => None
+        })
+        .collect();
+    addresses.sort();
+    addresses.dedup();
+    if addresses.is_empty() {
+        return Err(format!("Egress policy host {name} has no IPv4 address"))
+    }
+    Ok(addresses)
+}
+
+fn allow_nameserver(
+    egress_allow: &mut Vec<Ipv4Network>, network: &Ipv4Network,
+    services: HostServices
+) -> Option<Ipv4Network> {
+    /*!
+    Add the name server of the VMs to the given allowed networks
+
+    With an allow list the VMs would not reach their name server
+    anymore unless it is allowed. A resolver on the host is reached
+    through the gateway and is not part of the egress policy. The
+    public name server is, it is added unless no network is allowed
+    at all or it is part of an allowed network. The added name
+    server is returned
+    !*/
+    if egress_allow.is_empty() || services.resolver {
+        return None
+    }
+    let nameserver = Ipv4Network::parse(&get_nameserver(network, services))?;
+    if egress_allow.iter().any(
+        |allowed| allowed.contains(&nameserver.address)
+    ) {
+        return None
+    }
+    egress_allow.push(nameserver);
+    Some(nameserver)
+}
+
+fn format_networks(networks: &[Ipv4Network], empty: &str) -> String {
+    /*!
+    Provide the given networks for the output, long lists are only
+    counted
+    !*/
+    match networks.len() {
+        0 => empty.to_string(),
+        1..=8 => networks.iter()
+            .map(ToString::to_string).collect::<Vec<_>>().join(", "),
+        count => format!("{count} networks")
+    }
 }
 
 pub fn add(
@@ -1182,11 +1394,163 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        configure_flake, get_effective_boot_args, get_flake_taps,
-        get_network_info, get_remove_command, read_flake_config,
-        select_outgoing_interface, unconfigure_flake, FlakeNetwork,
-        NetworkConfig
+        allow_nameserver, configure_flake, format_networks,
+        get_effective_boot_args, get_egress_policy_networks_with,
+        get_flake_taps, get_network_info, get_remove_command, is_host_name,
+        read_flake_config, select_outgoing_interface, unconfigure_flake,
+        FlakeNetwork, NetworkConfig
     };
+
+    fn network(network: &str) -> Ipv4Network {
+        Ipv4Network::parse(network).unwrap()
+    }
+
+    fn fake_resolver(name: &str) -> Result<Vec<Ipv4Addr>, String> {
+        match name {
+            "oss-cn-hangzhou.aliyuncs.com" | "oss-cn-hangzhou.aliyuncs.com." => {
+                Ok(vec![address("118.31.219.1"), address("118.31.219.2")])
+            },
+            "mirror.example.org" => Ok(vec![address("203.0.113.10")]),
+            _ => Err(format!("Failed to resolve egress policy host {name}"))
+        }
+    }
+
+    fn policy_networks(entries: &[&str]) -> Result<Vec<Ipv4Network>, String> {
+        get_egress_policy_networks_with(
+            &entries.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            &fake_resolver
+        )
+    }
+
+    #[test]
+    fn test_is_host_name() {
+        assert!(is_host_name("oss-cn-hangzhou.aliyuncs.com"));
+        assert!(is_host_name("bucket.oss-cn-hangzhou.aliyuncs.com."));
+        assert!(is_host_name("xn--80ak6aa92e.com"));
+        // a single label is more likely a mistyped preset
+        assert!(! is_host_name("metadata"));
+        assert!(! is_host_name("localhost"));
+        // addresses and networks are no host names
+        assert!(! is_host_name("10.0.0.1"));
+        assert!(! is_host_name("10.0.0.256"));
+        assert!(! is_host_name("10.0.0.0/8"));
+        assert!(! is_host_name("*.aliyuncs.com"));
+        assert!(! is_host_name("-bad.example.com"));
+        assert!(! is_host_name("bad-.example.com"));
+        assert!(! is_host_name("a..example.com"));
+        assert!(! is_host_name("-j ACCEPT"));
+        assert!(! is_host_name(&format!("{}.com", "a".repeat(64))));
+    }
+
+    #[test]
+    fn test_get_egress_policy_networks() {
+        assert_eq!(Ok(vec![]), policy_networks(&[]));
+        // presets and networks are taken as the helper takes them
+        assert_eq!(
+            Ok(vec![network("169.254.0.0/16"), network("100.100.100.200")]),
+            policy_networks(&["link-local", "100.100.100.200"])
+        );
+        // a host name is replaced by the addresses it resolves to,
+        // addresses which are given more than once are listed once
+        assert_eq!(
+            Ok(vec![
+                network("118.31.219.1"), network("118.31.219.2"),
+                network("203.0.113.10")
+            ]),
+            policy_networks(&[
+                "oss-cn-hangzhou.aliyuncs.com", "118.31.219.2",
+                "mirror.example.org"
+            ])
+        );
+        // a name which cannot be resolved fails the policy
+        assert!(policy_networks(&["unknown.example.org"]).is_err());
+        // invalid entries are refused
+        let error = policy_networks(&["metadata"]).unwrap_err();
+        assert!(error.contains("HOSTNAME or @FILE"), "{}", error);
+        assert!(policy_networks(&["*.aliyuncs.com"]).is_err());
+        assert!(policy_networks(&["10.0.0.0/33"]).is_err());
+    }
+
+    #[test]
+    fn test_get_egress_policy_networks_from_file() {
+        let tmp_dir = tempdir().unwrap();
+        let list = tmp_dir.path().join("alibaba-cloud.list");
+        fs::write(
+            &list,
+            "# address ranges of a cloud provider\n\
+            47.74.0.0/15\n\
+            \n\
+            8.208.0.0/12   # Europe\n\
+            oss-cn-hangzhou.aliyuncs.com\n\
+            private\n"
+        ).unwrap();
+        let list_entry = format!("@{}", list.display());
+        assert_eq!(
+            Ok(vec![
+                network("169.254.0.0/16"),
+                network("47.74.0.0/15"), network("8.208.0.0/12"),
+                network("118.31.219.1"), network("118.31.219.2"),
+                network("10.0.0.0/8"), network("172.16.0.0/12"),
+                network("192.168.0.0/16")
+            ]),
+            policy_networks(&["link-local", &list_entry])
+        );
+        // an invalid entry is reported along with its line
+        let invalid = tmp_dir.path().join("invalid.list");
+        fs::write(&invalid, "47.74.0.0/15\n47.74.0.0/40\n").unwrap();
+        let error = policy_networks(
+            &[&format!("@{}", invalid.display())]
+        ).unwrap_err();
+        assert!(error.contains("line 2"), "{}", error);
+        // a file cannot name another file
+        let nested = tmp_dir.path().join("nested.list");
+        fs::write(&nested, format!("{list_entry}\n")).unwrap();
+        assert!(policy_networks(&[&format!("@{}", nested.display())]).is_err());
+        // a missing file fails the policy
+        assert!(policy_networks(&["@/does/not/exist"]).is_err());
+    }
+
+    #[test]
+    fn test_allow_nameserver() {
+        let private = network("172.16.0.0/24");
+        let public_dns = HostServices::default();
+        let host_resolver = HostServices { resolver: true, dhcp: false };
+        // without an allow list everything is allowed already
+        let mut allowed = vec![];
+        assert_eq!(None, allow_nameserver(&mut allowed, &private, public_dns));
+        assert!(allowed.is_empty());
+        // the public name server is added to the allow list
+        let mut allowed = vec![network("203.0.113.0/24")];
+        assert_eq!(
+            Some(network("8.8.8.8")),
+            allow_nameserver(&mut allowed, &private, public_dns)
+        );
+        assert_eq!(
+            vec![network("203.0.113.0/24"), network("8.8.8.8")], allowed
+        );
+        // unless an allowed network covers it already
+        let mut allowed = vec![network("8.8.0.0/16")];
+        assert_eq!(None, allow_nameserver(&mut allowed, &private, public_dns));
+        assert_eq!(vec![network("8.8.0.0/16")], allowed);
+        // a resolver on the host is not reached through the policy
+        let mut allowed = vec![network("203.0.113.0/24")];
+        assert_eq!(
+            None, allow_nameserver(&mut allowed, &private, host_resolver)
+        );
+        assert_eq!(vec![network("203.0.113.0/24")], allowed);
+    }
+
+    #[test]
+    fn test_format_networks() {
+        assert_eq!("none", format_networks(&[], "none"));
+        assert_eq!(
+            "10.0.0.0/8, 8.8.8.8/32",
+            format_networks(&[network("10.0.0.0/8"), network("8.8.8.8")], "")
+        );
+        let many: Vec<Ipv4Network> = (0..9)
+            .map(|index| network(&format!("10.0.{index}.0/24"))).collect();
+        assert_eq!("9 networks", format_networks(&many, ""));
+    }
 
     fn address(address: &str) -> Ipv4Addr {
         address.parse().unwrap()

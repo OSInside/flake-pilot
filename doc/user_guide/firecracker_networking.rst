@@ -213,6 +213,37 @@ through their gateway are not affected. Unlike the settings above, the
 policy takes effect for all applications at once. Calling ``init``
 again replaces it.
 
+Besides presets and networks, ``--egress-deny`` takes a host name,
+which is replaced by the IPv4 addresses it resolves to at the time of
+the call, and ``@FILE``, which reads one entry per line, e.g the
+published address ranges of a cloud provider:
+
+.. code-block:: bash
+
+   flake-ctl firecracker network init \
+       --egress-deny link-local \
+       --egress-deny oss-cn-hangzhou.aliyuncs.com \
+       --egress-deny @/etc/flakes/cloud-provider.list
+
+A list of denied networks only covers the destinations you know
+about. If an application must not send data anywhere but to a known
+set of services, e.g an AI model which was reported to upload data to
+a cloud storage bucket, limit its traffic to those services with
+``--egress-allow`` instead. The traffic to every other network is
+dropped then, denied networks stay denied:
+
+.. code-block:: bash
+
+   flake-ctl firecracker network init --host-resolver \
+       --egress-deny link-local --egress-deny private \
+       --egress-allow api.example.com \
+       --egress-allow @/etc/flakes/egress-allow.list
+
+Without ``--host-resolver`` the public name server of the VMs is
+allowed along with the given networks. Host names are only resolved
+once, by ``init``, call it again if the addresses of an allowed or
+denied service change.
+
 Rules of former versions of Flake Pilot for single TAP devices are
 deleted. The rules for all traffic former versions created, a
 ``MASQUERADE`` rule for the outgoing interface and a ``FORWARD`` rule

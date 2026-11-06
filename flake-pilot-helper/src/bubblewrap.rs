@@ -34,6 +34,11 @@
 //! the registration as well. The arguments of the user are passed
 //! to the application only.
 //!
+//! A flake of root can name directories whose mounts persist on the
+//! host. The helper takes them from the registration as well and
+//! waits for the sandbox instead of replacing itself with the pilot,
+//! see sandbox::run_persisting().
+//!
 //! The registration of a flake registered system wide belongs to
 //! root, a sudo rule can grant single applications. The
 //! registration of a flake of the user belongs to the user and is
@@ -45,11 +50,11 @@
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::process::CommandExt;
-use std::process::Command;
+use std::process::{Command, ExitCode};
 
 use serde::Deserialize;
 
-use flakes::bubblewrap::split_options;
+use flakes::bubblewrap::{split_options, split_persist_dirs};
 use flakes::config::get_flakes_dir;
 use flakes::defaults;
 use flakes::registration;
@@ -77,7 +82,8 @@ struct SandboxSection {
 #[derive(Deserialize, Default)]
 struct RuntimeSection {
     /// bwrap options of the flake, the layers are given with
-    /// --overlay-src
+    /// --overlay-src, the directories whose mounts persist on the
+    /// host with --persist-mount
     #[serde(default)]
     bubblewrap: Option<Vec<String>>
 }
@@ -99,7 +105,7 @@ struct GenericSection {
 pub fn run_pilot(
     caller: &Caller, app: &str, size: Option<&str>, debug: bool,
     term: Option<&str>, args: &[String]
-) -> bool {
+) -> ExitCode {
     /*!
     Mount the root filesystem of the sandbox of the given flake in a
     new mount namespace and replace the helper by bubblewrap-pilot,
@@ -111,7 +117,13 @@ pub fn run_pilot(
     environment, see pilot_environment(). The variables the bwrap
     options of the flake reference as %VAR resolve to the values of
     that environment, in the layers read by the helper as well as
-    in the options read by the pilot
+    in the options read by the pilot.
+
+    With directories whose mounts persist on the host, which only
+    root may configure, the helper waits for the sandbox instead and
+    exits with its exit code, see sandbox::run_persisting(). Otherwise
+    the pilot replaces the helper and its exit code is the one of the
+    helper anyway
     !*/
     let term = term.filter(|term| match validate::terminal_type(term) {
         Ok(()) => true,
@@ -121,29 +133,65 @@ pub fn run_pilot(
         }
     });
     let environment = pilot_environment(caller, term, debug);
-    let (rootfs, layers) = match flake_root(caller, app, &environment) {
+    let FlakeRoot { rootfs, layers, persist_dirs } = match flake_root(
+        caller, app, &environment
+    ) {
         Ok(root) => root,
         Err(error) => {
             error!("{error}");
-            return false
+            return ExitCode::FAILURE
+        }
+    };
+    // What is needed of the host to attach the mounts to it is kept
+    // before the helper leaves its mount namespace
+    let host = if persist_dirs.is_empty() {
+        None
+    } else {
+        match sandbox::Host::open(caller, &persist_dirs) {
+            Ok(host) => Some(host),
+            Err(error) => {
+                error!("{error}");
+                return ExitCode::FAILURE
+            }
         }
     };
     if let Err(error) = sandbox::mount_root(caller, &rootfs, &layers, size) {
         error!("{error}");
-        return false
+        return ExitCode::FAILURE
     }
+    match host {
+        Some(host) => sandbox::run_persisting(&host, |pipes| {
+            exec_pilot(caller, app, args, &environment, pipes)
+        }),
+        None => {
+            exec_pilot(caller, app, args, &environment, &[]);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn exec_pilot(
+    caller: &Caller, app: &str, args: &[String],
+    environment: &[(String, OsString)], variables: &[(&str, String)]
+) {
+    /*!
+    Turn into the caller for good and replace the process by
+    bubblewrap-pilot, called as the given application with the
+    given arguments, the given environment and the given additional
+    variables. Only returns if that failed
+    !*/
     if let Err(error) = sandbox::drop_privileges(caller) {
         error!("{error}");
-        return false
+        return
     }
     let mut call = Command::new(defaults::BUBBLEWRAP_PILOT);
     call.arg0(app)
         .args(args)
         .env_clear()
-        .envs(environment);
+        .envs(environment.iter().cloned())
+        .envs(variables.iter().cloned());
     let error = call.exec();
     error!("Failed to execute {}: {error}", defaults::BUBBLEWRAP_PILOT);
-    false
 }
 
 fn pilot_environment(
@@ -172,12 +220,24 @@ fn pilot_environment(
     environment
 }
 
+// The root filesystem of the sandbox of a flake, as registered
+#[derive(Debug, PartialEq)]
+struct FlakeRoot {
+    /// Directory tree which is the rootfs of the sandbox
+    rootfs: String,
+    /// Directory trees stacked on top of the rootfs
+    layers: Vec<String>,
+    /// Directories whose mounts persist on the host
+    persist_dirs: Vec<String>
+}
+
 fn flake_root(
     caller: &Caller, app: &str, environment: &[(String, OsString)]
-) -> Result<(String, Vec<String>), String> {
+) -> Result<FlakeRoot, String> {
     /*!
-    Provide the rootfs and the layers of the sandbox of the flake of
-    the given application
+    Provide the rootfs, the layers and the directories whose mounts
+    persist on the host of the sandbox of the flake of the given
+    application
 
     Like for the pilot, a system wide registration takes precedence
     over a registration of the caller, see
@@ -197,10 +257,10 @@ fn flake_root(
 
 fn registered_root(
     name: &str, environment: &[(String, OsString)]
-) -> Result<(String, Vec<String>), String> {
+) -> Result<FlakeRoot, String> {
     /*!
-    Read the rootfs and the layers of the sandbox of the given flake
-    from its system wide registration, along with its drop-in files
+    Read the root filesystem of the sandbox of the given flake from
+    its system wide registration, along with its drop-in files
 
     The layers are read the way bubblewrap-pilot reads them, with
     the variables of the given environment of the pilot
@@ -215,10 +275,10 @@ fn registered_root(
 
 fn user_root(
     caller: &Caller, app: &str, environment: &[(String, OsString)]
-) -> Result<(String, Vec<String>), String> {
+) -> Result<FlakeRoot, String> {
     /*!
-    Read the rootfs and the layers of the sandbox of the flake of
-    the given application from its registration below the flakes
+    Read the root filesystem of the sandbox of the flake of the
+    given application from its registration below the flakes
     directory of the caller, along with its drop-in files
 
     The application, the flakes configuration and the registration
@@ -258,10 +318,11 @@ fn user_flakes_dir(caller: &Caller) -> Result<String, String> {
 
 fn root_from_registration(
     yaml: &str, origin: &str, environment: &[(String, OsString)]
-) -> Result<(String, Vec<String>), String> {
+) -> Result<FlakeRoot, String> {
     /*!
-    Provide the rootfs and the layers from the given registration,
-    see registered_root()
+    Provide the rootfs, the layers and the directories whose mounts
+    persist on the host from the given registration, see
+    registered_root()
     !*/
     let registration: Registration = registration::try_config_from_str(
         yaml, origin
@@ -269,13 +330,14 @@ fn root_from_registration(
     let options = registration.sandbox.runtime.unwrap_or_default()
         .bubblewrap.unwrap_or_default();
     let options: Vec<&str> = options.iter().map(String::as_str).collect();
-    let (layers, _) = split_options(&options, |var_name| {
+    let (layers, arguments) = split_options(&options, |var_name| {
         environment.iter()
             .find(|(name, _)| name == var_name)
             .and_then(|(_, value)| value.to_str())
             .map(str::to_string)
     })?;
-    Ok((registration.sandbox.name, layers))
+    let (persist_dirs, _) = split_persist_dirs(arguments);
+    Ok(FlakeRoot { rootfs: registration.sandbox.name, layers, persist_dirs })
 }
 
 #[cfg(test)]
@@ -338,7 +400,10 @@ mod tests {
             runtime:\n    bubblewrap:\n      - --overlay-src %HOME/a\n"
         ).unwrap();
         assert_eq!(
-            Ok(("/".to_string(), vec![format!("{base}/a")])),
+            Ok(FlakeRoot {
+                rootfs: "/".to_string(), layers: vec![format!("{base}/a")],
+                persist_dirs: Vec::new()
+            }),
             user_root(&caller, &app, &environment)
         );
         fs::write(
@@ -347,7 +412,10 @@ mod tests {
             runtime:\n    bubblewrap:\n      - --overlay-src %HOME/b\n"
         ).unwrap();
         assert_eq!(
-            Ok(("/srv/root".to_string(), vec![format!("{base}/b")])),
+            Ok(FlakeRoot {
+                rootfs: "/srv/root".to_string(), layers: vec![format!("{base}/b")],
+                persist_dirs: Vec::new()
+            }),
             user_root(&caller, &app, &environment)
         );
 
@@ -363,22 +431,25 @@ mod tests {
             ("HOME".to_string(), OsString::from("/home/tux"))
         ];
         // the layers are taken from the --overlay-src options, with
-        // the variables of the environment of the pilot only
-        let (rootfs, layers) = root_from_registration(
+        // the variables of the environment of the pilot only, the
+        // directories whose mounts persist from --persist-mount
+        let root = root_from_registration(
             "sandbox:\n  name: /\n  host_app_path: /usr/bin/aws\n  \
             runtime:\n    bubblewrap:\n      - --overlay-src /usr/share/a\n      \
             - --bind /home /home\n      - --overlay-src %HOME/b\n      \
-            - --overlay-src %OTHER/c\n",
+            - --overlay-src %OTHER/c\n      - --persist-mount /mnt\n",
             "aws.yaml", &environment
         ).unwrap();
-        assert_eq!("/", rootfs);
-        assert_eq!(vec!["/usr/share/a", "/home/tux/b", "$OTHER/c"], layers);
+        assert_eq!("/", root.rootfs);
+        assert_eq!(vec!["/usr/share/a", "/home/tux/b", "$OTHER/c"], root.layers);
+        assert_eq!(vec!["/mnt"], root.persist_dirs);
         // without bwrap options there are no layers
-        let (_, layers) = root_from_registration(
+        let root = root_from_registration(
             "sandbox:\n  name: /srv/root\n  host_app_path: /usr/bin/x\n",
             "x.yaml", &environment
         ).unwrap();
-        assert!(layers.is_empty());
+        assert!(root.layers.is_empty());
+        assert!(root.persist_dirs.is_empty());
         assert!(root_from_registration("sandbox: {}\n", "x.yaml", &environment)
             .is_err());
     }

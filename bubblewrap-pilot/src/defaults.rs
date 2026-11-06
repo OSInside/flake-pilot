@@ -25,8 +25,9 @@
 pub const BWRAP: &str = "bwrap";
 pub use flakes::defaults::BWRAP_PATH;
 // Name of the process of a sandbox which is created through the
-// helper, see overlay::has_mounts_below()
-pub use flakes::defaults::SUDO_PROCESS_NAME;
+// helper, see overlay::has_mounts_below(). For root, whose mounts
+// persist on the host, it is the helper itself, see --persist-mount
+pub use flakes::defaults::{SUDO_PROCESS_NAME, HELPER_PROCESS_NAME};
 pub const PROC_DIR: &str = "/proc";
 // File name extension of the meta data files the pilot
 // creates for its instances
@@ -42,6 +43,21 @@ pub const BWRAP_BIND_OPTION: &str = "--bind";
 // Option which stacks another layer on top of the rootfs, see
 // flakes::bubblewrap::split_options()
 pub use flakes::defaults::BWRAP_OVERLAY_SRC_OPTION;
+// Option which lets the mounts the application creates at or below
+// the given directory persist on the host, see
+// flakes::bubblewrap::split_persist_dirs()
+pub use flakes::defaults::BWRAP_PERSIST_MOUNT_OPTION;
+// Options which make bwrap create a mount in the sandbox, along with
+// the position of the destination among the values of the option.
+// No such destination may be at or below a directory configured
+// with --persist-mount, the mount would end up on the host
+pub const BWRAP_MOUNT_OPTIONS: [(&str, usize); 16] = [
+    ("--bind", 2), ("--bind-try", 2), ("--dev-bind", 2),
+    ("--dev-bind-try", 2), ("--ro-bind", 2), ("--ro-bind-try", 2),
+    ("--file", 2), ("--bind-data", 2), ("--ro-bind-data", 2),
+    ("--tmpfs", 1), ("--proc", 1), ("--dev", 1), ("--mqueue", 1),
+    ("--tmp-overlay", 1), ("--ro-overlay", 1), ("--overlay", 3)
+];
 // Option which selects the working directory in the sandbox
 pub const BWRAP_CHDIR_OPTION: &str = "--chdir";
 // Mount point of the root filesystem of the sandbox
@@ -63,6 +79,12 @@ pub use flakes::defaults::{
 // filesystem it mounted for the flake, see
 // bubblewrap::start_in_mounted_root()
 pub use flakes::defaults::SANDBOX_MOUNTED_VAR;
+// Variables the helper sets for the pilot of a flake whose mounts
+// persist on the host, along with the bwrap options they are passed
+// on with, see bubblewrap::get_helper_pipes()
+pub use flakes::defaults::{SANDBOX_INFO_FD_VAR, SANDBOX_BLOCK_FD_VAR};
+pub const BWRAP_INFO_FD_OPTION: &str = "--info-fd";
+pub const BWRAP_BLOCK_FD_OPTION: &str = "--block-fd";
 // Permissions of the directories of the overlay setup. Nobody but
 // the user of the sandbox has access to them
 pub const OVERLAY_DIR_MODE: &str = "700";

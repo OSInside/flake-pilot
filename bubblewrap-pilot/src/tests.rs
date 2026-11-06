@@ -22,7 +22,9 @@
 // SOFTWARE.
 //
 use crate::bubblewrap::get_instance_name;
-use crate::bubblewrap::{get_engine_arguments, get_sandbox_options};
+use crate::bubblewrap::{
+    check_persist_dirs, get_engine_arguments, get_sandbox_options
+};
 use crate::config::config_from_str;
 use crate::overlay::{get_dir, get_user_dir, mounts_below};
 
@@ -44,7 +46,7 @@ fn sandbox_setup(
     parallel
     !*/
     env::set_var("OVERLAYROOT", get_dir("merged"));
-    let (layers, engine_arguments) = get_engine_arguments(options).unwrap();
+    let (layers, _, engine_arguments) = get_engine_arguments(options).unwrap();
     (
         layers,
         get_sandbox_options(
@@ -341,4 +343,37 @@ fn test_mounts_below() {
     // escaped mount points are resolved
     assert!(mounts_below(Path::new("/data/my tree"), mountinfo));
     assert!(! mounts_below(Path::new("/data/my"), mountinfo));
+}
+
+#[test]
+fn test_configured_persist_mounts() {
+    let (layers, persist_dirs, engine_arguments) = get_engine_arguments(Some(vec![
+        "--persist-mount /mnt",
+        "--dev-bind /dev /dev",
+        "--persist-mount /run/media"
+    ])).unwrap();
+    assert!(layers.is_empty());
+    assert_eq!(options(&["/mnt", "/run/media"]), persist_dirs);
+    // the directories are handed to the helper, not to bwrap
+    assert_eq!(options(&["--dev-bind", "/dev", "/dev"]), engine_arguments);
+    assert!(check_persist_dirs(&persist_dirs, &engine_arguments).is_ok());
+}
+
+#[test]
+fn test_invalid_persist_mounts() {
+    let arguments = options(&[
+        "--bind", "/run", "/run", "--tmpfs", "/mnt/scratch",
+        "--size", "1000", "--dev", "/dev"
+    ]);
+    // the root and relative paths are refused
+    assert!(check_persist_dirs(&options(&["/"]), &[]).is_err());
+    assert!(check_persist_dirs(&options(&["mnt"]), &[]).is_err());
+    // bwrap must not mount at or below the directory
+    assert!(check_persist_dirs(&options(&["/mnt"]), &arguments).is_err());
+    assert!(check_persist_dirs(&options(&["/dev"]), &arguments).is_err());
+    assert!(check_persist_dirs(&options(&["/run"]), &arguments).is_err());
+    // a mount above the directory is fine, so is a path prefix
+    assert!(check_persist_dirs(&options(&["/run/media"]), &arguments).is_ok());
+    assert!(check_persist_dirs(&options(&["/mn"]), &arguments).is_ok());
+    assert!(check_persist_dirs(&options(&["/srv"]), &arguments).is_ok());
 }

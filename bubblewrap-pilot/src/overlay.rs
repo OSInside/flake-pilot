@@ -212,42 +212,9 @@ pub fn mounts_below(directory: &Path, mountinfo: &str) -> bool {
     /proc/self/mountinfo, has a mount point below the given
     directory. A mount on the directory itself does not count
     !*/
-    mountinfo.lines()
-        .filter_map(|line| line.split(' ').nth(4))
-        .map(unescape_mount_point)
-        .any(|mount_point| {
-            let mount_point = Path::new(&mount_point);
-            mount_point != directory && mount_point.starts_with(directory)
-        })
-}
-
-fn unescape_mount_point(mount_point: &str) -> String {
-    /*!
-    Resolve the octal escapes of a mount point in the mount table,
-    e.g \040 for a space
-    !*/
-    let bytes = mount_point.as_bytes();
-    let mut unescaped = Vec::new();
-    let mut index = 0;
-    while index < bytes.len() {
-        let escape = bytes.get(index + 1..index + 4).filter(
-            |digits| bytes[index] == b'\\'
-                && digits.iter().all(|digit| (b'0'..=b'7').contains(digit))
-        );
-        match escape {
-            Some(digits) => {
-                unescaped.push(digits.iter().fold(
-                    0_u8, |byte, digit| byte.wrapping_mul(8).wrapping_add(digit - b'0')
-                ));
-                index += 4
-            },
-            None => {
-                unescaped.push(bytes[index]);
-                index += 1
-            }
-        }
-    }
-    String::from_utf8_lossy(&unescaped).to_string()
+    flakes::mountinfo::parse(mountinfo).iter().any(|mount| {
+        mount.mount_point != directory && mount.mount_point.starts_with(directory)
+    })
 }
 
 pub fn get_user_dir() -> String {

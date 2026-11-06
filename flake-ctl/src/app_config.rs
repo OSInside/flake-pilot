@@ -26,7 +26,6 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use serde::{Serialize, Deserialize};
-use serde_yaml::{self};
 use flakes::registration;
 use crate::defaults;
 use crate::firecracker;
@@ -165,7 +164,7 @@ impl AppConfig {
         !*/
         let template = std::fs::File::open(template_file)
             .unwrap_or_else(|_| panic!("Failed to open {}", template_file));
-        serde_yaml::from_reader(template).expect(
+        serde_saphyr::from_reader(template).expect(
             "Failed to import config template"
         )
     }
@@ -179,14 +178,14 @@ impl AppConfig {
         drop-in files from the '.d' directory next to it are not
         merged in, which makes the result safe to write back
         !*/
-        Ok(serde_yaml::from_str(&std::fs::read_to_string(config_file)?)?)
+        Ok(serde_saphyr::from_str(&std::fs::read_to_string(config_file)?)?)
     }
 
     pub fn to_file(&self, config_file: &Path) -> Result<(), GenericError> {
         /*!
         Store the configuration to the given yaml file
         !*/
-        Ok(serde_yaml::to_writer(std::fs::File::create(config_file)?, self)?)
+        Ok(serde_saphyr::to_io_writer(&mut std::fs::File::create(config_file)?, self)?)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -389,7 +388,7 @@ impl AppConfig {
         to the configuration are merged in. A configuration which
         cannot be read is reported as error
         !*/
-        Ok(serde_yaml::from_str(&merged_config(config_file))?)
+        Ok(serde_saphyr::from_str(&merged_config(config_file))?)
     }
 }
 

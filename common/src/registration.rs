@@ -51,6 +51,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use serde_saphyr::options::DuplicateKeyPolicy;
 
 use crate::config::get_flakes_dir;
 use crate::defaults;
@@ -248,32 +249,40 @@ where
     Deserialize the given yaml document into the configuration
     model of the caller
 
-    Duplicate keys are resolved first, this allows the drop-in
-    files of a registration to overwrite the settings of the
-    registration they extend. The origin is the source of the
-    document and is only used to report on errors
+    Of a key which is given more than once the last one wins,
+    this allows the drop-in files of a registration to overwrite
+    the settings of the registration they extend. The value of
+    the key is replaced as a whole, it is not merged with the
+    former one. The origin is the source of the document and is
+    only used to report on errors.
+
+    The input has to be exactly one yaml document. Empty documents,
+    e.g of only comments, do not count. More than one document is
+    refused, the drop-in files of a registration are part of the
+    one document, see merge_config()
     !*/
-    // Parse into a generic YAML to remove duplicate keys
-    let yaml_documents = yaml_rust::YamlLoader::load_from_str(input).map_err(
-        |error| format!("Failed to parse yaml input at: {origin}: {error}")
-    )?;
-    let yaml = yaml_documents.first().ok_or_else(
-        || format!("No configuration data provided in: {origin}")
-    )?;
-    let mut buffer = String::new();
-    yaml_rust::YamlEmitter::new(&mut buffer).dump(yaml).map_err(
-        |error| format!("Failed to process {origin}: {error}")
-    )?;
-
-    // Convert to a String and leak it to make it static
-    // Can not use serde_yaml::from_value because of lifetime limitations
-    // Safety: This does not cause a reocurring memory leak
-    // since the configuration is only loaded once
-    let content = Box::leak(buffer.into_boxed_str());
-
-    serde_yaml::from_str(content).map_err(
+    // The configuration model of the pilots borrows its strings
+    // from the document for the lifetime of the program. The
+    // document is therefore leaked to make it static. This does
+    // not cause a recurring memory leak since the configuration
+    // is only loaded once
+    let content: &'static str = Box::leak(input.to_owned().into_boxed_str());
+    let options = serde_saphyr::options! {
+        duplicate_keys: DuplicateKeyPolicy::LastWins,
+    };
+    let mut documents: Vec<T> = serde_saphyr::from_multiple_with_options(
+        content, options
+    ).map_err(
         |error| format!("Failed to import {origin}: {error}")
-    )
+    )?;
+    match documents.len() {
+        0 => Err(format!("No configuration data provided in: {origin}")),
+        1 => Ok(documents.remove(0)),
+        count => Err(format!(
+            "Failed to import {origin}: expected one yaml document, \
+            found {count}. A '---' line starts another document"
+        ))
+    }
 }
 
 pub fn load_config<T>(program: &str, usermode: bool) -> Result<T, String>
@@ -342,11 +351,68 @@ mod tests {
             try_config_from_str("app: 1\n", "app.yaml");
         assert_eq!(Some(&1), config.unwrap().get("app"));
         // invalid documents are reported, not a fatal error
-        for input in ["app: [1", "", "app: text"] {
+        for input in [
+            "app: [1", "", " \n", "# no data\n", "app: text", "app: 1\n---\napp: 2\n"
+        ] {
             let config: Result<HashMap<String, u32>, String> =
                 try_config_from_str(input, "app.yaml");
             assert!(config.unwrap_err().contains("app.yaml"), "{input:?}");
         }
+    }
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct TestSection<'a> {
+        name: &'a str,
+        #[serde(default)]
+        runtime: Option<HashMap<String, u32>>
+    }
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct TestRegistration<'a> {
+        #[serde(borrow)]
+        sandbox: TestSection<'a>
+    }
+
+    #[test]
+    fn test_try_config_from_str_drop_in_overrides() {
+        // a drop-in file attached to the registration repeats a
+        // key, the last one wins and replaces the value as a whole
+        let config: TestRegistration = try_config_from_str(
+            "sandbox:\n  name: base\n  runtime:\n    a: 1\n    b: 2\n\
+            sandbox:\n  name: drop-in\n  runtime:\n    b: 3\n",
+            "app.yaml"
+        ).unwrap();
+        assert_eq!("drop-in", config.sandbox.name);
+        assert_eq!(
+            Some(HashMap::from([("b".to_string(), 3)])), config.sandbox.runtime
+        );
+        // a repeated key within a section is resolved the same way
+        let config: TestRegistration = try_config_from_str(
+            "sandbox:\n  name: base\n  name: other\n", "app.yaml"
+        ).unwrap();
+        assert_eq!("other", config.sandbox.name);
+        assert_eq!(None, config.sandbox.runtime);
+    }
+
+    #[test]
+    fn test_try_config_from_str_merged_drop_ins() {
+        // the drop-in files of a registration overwrite its settings
+        // in the order they are merged
+        let tmp_dir = tempdir().unwrap();
+        let base_file = tmp_dir.path().join("app.yaml");
+        let drop_in_dir = tmp_dir.path().join("app.d");
+        fs::create_dir(&drop_in_dir).unwrap();
+        fs::write(&base_file, "sandbox:\n  name: base\n").unwrap();
+        fs::write(drop_in_dir.join("a.yaml"), "sandbox:\n  name: a\n").unwrap();
+        fs::write(drop_in_dir.join("b.yaml"), "sandbox:\n  name: b\n").unwrap();
+        let merged = merge_config(
+            base_file.to_str().unwrap(),
+            &[drop_in_dir.to_str().unwrap().to_string()]
+        );
+        let config: TestRegistration = try_config_from_str(
+            &merged, "app.yaml"
+        ).unwrap();
+        assert_eq!("b", config.sandbox.name);
     }
 
     #[test]

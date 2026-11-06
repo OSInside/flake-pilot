@@ -1093,7 +1093,7 @@ fn write_network_config(
         host_resolver: services.resolver,
         host_dhcp: services.dhcp
     };
-    let yaml_data = match serde_yaml::to_string(&network_config) {
+    let yaml_data = match serde_saphyr::to_string(&network_config) {
         Ok(yaml_data) => yaml_data,
         Err(error) => {
             error!("Failed to serialize the network setup: {error:?}");
@@ -1370,7 +1370,7 @@ mod tests {
     fn test_network_config_record() {
         // the record is written here and read by the pilot,
         // both of them have to agree on its format
-        let record = serde_yaml::to_string(&NetworkConfig {
+        let record = serde_saphyr::to_string(&NetworkConfig {
             outgoing_interface: "eth0".to_string(),
             network: Some("172.16.0.0/24".to_string()),
             host_resolver: true,

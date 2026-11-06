@@ -12,13 +12,14 @@ SYNOPSIS
 .. code:: bash
 
    USAGE:
-       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver] [--host-dhcp] [--egress-deny <EGRESS_DENY>]...
+       flake-ctl firecracker network init [--outgoing-interface <OUTGOING_INTERFACE>] [--host-resolver] [--host-dhcp] [--egress-deny <EGRESS_DENY>]... [--egress-allow <EGRESS_ALLOW>]...
 
    OPTIONS:
        --outgoing-interface <OUTGOING_INTERFACE>
        --host-resolver
        --host-dhcp
        --egress-deny <EGRESS_DENY>
+       --egress-allow <EGRESS_ALLOW>
        --help
 
 DESCRIPTION
@@ -64,7 +65,7 @@ selects from, see NETWORK below, and must not collide with a network
 of the host, the interface has to exist. Both are recorded in the
 network state file along with the services of the host given by
 ``--host-resolver`` and ``--host-dhcp`` and the networks of the egress
-policy given by ``--egress-deny``. Connecting an application to
+policy given by ``--egress-deny`` and ``--egress-allow``. Connecting an application to
 the host network with **flake-ctl-firecracker-network-add**\(8) takes
 them from there: the address of the application, the route to it and
 its firewall rules are only ever created within the recorded network.
@@ -74,7 +75,8 @@ firecracker-pilot reads to check the firewall setup of the host.
 
 Chains and rules which already exist are not created again. This
 allows to call the command more than once without stacking up
-duplicates of the same rule. The setup is not persistent, it has to be
+duplicates of the same rule. The egress chain is the exception, it
+is replaced as a whole, see FIREWALL below. The setup is not persistent, it has to be
 created again after a reboot of the host.
 
 **NOTE:** The setup assumes there is no other firewall software
@@ -115,6 +117,11 @@ follows, shown in the notation of ``iptables -S``:
    -A FLAKE_PILOT_EGRESS -d <EGRESS_DENY> -j DROP
    -A FLAKE_PILOT_EGRESS -j ACCEPT
 
+   # table filter, with --egress-allow
+   -A FLAKE_PILOT_EGRESS -d <EGRESS_DENY> -j DROP
+   -A FLAKE_PILOT_EGRESS -d <EGRESS_ALLOW> -j ACCEPT
+   -A FLAKE_PILOT_EGRESS -j DROP
+
    -A INPUT -i tap-+ -j FLAKE_PILOT_INPUT
    -A FLAKE_PILOT_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
    -A FLAKE_PILOT_INPUT -j DROP
@@ -128,7 +135,15 @@ The effect of the setup is:
 * The traffic of the VMs to the outside world passes the egress
   policy before it is forwarded. Its traffic to a network given by
   ``--egress-deny`` is dropped, there is one ``DROP`` rule for each
-  of them. Without the option the egress chain accepts all traffic.
+  of them. Without ``--egress-allow`` the egress chain accepts all
+  other traffic. With ``--egress-allow`` it only accepts the traffic
+  to the allowed networks, there is one ``ACCEPT`` rule for each of
+  them, and drops everything else. The ``DROP`` rules of the denied
+  networks come first, a denied network stays denied even if it is
+  part of an allowed one. The egress chain is replaced as a whole
+  with **iptables-restore**\(8) in one transaction. While the policy
+  changes, the traffic of the VMs either passes the former or the
+  new policy, never a mix of both.
 
 * Traffic between two VMs, traffic from the outside world to a VM and
   traffic from a VM to any other interface of the host is dropped.
@@ -238,9 +253,67 @@ OPTIONS
 
   Network the traffic of the VMs to the outside world must not go
   to. Can be specified multiple times, the traffic to all of them is
-  dropped. Either the name of a set of networks or a network in its
-  ``ADDRESS[/PREFIX_LEN]`` notation, an address without a prefix
-  length is a single host:
+  dropped. Each value is one of the entries described in EGRESS
+  POLICY ENTRIES below, e.g:
+
+  .. code:: bash
+
+     --egress-deny link-local
+     --egress-deny 100.100.100.200
+     --egress-deny oss-cn-hangzhou.aliyuncs.com
+     --egress-deny @/etc/flakes/egress-deny.list
+
+  The policy only applies to the traffic which is forwarded to the
+  outgoing interface. The services of the host a VM may use through
+  its gateway, see FIREWALL above, are not affected. The networks
+  are recorded in the network state file and take effect for all
+  applications at once, including the ones which are already
+  connected. Calling the command again replaces the policy, without
+  the option the policy is removed.
+  **flake-ctl-firecracker-network-add**\(8) refuses to connect an
+  application if the recorded policy is not active
+
+  The policy is IPv4 only, as is the whole setup. IPv6 is switched
+  off on the TAP devices of the VMs
+
+--egress-allow <EGRESS_ALLOW>
+
+  Network the traffic of the VMs to the outside world is limited to.
+  Can be specified multiple times, the traffic to all of them is
+  allowed and the traffic to every other network is dropped. Each
+  value is one of the entries described in EGRESS POLICY ENTRIES
+  below. A network given by ``--egress-deny`` stays denied, even if
+  it is part of an allowed network. The allow list can therefore
+  only narrow down what the VMs reach, never extend it.
+
+  Unlike a list of denied networks, an allow list also covers
+  destinations nobody knows about beforehand, e.g a storage service
+  an application sends data to without being asked. It is the
+  recommended policy for applications which are not trusted, e.g an
+  AI agent, which only need a known set of services:
+
+  .. code:: bash
+
+     --egress-allow api.example.com --egress-allow @/etc/flakes/egress-allow.list
+
+  The VMs need a name server. With ``--host-resolver`` they use the
+  resolver of the host through their gateway, which is not part of
+  the egress policy. Without it, the public name server ``8.8.8.8``
+  is allowed along with the given networks, unless one of them
+  covers it already. Please note, an application which may use a
+  name server can still pass data to the outside world through the
+  names it looks up. A resolver on the host which only answers the
+  names the application needs closes that path as well.
+
+  Like ``--egress-deny``, the allow list is recorded in the network
+  state file, takes effect for all applications at once and is
+  removed by calling the command again without the option
+
+EGRESS POLICY ENTRIES
+---------------------
+
+The values of ``--egress-deny`` and ``--egress-allow`` are given in
+one of the following forms:
 
   link-local
     ``169.254.0.0/16``. It covers the metadata service a cloud
@@ -258,18 +331,48 @@ OPTIONS
     e.g a proxy or a name server of the local network, cannot reach
     it anymore
 
-  The policy only applies to the traffic which is forwarded to the
-  outgoing interface. The services of the host a VM may use through
-  its gateway, see FIREWALL above, are not affected. The networks
-  are recorded in the network state file and take effect for all
-  applications at once, including the ones which are already
-  connected. Calling the command again replaces the policy, without
-  the option the policy is removed.
-  **flake-ctl-firecracker-network-add**\(8) refuses to connect an
-  application if the recorded policy is not active
+ADDRESS[/PREFIX_LEN]
+  A network, e.g ``47.74.0.0/15``. An address without a prefix
+  length is a single host, e.g ``100.100.100.200``
 
-  The policy is IPv4 only, as is the whole setup. IPv6 is switched
-  off on the TAP devices of the VMs
+HOSTNAME
+  A fully qualified host name, e.g ``oss-cn-hangzhou.aliyuncs.com``.
+  The name is resolved by the command, with the name service of
+  the host and the identity of the calling user, and is replaced by
+  the IPv4 addresses it resolves to. A name which cannot be resolved
+  fails the command. The addresses are the ones the name resolves to
+  at the time of the call, the policy does not follow later changes.
+  Names of services which are spread over many addresses, e.g the
+  storage service of a cloud provider, which provides one name per
+  region and bucket, are not covered completely by a single name.
+  Wildcards like ``*.aliyuncs.com`` cannot be resolved. Such a
+  service is better covered by its address ranges, given in a file,
+  or by an allow list which does not include it
+
+@FILE
+  The entries of the given file, one per line. Each line is one of
+  the forms above, a file cannot name another file. Empty lines and
+  everything following a ``#`` are skipped. An invalid entry is
+  reported along with its line. This allows to keep long lists, e.g
+  the published address ranges of a cloud provider, apart from the
+  command line:
+
+  .. code:: bash
+
+     # /etc/flakes/egress-deny.list
+     link-local
+     private
+     # address ranges of a cloud provider
+     47.74.0.0/15
+     8.208.0.0/12
+
+  The file is read by the command with the identity of the calling
+  user
+
+The helper, see **flake-pilot-helper**\(8), only receives the
+resulting networks. It neither resolves host names nor reads files
+on behalf of the caller. A network which is given more than once is
+only taken once.
 
 FILES
 -----
@@ -290,6 +393,10 @@ EXAMPLE
    $ flake-ctl firecracker network init --outgoing-interface eth0
 
    $ flake-ctl firecracker network init --egress-deny link-local --egress-deny private
+
+   $ flake-ctl firecracker network init --egress-deny link-local --egress-deny @/etc/flakes/cloud-provider.list
+
+   $ flake-ctl firecracker network init --host-resolver --egress-deny link-local --egress-deny private --egress-allow api.example.com
 
 SEE ALSO
 --------

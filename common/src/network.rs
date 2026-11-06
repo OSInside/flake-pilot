@@ -689,6 +689,13 @@ pub struct NetworkState {
     /// policy became selectable provides none
     #[serde(default)]
     pub egress_deny: Vec<String>,
+    /// Networks in their ADDRESS/PREFIX_LEN notation the traffic
+    /// of the VMs to the outside world is limited to. If there are
+    /// any, the traffic to all other networks is dropped, a network
+    /// which is denied as well stays denied. A state written before
+    /// the allow list became selectable provides none
+    #[serde(default)]
+    pub egress_allow: Vec<String>,
     /// The addresses handed out to the VM instances of all users
     #[serde(default)]
     pub allocations: Vec<Allocation>
@@ -711,49 +718,93 @@ impl NetworkState {
 
     pub fn get_egress_deny(&self) -> Option<Vec<Ipv4Network>> {
         /*!
-        Provide the recorded networks of the egress policy, None
-        if one of them is invalid
+        Provide the recorded denied networks of the egress policy,
+        None if one of them is invalid
         !*/
-        self.egress_deny.iter()
-            .map(|network| Ipv4Network::parse(network))
-            .collect()
+        parse_networks(&self.egress_deny)
+    }
+
+    pub fn get_egress_allow(&self) -> Option<Vec<Ipv4Network>> {
+        /*!
+        Provide the recorded allowed networks of the egress policy,
+        None if one of them is invalid
+        !*/
+        parse_networks(&self.egress_allow)
     }
 }
 
+fn parse_networks(networks: &[String]) -> Option<Vec<Ipv4Network>> {
+    /*!
+    Read the given networks, None if one of them is invalid
+    !*/
+    networks.iter()
+        .map(|network| Ipv4Network::parse(network))
+        .collect()
+}
+
 pub fn get_egress_networks(
-    egress_deny: &[String]
+    entries: &[String]
 ) -> Result<Vec<Ipv4Network>, String> {
     /*!
-    Provide the networks of the egress policy of the VM network
-
-    Each entry is the name of one of the sets of networks in
-    defaults::NETWORK_EGRESS_PRESETS or a network in its
-    ADDRESS/PREFIX_LEN notation. An address without a prefix length
-    is a single host. Networks which are given more than once are
-    only listed once, in the order they are given first
+    Provide the networks of the given entries of the egress policy
+    of the VM network, see get_egress_entry_networks(). Networks
+    which are given more than once are only listed once, in the
+    order they are given first
     !*/
     let mut networks: Vec<Ipv4Network> = Vec::new();
-    for entry in egress_deny {
-        let preset = defaults::NETWORK_EGRESS_PRESETS.iter()
-            .find(|(name, _)| name == entry);
-        let entry_networks = match preset {
-            Some((_, preset_networks)) => preset_networks.iter()
-                .filter_map(|network| Ipv4Network::parse(network))
-                .collect(),
-            None => vec![Ipv4Network::parse(entry).ok_or(format!(
+    for entry in entries {
+        let entry_networks = get_egress_entry_networks(entry).ok_or(
+            format!(
                 "Invalid egress policy entry {entry:?}: expected one of {} \
                 or ADDRESS[/PREFIX_LEN]",
-                defaults::NETWORK_EGRESS_PRESETS.iter()
-                    .map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
-            ))?]
-        };
-        for network in entry_networks {
-            if ! networks.contains(&network) {
-                networks.push(network)
-            }
-        }
+                get_egress_preset_names().join(", ")
+            )
+        )?;
+        add_networks(&mut networks, entry_networks);
     }
     Ok(networks)
+}
+
+pub fn get_egress_entry_networks(entry: &str) -> Option<Vec<Ipv4Network>> {
+    /*!
+    Provide the networks of one entry of the egress policy
+
+    The entry is the name of one of the sets of networks in
+    defaults::NETWORK_EGRESS_PRESETS or a network in its
+    ADDRESS/PREFIX_LEN notation. An address without a prefix length
+    is a single host. None if the entry is neither of them
+    !*/
+    let preset = defaults::NETWORK_EGRESS_PRESETS.iter()
+        .find(|(name, _)| *name == entry);
+    match preset {
+        Some((_, preset_networks)) => Some(
+            preset_networks.iter()
+                .filter_map(|network| Ipv4Network::parse(network))
+                .collect()
+        ),
+        None => Ipv4Network::parse(entry).map(|network| vec![network])
+    }
+}
+
+pub fn get_egress_preset_names() -> Vec<&'static str> {
+    /*!
+    Provide the names of the sets of networks of the egress policy
+    !*/
+    defaults::NETWORK_EGRESS_PRESETS.iter().map(|(name, _)| *name).collect()
+}
+
+pub fn add_networks(
+    networks: &mut Vec<Ipv4Network>, new_networks: Vec<Ipv4Network>
+) {
+    /*!
+    Add the given new networks to the given list of networks,
+    networks which are listed already are skipped
+    !*/
+    for network in new_networks {
+        if ! networks.contains(&network) {
+            networks.push(network)
+        }
+    }
 }
 
 // Allocation is an address of the private network handed out to
@@ -1233,6 +1284,7 @@ mod tests {
             host_resolver: true,
             host_dhcp: false,
             egress_deny: vec!["169.254.0.0/16".to_string()],
+            egress_allow: vec!["203.0.113.0/24".to_string()],
             allocations: vec![
                 allocation(
                     "172.16.0.2", 1000, "tap-1000_myapp",
@@ -1250,6 +1302,9 @@ mod tests {
             Some(vec![network("169.254.0.0/16")]), state.get_egress_deny()
         );
         assert_eq!(
+            Some(vec![network("203.0.113.0/24")]), state.get_egress_allow()
+        );
+        assert_eq!(
             state, serde_saphyr::from_str::<NetworkState>(&yaml_data).unwrap()
         );
         // a state written by former versions, which used serde_yaml,
@@ -1262,6 +1317,8 @@ mod tests {
             host_dhcp: false\n\
             egress_deny:\n\
             - 169.254.0.0/16\n\
+            egress_allow:\n\
+            - 203.0.113.0/24\n\
             allocations:\n\
             - address: 172.16.0.2\n  \
               uid: 1000\n  \
@@ -1273,9 +1330,17 @@ mod tests {
         // an invalid network of the egress policy is not ignored
         let state = NetworkState {
             egress_deny: vec!["10.0.0.0/8".to_string(), "bogus".to_string()],
+            egress_allow: vec!["bogus".to_string()],
             ..Default::default()
         };
         assert_eq!(None, state.get_egress_deny());
+        assert_eq!(None, state.get_egress_allow());
+        // a state written before the allow list existed allows all
+        let state: NetworkState = serde_saphyr::from_str(
+            "egress_deny:\n\
+            - 169.254.0.0/16\n"
+        ).unwrap();
+        assert_eq!(Some(vec![]), state.get_egress_allow());
     }
 
     #[test]
@@ -1304,6 +1369,10 @@ mod tests {
         assert!(egress_networks(&["metadata"]).is_err());
         assert!(egress_networks(&["10.0.0.0/33"]).is_err());
         assert!(egress_networks(&["-j ACCEPT"]).is_err());
+        // host names and files are resolved by the caller, the
+        // helper only takes networks and presets
+        assert!(egress_networks(&["oss-cn-hangzhou.aliyuncs.com"]).is_err());
+        assert!(egress_networks(&["@/etc/shadow"]).is_err());
     }
 
     #[test]

@@ -15,7 +15,7 @@ SYNOPSIS
        sudo /usr/libexec/flake-pilot/flake-pilot-helper <SUBCOMMAND> [--debug]
 
    SUBCOMMANDS:
-       network-init --network <NETWORK> --outgoing-interface <IF> [--host-resolver] [--host-dhcp] [--egress-deny <NET>]...
+       network-init --network <NETWORK> --outgoing-interface <IF> [--host-resolver] [--host-dhcp] [--egress-deny <NET>]... [--egress-allow <NET>]...
        network-cleanup
        network-connect --config-file <FILE> [--instance <NAME>] [--uid <UID>] [--prefer <ADDR>] [--exclude <ADDR>]...
        network-disconnect --config-file <FILE> [--instance <NAME>] [--uid <UID>]
@@ -73,7 +73,11 @@ network-init
   from and must not collide with a network of the host, the
   interface has to exist. Both are recorded in the network state
   along with the services of the host the VMs use and the networks
-  of the egress policy, which only adds drop rules. Called by
+  of the egress policy. The policy only narrows down the traffic of
+  the VMs: the denied networks are dropped, and with allowed
+  networks everything else is dropped as well. The networks are
+  given as presets or in their ADDRESS[/PREFIX_LEN] notation, the
+  helper neither resolves host names nor reads files. Called by
   **flake-ctl-firecracker-network-init**\(8)
 
 network-cleanup

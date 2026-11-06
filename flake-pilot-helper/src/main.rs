@@ -86,10 +86,11 @@ fn main() -> ExitCode {
     setup_logger(debug);
     let ok = match &args.command {
         cli::Commands::NetworkInit {
-            network, outgoing_interface, host_resolver, host_dhcp, egress_deny
+            network, outgoing_interface, host_resolver, host_dhcp,
+            egress_deny, egress_allow
         } => network::init(
             &caller, network, outgoing_interface, *host_resolver, *host_dhcp,
-            egress_deny
+            egress_deny, egress_allow
         ),
         cli::Commands::NetworkCleanup => network::cleanup(&caller),
         cli::Commands::NetworkConnect {

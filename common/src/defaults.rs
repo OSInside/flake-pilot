@@ -85,6 +85,7 @@ pub const MV_TOOL: &str = "/usr/bin/mv";
 pub const RSYNC_TOOL: &str = "/usr/bin/rsync";
 pub const SYSTEMCTL_TOOL: &str = "/usr/bin/systemctl";
 pub const IPTABLES_TOOL: &str = "/usr/sbin/iptables";
+pub const IPTABLES_RESTORE_TOOL: &str = "/usr/sbin/iptables-restore";
 pub const IP_TOOL: &str = "/usr/sbin/ip";
 pub const SYSCTL_TOOL: &str = "/usr/sbin/sysctl";
 pub const NFS_EXPORTFS_TOOL: &str = "/usr/sbin/exportfs";
@@ -105,7 +106,8 @@ pub const FIREWALL_FORWARD_CHAIN: &str = "FLAKE_PILOT_FORWARD";
 pub const FIREWALL_INPUT_CHAIN: &str = "FLAKE_PILOT_INPUT";
 // Chain of the egress policy of the VM network. The traffic of the
 // VMs to the outside world passes it before it is forwarded, see
-// NETWORK_EGRESS_PRESETS
+// NETWORK_EGRESS_PRESETS. The chain is written as a whole, the
+// order of its rules decides which traffic passes
 pub const FIREWALL_EGRESS_CHAIN: &str = "FLAKE_PILOT_EGRESS";
 // Max. size of a network interface name including the
 // terminating zero byte as defined by IFNAMSIZ in linux/if.h
@@ -229,9 +231,10 @@ pub const NETWORK_HOST_PREFIX_LEN: u8 =
 pub const NETWORK_DNS: &str =
     "8.8.8.8";
 // Named sets of networks the egress policy of the VM network can
-// deny, see 'flake-ctl firecracker network init --egress-deny'.
-// The traffic of the VMs to them is dropped instead of being
-// forwarded to the outgoing interface:
+// deny or allow, see 'flake-ctl firecracker network init
+// --egress-deny' and '--egress-allow'. The traffic of the VMs to
+// denied networks is dropped instead of being forwarded to the
+// outgoing interface:
 //
 // link-local: the link local network, which provides the metadata
 //   service of the cloud the host runs in at 169.254.169.254.

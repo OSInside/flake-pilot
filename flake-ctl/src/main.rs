@@ -190,7 +190,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                         // init
                         cli::Network::Init {
                             outgoing_interface, host_resolver, host_dhcp,
-                            egress_deny
+                            egress_deny, egress_allow
                         } => {
                             if ! network::init(
                                 outgoing_interface.as_deref(),
@@ -199,6 +199,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     dhcp: *host_dhcp
                                 },
                                 egress_deny,
+                                egress_allow,
                                 user
                             ) {
                                 return Ok(ExitCode::FAILURE)

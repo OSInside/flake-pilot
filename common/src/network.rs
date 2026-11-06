@@ -88,7 +88,7 @@ pub fn read_network_config(usermode: bool) -> Option<NetworkConfig> {
     !*/
     let config_file = get_network_config_file(usermode);
     let yaml_data = fs::read_to_string(&config_file).ok()?;
-    match serde_yaml::from_str(&yaml_data) {
+    match serde_saphyr::from_str(&yaml_data) {
         Ok(network_config) => Some(network_config),
         Err(error) => {
             error!("Failed to parse {config_file}: {error:?}");
@@ -959,7 +959,7 @@ pub fn read_network_state_from(state_file: &str) -> Option<NetworkState> {
             return None
         }
     };
-    match serde_yaml::from_str(&yaml_data) {
+    match serde_saphyr::from_str(&yaml_data) {
         Ok(state) => Some(state),
         Err(error) => {
             error!("Failed to parse {state_file}: {error}");
@@ -1093,7 +1093,7 @@ mod tests {
 
     #[test]
     fn test_read_network_record() {
-        let network_config: NetworkConfig = serde_yaml::from_str(
+        let network_config: NetworkConfig = serde_saphyr::from_str(
             "outgoing_interface: eth0\nnetwork: 172.16.0.0/24\n\
             host_resolver: true\nhost_dhcp: true\n"
         ).unwrap();
@@ -1103,7 +1103,7 @@ mod tests {
         assert!(network_config.host_dhcp);
         // a record which predates the selection of the network
         // provides no network
-        let network_config: NetworkConfig = serde_yaml::from_str(
+        let network_config: NetworkConfig = serde_saphyr::from_str(
             "outgoing_interface: eth0\n"
         ).unwrap();
         assert_eq!("eth0", network_config.outgoing_interface);
@@ -1224,7 +1224,7 @@ mod tests {
     #[test]
     fn test_network_state() {
         // a state file without the optional entries is read as empty
-        let state: NetworkState = serde_yaml::from_str("{}").unwrap();
+        let state: NetworkState = serde_saphyr::from_str("{}").unwrap();
         assert_eq!(NetworkState::default(), state);
         let state = NetworkState {
             ip_forward_enabled: true,
@@ -1240,8 +1240,8 @@ mod tests {
                 )
             ]
         };
-        let yaml_data = serde_yaml::to_string(&state).unwrap();
-        assert!(yaml_data.contains("address: 172.16.0.2"));
+        let yaml_data = serde_saphyr::to_string(&state).unwrap();
+        assert!(yaml_data.contains("172.16.0.2"));
         assert_eq!(Some(network("172.16.0.0/24")), state.get_network());
         assert_eq!(
             HostServices { resolver: true, dhcp: false }, state.get_services()
@@ -1250,8 +1250,26 @@ mod tests {
             Some(vec![network("169.254.0.0/16")]), state.get_egress_deny()
         );
         assert_eq!(
-            state, serde_yaml::from_str::<NetworkState>(&yaml_data).unwrap()
+            state, serde_saphyr::from_str::<NetworkState>(&yaml_data).unwrap()
         );
+        // a state written by former versions, which used serde_yaml,
+        // is still read. It survives an update of the package
+        let former_state: NetworkState = serde_saphyr::from_str(
+            "ip_forward_enabled: true\n\
+            network: 172.16.0.0/24\n\
+            outgoing_interface: eth0\n\
+            host_resolver: true\n\
+            host_dhcp: false\n\
+            egress_deny:\n\
+            - 169.254.0.0/16\n\
+            allocations:\n\
+            - address: 172.16.0.2\n  \
+              uid: 1000\n  \
+              tap: tap-1000_myapp\n  \
+              config_file: /home/tux/.config/flakes/myapp.yaml\n  \
+              instance: '@one'\n"
+        ).unwrap();
+        assert_eq!(state, former_state);
         // an invalid network of the egress policy is not ignored
         let state = NetworkState {
             egress_deny: vec!["10.0.0.0/8".to_string(), "bogus".to_string()],

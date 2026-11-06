@@ -220,7 +220,7 @@ fn read_flakes_config(flake_config_path: &str) -> FlakesConfig {
         }
         let flakes_file = std::fs::File::open(flake_config_path)
             .unwrap_or_else(|_| panic!("Failed to open {flake_config_path}"));
-        serde_yaml::from_reader(flakes_file)
+        serde_saphyr::from_reader(flakes_file)
             .unwrap_or_else(
                 |error| panic!(
                     "Failed to import {flake_config_path}: {error}"

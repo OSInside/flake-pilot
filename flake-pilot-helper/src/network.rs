@@ -532,7 +532,7 @@ fn write_network_state_to(state: &NetworkState, state_file: &str) -> bool {
     belongs to root and is readable for everybody, flake-ctl reads
     it with the privileges of the calling user
     !*/
-    let yaml_data = match serde_yaml::to_string(state) {
+    let yaml_data = match serde_saphyr::to_string(state) {
         Ok(yaml_data) => yaml_data,
         Err(error) => {
             error!("Failed to serialize the network state: {error}");

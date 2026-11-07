@@ -1,0 +1,3 @@
+options:
+  - "--box tumbleweed"
+  - "--outfile llama.x86_64-0.8.0-0.tar.xz"

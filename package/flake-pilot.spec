@@ -167,8 +167,8 @@ make DESTDIR=%{buildroot}/ \
         # attacker might have replaced the directory we checked for with a
         # link by the time we get here.
         chown -h root "$flakes_dir"
-        chgrp -h root /tmp/flakes
-        chmod -h 600 /tmp/flakes
+        chgrp -h root "$flakes_dir"
+        chmod -h 600 "$flakes_dir"
         # Verify we have what we expect
         flakes_perm=$(/usr/bin/stat -c "%u:%g:%a" "$flakes_dir")
         if [ "$flakes_perm" != "0:0:600" ]; then
@@ -190,14 +190,14 @@ make DESTDIR=%{buildroot}/ \
             # allow flake-pilot to clean up
             created_dirs=" "
             for filepath in "$flakes_dir"/*; do
-	        if [ -L "$filepath" ] || [ ! -f "$filepath" ]; then
-		    continue
-	        fi	     
+                if [ -L "$filepath" ] || [ ! -f "$filepath" ]; then
+                    continue
+                fi
 
                 filename=$(basename "$filepath")
 
                 # Match format: prefix_username.extension
-		# Extract username (part after first '_' and before last '.')
+                # Extract username (part after first '_' and before last '.')
                 username=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $2}')
                 # Extract the command name
                 cmdname=$(echo "$filename" | grep -E '^[^_]+_[^.]+\.' | awk -F'[_.]' '{print $1}')
@@ -205,28 +205,31 @@ make DESTDIR=%{buildroot}/ \
                     # Look up UID for the extracted username
                     if uid=$(id -u "$username" 2>/dev/null); then
                         user_dir="$flakes_dir/$uid"
-		        case "$created_dirs" in
+                        case "$created_dirs" in
                             *" $uid "*) ;;
                             *)
                                 if [ -e "$user_dir" ] || [ -L "$user_dir" ]; then
-		                    echo "$user_dir exists, this is unexpected."
-			            echo "Stop any running flakes (aws, az) and "
-			            echo "remove $flakes_dir. Cannot migrate to"
-			            echo "new structure in a safe way."
-				    # Set the permissions back to what we expected before we started
-	                            chmod -h 777 "$flakes_dir"
-			            exit 0
+                                    echo "$user_dir exists, this is unexpected."
+                                    echo "Stop any running flakes (aws, az) and "
+                                    echo "remove $flakes_dir. Cannot migrate to"
+                                    echo "new structure in a safe way."
+                                    # Set the permissions back to what we expected before we started
+                                    chmod -h 777 "$flakes_dir"
+                                    exit 0
                                 fi
                                 mkdir "$user_dir"
                                 created_dirs="$created_dirs$uid "
                             ;;
                         esac
-                        if [[ "$filename" == *".vmid"* ]]; then
-                            mv -T "$filepath" "$user_dir/$cmdname.vmid"
-                        else
-                            # We need the .cid files in 2 places
-                            cp --no-dereference --remove-destination "$filepath" "$user_dir/$cmdname.cid"
-                        fi
+                        case "$filename" in
+                            *.vmid*)
+                                mv -T "$filepath" "$user_dir/$cmdname.vmid"
+                            ;;
+                            *)
+                                # We need the .cid files in 2 places
+                                cp --no-dereference --remove-destination "$filepath" "$user_dir/$cmdname.cid"
+                            ;;
+                        esac
                     fi
                     # Fix the directory permissions
                     chown -h "$uid" "$user_dir"
@@ -235,12 +238,12 @@ make DESTDIR=%{buildroot}/ \
                 fi
             done
             # Now set the top level directory to the desired permissions
-            chmod 1777 $flakes_dir
-	    exit 0
+            chmod 1777 "$flakes_dir"
+            exit 0
         fi
-	# If we get here something went wrong set the permissions back to
-	# our expected starting state
-	chmod -h 777 "$flakes_dir"
+        # If we get here something went wrong set the permissions back to
+        # our expected starting state
+        chmod -h 777 "$flakes_dir"
     fi
 
 %post
@@ -284,8 +287,8 @@ fi
 %config /etc/flakes/storage.conf
 %if 0%{?suse_version} >= 1600
 %{_tmpfilesdir}/flake-pilot-podman.conf
-%ghost %attr(0644,root,root) %dir /var/lib/podman
-%ghost %attr(0644,root,root) %dir %attr(0700,root,root) /var/lib/podman/storage
+%ghost %dir %attr(0755,root,root) /var/lib/podman
+%ghost %dir %attr(0700,root,root) /var/lib/podman/storage
 %else
 %dir /var/lib/podman
 %dir %attr(0700,root,root) /var/lib/podman/storage
@@ -320,9 +323,9 @@ fi
 %files -n flake-pilot-firecracker
 %if 0%{?suse_version} >= 1600
 %{_tmpfilesdir}/flake-pilot-firecracker.conf
-%ghost %attr(0644,root,root) %dir /var/lib/firecracker
-%ghost %attr(0644,root,root) %dir /var/lib/firecracker/images
-%ghost %attr(0644,root,root) %dir /var/lib/firecracker/storage
+%ghost %dir %attr(0755,root,root) /var/lib/firecracker
+%ghost %dir %attr(0755,root,root) /var/lib/firecracker/images
+%ghost %dir %attr(0755,root,root) /var/lib/firecracker/storage
 %else
 %dir /var/lib/firecracker
 %dir /var/lib/firecracker/images

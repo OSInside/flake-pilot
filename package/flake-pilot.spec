@@ -284,8 +284,8 @@ fi
 %config /etc/flakes/storage.conf
 %if 0%{?suse_version} >= 1600
 %{_tmpfilesdir}/flake-pilot-podman.conf
-%ghost %dir /var/lib/podman
-%ghost %dir %attr(0700,root,root) /var/lib/podman/storage
+%ghost %attr(0644,root,root) %dir /var/lib/podman
+%ghost %attr(0644,root,root) %dir %attr(0700,root,root) /var/lib/podman/storage
 %else
 %dir /var/lib/podman
 %dir %attr(0700,root,root) /var/lib/podman/storage
@@ -320,9 +320,9 @@ fi
 %files -n flake-pilot-firecracker
 %if 0%{?suse_version} >= 1600
 %{_tmpfilesdir}/flake-pilot-firecracker.conf
-%ghost %dir /var/lib/firecracker
-%ghost %dir /var/lib/firecracker/images
-%ghost %dir /var/lib/firecracker/storage
+%ghost %attr(0644,root,root) %dir /var/lib/firecracker
+%ghost %attr(0644,root,root) %dir /var/lib/firecracker/images
+%ghost %attr(0644,root,root) %dir /var/lib/firecracker/storage
 %else
 %dir /var/lib/firecracker
 %dir /var/lib/firecracker/images

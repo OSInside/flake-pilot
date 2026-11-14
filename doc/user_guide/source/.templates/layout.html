@@ -62,9 +62,7 @@
     renders the search field into the #autocomplete container, see
     searchbox.html. The library reads its settings from its own URL
     and must therefore be loaded as a plain script, without async or
-    defer. As long as no Algolia application is configured in
-    conf.py, the library is not loaded and the search field of
-    Sphinx is used instead -#}
+    defer -#}
 {%- block footer %}
   {{ super() }}
   <script src="https://cdn.jsdelivr.net/npm/@algolia/experiences/dist/experiences.js?appId=2K07ZUXD02&apiKey=6596cdf6fa93e8b7b554cf707472d4f3&experienceId=bbfecbaa-971b-473a-b24d-ffa082781985&env=prod"></script>

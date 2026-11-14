@@ -155,16 +155,6 @@ html_static_path = ['.static']
 html_css_files = ['layout.css', 'algolia.css']
 html_js_files = ['layout.js']
 
-# The Algolia search in the header bar, see .templates/searchbox.html.
-# The application id and the search-only API key are taken from the
-# Algolia dashboard, the experience id defaults to the application id.
-# As long as no application id is set, the search of Sphinx is used
-html_context = {
-    'algolia_app_id': '',
-    'algolia_api_key': '',
-    'algolia_experience_id': ''
-}
-
 # -- Options for LaTeX/PDF output --------------------------------------------
 
 latex_elements = {

@@ -1,19 +1,9 @@
 {#- The search field is the autocomplete widget of the Algolia
     experience. It renders into the #autocomplete container in the
     header bar, the library which provides it and the header bar are
-    part of layout.html. As long as no Algolia application is
-    configured in conf.py, the search field of Sphinx is shown -#}
+    part of layout.html -#}
 {%- if 'singlehtml' not in builder %}
 <div role="search">
-  {%- if algolia_app_id %}
   <div id="autocomplete"></div>
-  {%- else %}
-  <form id="rtd-search-form" class="flake-search-form" action="{{ pathto('search') }}" method="get">
-    <span class="fa fa-search" aria-hidden="true"></span>
-    <input type="text" name="q" placeholder="{{ _('Search docs') }}" aria-label="{{ _('Search docs') }}" />
-    <input type="hidden" name="check_keywords" value="yes" />
-    <input type="hidden" name="area" value="default" />
-  </form>
-  {%- endif %}
 </div>
 {%- endif %}

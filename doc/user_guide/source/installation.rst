@@ -4,7 +4,7 @@
 Installation
 ============
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter describes how to install Flake Pilot from packages
    and how to build it from its sources.

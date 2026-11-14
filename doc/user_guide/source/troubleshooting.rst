@@ -4,7 +4,7 @@
 Troubleshooting and Known Issues
 =================================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter collects the switches which show what a pilot is
    doing and the issues which are known to get in the way.

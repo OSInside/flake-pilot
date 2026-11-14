@@ -4,7 +4,7 @@
 Applications From a Virtual Machine
 ====================================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter shows how to register applications which are
    provided by a Firecracker virtual machine. All examples register

@@ -4,7 +4,7 @@
 Firecracker Networking
 ======================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter explains how a Firecracker VM application is
    connected to the outside world, which commands create and delete
@@ -82,7 +82,7 @@ the gateway address, the guest side is configured by the kernel of the
 VM from the ``ip=`` option on its commandline. No DHCP server is
 involved:
 
-.. image:: ../images/firecracker-network.png
+.. image:: ../../images/firecracker-network.png
    :align: center
    :alt: Firecracker VM network topology
 

@@ -4,7 +4,7 @@
 Firecracker Volumes
 ====================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter explains how a local host path is made available
    inside of a Firecracker VM application, which commands create and

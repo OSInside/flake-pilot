@@ -4,7 +4,7 @@
 Best Practices
 ==============
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter collects recommended setups for common use cases.
    Each section combines the registration and configuration steps of

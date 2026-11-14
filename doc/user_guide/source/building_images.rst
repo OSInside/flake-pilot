@@ -4,7 +4,7 @@
 How To Build Your Own App Images
 =================================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter explains how the container and VM images the flakes
    of this guide are based on are built, and how to build your own.
@@ -66,7 +66,7 @@ for.
 How the Build Works
 -------------------
 
-.. image:: ../images/image-build.png
+.. image:: ../../images/image-build.png
    :align: center
    :alt: Image build through flake-ctl, the KIWI container and the box
 

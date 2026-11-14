@@ -4,7 +4,7 @@
 Applications From a Sandbox
 ===============================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter shows how to register applications which are provided
    by a directory tree on the host and run in a bubblewrap sandbox.

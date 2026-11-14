@@ -1,10 +1,13 @@
 .. Flake Pilot User Guide, master document
 
+.. meta::
+   :algolia-site-verification: AA13235358C336FA
+
 =======================
 Flake Pilot User Guide
 =======================
 
-.. rubric:: Application Isolation with a Native Feel
+**Application Isolation with a Native Feel**
 
 Flake Pilot registers, provisions and launches applications that are
 not installed on your host but are provided inside a runtime
@@ -22,7 +25,7 @@ How far a flake is separated from the host depends on the engine and
 on what you share with it, see :ref:`isolation-limits` and
 :ref:`privileges` before you run code you do not trust.
 
-.. image:: ../images/architecture.png
+.. image:: ../../images/architecture.png
    :align: center
    :alt: Flake Pilot architecture overview
 

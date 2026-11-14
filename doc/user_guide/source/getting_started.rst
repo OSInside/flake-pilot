@@ -4,7 +4,7 @@
 Getting Started
 ===============
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter prepares the host for the examples of this guide and
    registers a first application.

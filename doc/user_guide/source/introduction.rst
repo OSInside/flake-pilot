@@ -4,7 +4,7 @@
 Introduction
 ============
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter explains what Flake Pilot does, which components it
    is made of and which problems it is designed to solve.
@@ -37,7 +37,7 @@ means to create two things:
 Components
 ==========
 
-.. image:: ../images/architecture.png
+.. image:: ../../images/architecture.png
    :align: center
    :alt: Flake Pilot architecture overview
 

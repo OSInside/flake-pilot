@@ -4,7 +4,7 @@
 Application Setup
 =================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter describes how to inspect the registered applications
    and their instances and where the configuration of a flake lives.

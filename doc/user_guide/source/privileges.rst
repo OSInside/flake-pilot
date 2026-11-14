@@ -4,7 +4,7 @@
 Privileges and Trust
 ====================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter explains which features of Flake Pilot need root
    privileges and how they get them: through one program, the
@@ -279,5 +279,5 @@ stays inactive. To activate it:
 
 The complete policy:
 
-.. literalinclude:: ../sudoers/flake-pilot.sudoers
+.. literalinclude:: ../../sudoers/flake-pilot.sudoers
    :language: none

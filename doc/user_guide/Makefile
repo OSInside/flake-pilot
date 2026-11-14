@@ -1,14 +1,14 @@
 # Makefile for the Flake Pilot user guide
 #
-# The build requires python-sphinx and, for the default HTML style,
-# the sphinx_rtd_theme. All of it is provided by the docs group of
-# the poetry setup in the toplevel directory:
+# The build requires python-sphinx and the sphinx_rtd_theme, the page
+# layout is built on top of it. Both are provided by the docs group
+# of the poetry setup in the toplevel directory:
 #
 #     make -C ../.. setup
 
 SPHINXBUILD ?= sphinx-build
 SPHINXOPTS  ?= -W --keep-going
-SOURCEDIR   = .
+SOURCEDIR   = source
 BUILDDIR    = build
 
 .PHONY: help html singlehtml latexpdf linkcheck spelling logo clean

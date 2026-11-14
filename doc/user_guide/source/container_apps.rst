@@ -4,7 +4,7 @@
 Applications From a Container
 ==============================
 
-.. hint:: **Abstract**
+.. sidebar:: Abstract
 
    This chapter shows how to register applications which are
    provided by an OCI container. All examples register the app for

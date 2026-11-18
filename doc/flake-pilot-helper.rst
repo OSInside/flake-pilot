@@ -158,8 +158,12 @@ bubblewrap-pilot
   start. Once bwrap has terminated, the helper clones the mounts of
   the sandbox which were not recorded, except the ones which exist
   on the host already or which the host created meanwhile, and
-  attaches them to the host at the same location. A missing mount
-  point is created, a symbolic link on the way is refused. The exit
+  attaches them to the host at the same location. Then it unmounts
+  the originals in the sandbox, such that the mounts are moved to
+  the host. The kernel only moves a mount attached in the namespace
+  of the caller, a mount of the sandbox therefore moves by a clone.
+  A missing mount point is created, a symbolic link on the way is
+  refused. The exit
   code of bwrap is the exit code of the helper, a mount which cannot
   be attached makes the helper fail
 

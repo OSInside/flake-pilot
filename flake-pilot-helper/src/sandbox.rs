@@ -107,7 +107,11 @@
 //! these mounts, along with the mounts below them. Back in the
 //! namespace of the host, it attaches the clones at the same
 //! location. A missing mount point is created, a symbolic link on
-//! the way to it is refused.
+//! the way to it is refused. Then it unmounts the originals in the
+//! namespace of the sandbox, such that the mounts are moved to the
+//! host. The kernel only moves a mount attached in the namespace of
+//! the caller or the root of a detached tree, see move_mount(2), a
+//! mount of the sandbox therefore moves by a clone.
 //!
 use std::ffi::CString;
 use std::io;
@@ -429,13 +433,19 @@ fn child_pid(report: &str) -> Option<u32> {
 
 fn persist_mounts(sandbox: &Sandbox, host: &Host) -> bool {
     /*!
-    Attach the mounts the application created in the sandbox to the
+    Move the mounts the application created in the sandbox to the
     host, at the same location, see select_mounts()
 
-    The mounts of the host are read first. The mounts of the
+    The kernel only moves a mount which is attached in the namespace
+    of the caller, or which is the root of a detached tree, see
+    move_mount(2). A mount attached in the namespace of the sandbox
+    can therefore not be moved to the host as is. The mounts of the
     application are cloned in the mount namespace of the sandbox,
     where their location is the one in the sandbox, and attached in
-    the namespace of the host
+    the namespace of the host. The mounts of the host are read first.
+    Once attached, the original mounts are unmounted in the sandbox,
+    see unmount_in_sandbox(), such that a mount exists on the host
+    only
     !*/
     let mut persisted = true;
     if let Err(error) = enter_namespace(&host.namespace) {
@@ -474,9 +484,13 @@ fn persist_mounts(sandbox: &Sandbox, host: &Host) -> bool {
         error!("Failed to return to the namespace of the host: {error}");
         return false
     }
+    let mut attached: Vec<PathBuf> = Vec::new();
     for (mount_point, clone) in clones {
         match attach_on_host(&clone, &mount_point) {
-            Ok(()) => debug!("{} persists on the host", mount_point.display()),
+            Ok(()) => {
+                debug!("{} persists on the host", mount_point.display());
+                attached.push(mount_point)
+            },
             Err(error) => {
                 error!(
                     "Failed to persist {} on the host: {error}",
@@ -486,7 +500,49 @@ fn persist_mounts(sandbox: &Sandbox, host: &Host) -> bool {
             }
         }
     }
+    unmount_in_sandbox(sandbox, host, &attached);
     persisted
+}
+
+fn unmount_in_sandbox(sandbox: &Sandbox, host: &Host, mount_points: &[PathBuf]) {
+    /*!
+    Unmount the given mount points in the mount namespace of the
+    sandbox, whose mounts got attached to the host as clones, and
+    return to the namespace of the host
+
+    The mounts are detached lazily along with the mounts below them,
+    see umount2(2) MNT_DETACH. The clone on the host keeps the
+    filesystem mounted. The sandbox has terminated, the namespace and
+    its mounts are released along with the descriptor of the helper
+    anyway, a mount which cannot be unmounted therefore only causes
+    a warning
+    !*/
+    if mount_points.is_empty() {
+        return
+    }
+    if let Err(error) = enter_namespace(&sandbox.namespace) {
+        warn!("Failed to enter the namespace of the sandbox: {error}");
+        return
+    }
+    for mount_point in mount_points {
+        let unmounted = to_c_string(&mount_point.to_string_lossy()).and_then(
+            |path| syscall_ok(unsafe {
+                libc::umount2(path.as_ptr(), libc::MNT_DETACH)
+            } as libc::c_long)
+        );
+        match unmounted {
+            Ok(()) => debug!(
+                "{} unmounted in the sandbox", mount_point.display()
+            ),
+            Err(error) => warn!(
+                "Failed to unmount {} in the sandbox: {error}",
+                mount_point.display()
+            )
+        }
+    }
+    if let Err(error) = enter_namespace(&host.namespace) {
+        warn!("Failed to return to the namespace of the host: {error}");
+    }
 }
 
 fn select_mounts<'a>(

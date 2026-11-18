@@ -318,8 +318,10 @@ reports the process ID of the sandbox to the helper and holds the
 application back until the helper lets it start, once bwrap has set
 up the sandbox. The helper records the mounts of the sandbox at
 that point, they are the mounts of bwrap. When bwrap has terminated,
-the helper clones the mounts of the sandbox which were not recorded
-and attaches the clones to the host. The exit code of the
+the helper moves the mounts of the sandbox which were not recorded
+to the host: it attaches clones of them to the host and unmounts the
+originals in the sandbox. The kernel cannot move a mount out of the
+namespace of the sandbox as is. The exit code of the
 application is the exit code of the pilot. If a mount cannot be
 attached, the error is reported and the pilot fails, although the
 application succeeded. As long as the sandbox runs, its instance is

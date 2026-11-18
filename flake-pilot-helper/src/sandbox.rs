@@ -1444,7 +1444,9 @@ mod tests {
             assert!(open_dir(libc::AT_FDCWD, &layer, true).is_ok());
             assert_eq!(is_root, open_layers(&layer, &[]).is_ok(), "{mode:o}");
             assert_eq!(
-                is_root, open_layers(base, &[layer.clone()]).is_ok(), "{mode:o}"
+                is_root,
+                open_layers(base, std::slice::from_ref(&layer)).is_ok(),
+                "{mode:o}"
             );
         }
         fs::set_permissions(&layer, fs::Permissions::from_mode(0o500)).unwrap();

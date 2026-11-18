@@ -310,7 +310,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             match &command {
                 // register
                 cli::Bubblewrap::Register {
-                    rootfs, app, target, opt, pilot_option, force
+                    rootfs, app, target, opt, no_opt, pilot_option, force
                 } => {
                     // Sanity check: Registering requires the pilot
                     // of this engine and its registration template
@@ -341,6 +341,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                                 Some(app),
                                 target.as_ref(),
                                 opt.as_ref().cloned(),
+                                no_opt.as_ref().cloned(),
                                 pilot_option.as_ref().cloned(),
                                 user,
                             );

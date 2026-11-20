@@ -134,6 +134,47 @@ fn normalize_engine_options(opts: &[String]) -> Vec<String> {
     ).collect()
 }
 
+fn remove_default_options(
+    default_options: Vec<String>, removals: &[String]
+) -> Result<Vec<String>, String> {
+    /*!
+    Remove the given options from the given default options of a
+    registration template
+
+    A removal given as a name only, e.g --die-with-parent or --dev,
+    removes the default option of that name along with its values,
+    e.g --dev /dev. A removal given with values, e.g --tmpfs /tmp,
+    only removes the default option with the same values. A removal
+    which matches no default option is refused, most probably it is
+    a typo and the option would stay
+    !*/
+    let words = |option: &str| -> Vec<String> {
+        option.split_whitespace().map(str::to_string).collect()
+    };
+    let mut options = default_options;
+    for removal in removals {
+        let removal_words = words(removal);
+        if removal_words.is_empty() {
+            return Err("An empty option cannot be removed".to_string())
+        }
+        let matches = |option: &String| {
+            let option_words = words(option);
+            if removal_words.len() == 1 {
+                option_words.first() == removal_words.first()
+            } else {
+                option_words == removal_words
+            }
+        };
+        if ! options.iter().any(matches) {
+            return Err(format!(
+                "{removal:?} is not a default option of the sandbox"
+            ))
+        }
+        options.retain(|option| ! matches(option));
+    }
+    Ok(options)
+}
+
 pub fn template_exists(template_file: &str, pilot_package: &str) -> bool {
     /*!
     Check for the presence of an engine registration template
@@ -252,10 +293,15 @@ impl AppConfig {
         target_app_path: &str,
         host_app_path: &str,
         opts: Option<Vec<String>>,
+        no_opts: Option<Vec<String>>,
         pilot_options: Option<Vec<String>>,
     ) -> Result<(), GenericError> {
         /*!
         save stores an AppConfig to the given file
+
+        The given no_opts are removed from the default options of
+        the template before the given opts are added, see
+        remove_default_options()
         !*/
         let mut yaml_config = AppConfig::from_template(
             defaults::FLAKE_TEMPLATE_BUBBLEWRAP
@@ -271,6 +317,13 @@ impl AppConfig {
                 normalize_pilot_options(pilot_options)
             );
         }
+        if let Some(no_opts) = &no_opts {
+            let runtime = sandbox_config.runtime.as_mut().unwrap();
+            runtime.bubblewrap = Some(remove_default_options(
+                runtime.bubblewrap.as_ref().cloned().unwrap_or_default(),
+                &normalize_engine_options(no_opts)
+            )?);
+        }
         // Custom sandbox options are added to the options provided
         // by the template. Unlike other engines the options of the
         // sandbox are mostly mount specifications which adds up to
@@ -281,6 +334,17 @@ impl AppConfig {
                 .as_ref().cloned().unwrap_or_default();
             final_opts.extend(normalize_engine_options(opts));
             runtime.bubblewrap = Some(final_opts);
+        }
+        // bubblewrap-pilot falls back to its built-in options for a
+        // flake without options, which is not what was asked for
+        if sandbox_config.runtime.as_ref()
+            .and_then(|runtime| runtime.bubblewrap.as_ref())
+            .is_some_and(|options| options.is_empty())
+        {
+            warn!(
+                "No sandbox option left, bubblewrap-pilot uses its \
+                built-in default options"
+            );
         }
 
         yaml_config.to_file(config_file)
@@ -417,7 +481,7 @@ mod tests {
     use std::path::Path;
     use tempfile::tempdir;
 
-    use super::{AppConfig, template_exists};
+    use super::{AppConfig, remove_default_options, template_exists};
 
     fn template_path(name: &str) -> String {
         format!("{}/template/{}", env!("CARGO_MANIFEST_DIR"), name)
@@ -425,6 +489,45 @@ mod tests {
 
     fn read_template(name: &str) -> AppConfig {
         AppConfig::from_template(&template_path(name))
+    }
+
+    #[test]
+    fn test_remove_default_options() {
+        let default_options = || -> Vec<String> {
+            ["--dev /dev", "--tmpfs /tmp", "--tmpfs /run", "--unshare-pid",
+             "--die-with-parent"].iter().map(|o| o.to_string()).collect()
+        };
+        // by name, along with the values of the option
+        assert_eq!(
+            vec!["--dev /dev", "--tmpfs /tmp", "--tmpfs /run", "--unshare-pid"],
+            remove_default_options(
+                default_options(), &["--die-with-parent".to_string()]
+            ).unwrap()
+        );
+        assert_eq!(
+            vec!["--unshare-pid", "--die-with-parent"],
+            remove_default_options(
+                default_options(),
+                &["--dev".to_string(), "--tmpfs".to_string()]
+            ).unwrap()
+        );
+        // with values, only the option with the same values
+        assert_eq!(
+            vec!["--dev /dev", "--tmpfs /run", "--unshare-pid", "--die-with-parent"],
+            remove_default_options(
+                default_options(), &["--tmpfs  /tmp".to_string()]
+            ).unwrap()
+        );
+        // no default option, refused
+        assert!(remove_default_options(
+            default_options(), &["--die-with-parents".to_string()]
+        ).is_err());
+        assert!(remove_default_options(
+            default_options(), &["--tmpfs /var".to_string()]
+        ).is_err());
+        assert!(remove_default_options(
+            default_options(), &[" ".to_string()]
+        ).is_err());
     }
 
     #[test]

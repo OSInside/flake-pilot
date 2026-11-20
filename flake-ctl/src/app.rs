@@ -201,6 +201,7 @@ pub fn create_sandbox_config(
     app: Option<&String>,
     target: Option<&String>,
     opts: Option<Vec<String>>,
+    no_opts: Option<Vec<String>>,
     pilot_options: Option<Vec<String>>,
     usermode: bool,
 ) -> bool {
@@ -232,6 +233,7 @@ pub fn create_sandbox_config(
         target_app_path,
         host_app_path,
         opts,
+        no_opts,
         pilot_options,
     ) {
         Ok(_) => true,

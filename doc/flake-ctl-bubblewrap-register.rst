@@ -17,6 +17,7 @@ SYNOPSIS
    OPTIONS:
        --app <APP>
        --force
+       --no-opt <NO_OPT>...
        --opt <OPT>...
        --pilot-option <PILOT_OPTION>...
        --rootfs <ROOTFS>
@@ -78,6 +79,21 @@ OPTIONS
   registration. Please have in mind that a failed registration
   still causes an eventual existing former registration to be
   deleted in this case !
+
+--no-opt <NO_OPT>...
+
+  Standard option of the sandbox which is left out of the registration.
+  Given by name, e.g '\--die-with-parent', the standard option is
+  removed along with its values, e.g '\--dev' removes '--dev /dev'.
+  Given with values, e.g '\--tmpfs /tmp', only the standard option
+  with the same values is removed. An option which is not a standard
+  option is refused and the registration fails. Options given
+  with *--opt* are not affected. Like for *--opt*, an option
+  which starts with a dash has to be escaped with a backslash.
+  This option can be specified multiple times. The standard
+  options are the ones of the registration template
+  `/etc/flakes/bubblewrap-flake.yaml`. If no option is left,
+  bubblewrap-pilot uses its built-in standard options
 
 --opt <OPT>...
 
@@ -150,6 +166,18 @@ EXAMPLE
    $ flake-ctl bubblewrap register --rootfs /var/lib/flakes/leap \
        --app /usr/bin/mybuild \
        --pilot-option '%chdir:/work'
+
+   $ flake-ctl bubblewrap register --rootfs / \
+       --app /usr/local/sbin/mountefs \
+       --target /usr/sbin/mount.efs \
+       --opt '\--persist-mounts' \
+       --opt "\--bind /home /home" \
+       --opt "\--bind /var /var" \
+       --opt "\--bind /run /run" \
+       --opt "\--bind /etc/amazon/efs/efs-utils.conf /etc/amazon/efs/efs-utils.conf" \
+       --opt "\--chdir %HOME" \
+       --no-opt "\--unshare-pid" \
+       --no-opt "\--die-with-parent"
 
 AUTHOR
 ------

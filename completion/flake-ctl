@@ -103,6 +103,7 @@ __flake_ctl_bubblewrap_register() {
     __comp_reply_unused "
         --app
         --opt
+        --no-opt
         --pilot-option
         --rootfs
         --target

@@ -761,10 +761,7 @@ pub fn container_image_exists(name: &str) -> Result<bool, FlakeError> {
             );
         }
     };
-    if output.status.success() {
-        return Ok(true)
-    }
-    Ok(false)
+    Ok(output.status.success())
 }
 
 pub fn container_running(cid: &str) -> Result<bool, FlakeError> {

@@ -17,8 +17,10 @@ lazy_static = { version = "1.4" }
 regex = { version = "1.9" }
 uzers = { version = "0.12" }
 rust-ini = { version = "0.21" }
-tempfile = { version = "3.4" }
 libc = { version = "0.2" }
+
+[dev-dependencies]
+tempfile = { version = "3.4" }
 
 [features]
 json = ["serde_json"]

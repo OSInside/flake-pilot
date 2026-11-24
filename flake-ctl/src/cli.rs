@@ -606,6 +606,16 @@ pub enum Bubblewrap {
         #[clap(long, multiple = true)]
         opt: Option<Vec<String>>,
 
+        /// Default option of the sandbox which is not registered,
+        /// e.g "\--die-with-parent". Given by name, the default
+        /// option is removed along with its values, e.g "\--dev"
+        /// removes "--dev /dev". Given with values, e.g
+        /// "\--tmpfs /tmp", only the default option with the same
+        /// values is removed. Options given with --opt are not
+        /// affected. This option can be specified multiple times.
+        #[clap(long, multiple = true)]
+        no_opt: Option<Vec<String>>,
+
         /// Pilot option, and optional value, in the format
         /// %name or %name:value. Pilot options are not passed
         /// to the application call but control the behavior of

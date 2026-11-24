@@ -172,6 +172,27 @@ the application needs has to be given that way. All of the options
 are written to the flake configuration and can be changed there like
 any other setting, see :ref:`application-setup`.
 
+Leaving Out Standard Options
+----------------------------
+
+By default a registered application will be configured with ``standard``
+options, listed above and viewable in ``/etc/flakes/bubblewrap-flake.yaml``.
+The standard options are not suitable for all applications. Standard
+options can be removed during the application registration process
+using the ``--no-opt`` command line argument. Values need to be escaped.
+It is possible to only specify the name of a standard option, for
+example ``--no-opt "\--dev"``  this will drop ``--dev /dev`` from the
+standard options or the name and value can be specified, for example
+``--no-opt "\--tmpfs /tmp"``. When the value for a given standard option
+is specified only the standard option that matches by name and value
+will be dropped.
+
+An option name provided with the ``--no-opt`` argument that is not
+part of the standard options will trigger a registration failure.
+A typo would otherwise keep the option. Options given with ``--opt``
+are not affected. Without any option left, ``bubblewrap-pilot`` uses
+its built-in standard options.
+
 The option which mounts the root filesystem of the sandbox is not
 part of that list. It is always added by the launcher, ahead of every
 other option, because it refers to the overlay it creates for the
@@ -351,6 +372,10 @@ Registration Options in Short
    An option of ``bwrap`` and its values, added to the standard
    options listed above. Can be given more than once. See
    ``man 1 bwrap`` for what is available.
+
+``--no-opt``
+   A standard option which is left out of the registration, see
+   `Leaving Out Standard Options`_. Can be given more than once.
 
 ``--pilot-option``
    A runtime option of the pilot, e.g ``%chdir:/work``. The option is

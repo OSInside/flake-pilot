@@ -23,6 +23,7 @@
 //
 use crate::defaults;
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use flakes::config::{
     get_bubblewrap_ids_dir, get_firecracker_ids_dir, get_podman_ids_dir
@@ -185,6 +186,48 @@ fn flakes_config(flakes_dir: &str, storage_conf: &str) -> String {
     )
 }
 
+fn podman_runroot(storage_dir: &str) -> String {
+    /*!
+    Provide the runroot of the podman storage of the calling user
+
+    The runroot holds the runtime data of podman, the pilots use
+    a sub directory of it as runtime directory of the podman calls.
+    This includes the network namespaces created by podman for
+    rootless networking. On a host with SELinux a directory below
+    the home directory has a context that is not allowed to open
+    namespaces due to selinux default rules. This includes for
+    example the network namespace in. Therefore the runroot is
+    placed in the runtime directory of the user, /run/user/UID,
+    which is the location rootless podman uses as well.
+    The runtime directory is provided by systemd-logind for
+    the time the user is logged in. If there is none, e.g on a
+    host without systemd-logind, the runroot is placed in the
+    given storage directory as fallback
+    !*/
+    let uid = get_current_uid();
+    let runtime_dir = format!("{}/{uid}", defaults::USER_RUNTIME_DIR_PREFIX);
+    user_runroot(storage_dir, &runtime_dir, uid)
+}
+
+fn user_runroot(storage_dir: &str, runtime_dir: &str, uid: u32) -> String {
+    /*!
+    Provide the runroot below the given runtime directory if it
+    is a directory owned by the given user, the runroot below the
+    given storage directory otherwise
+    !*/
+    match fs::symlink_metadata(runtime_dir) {
+        Ok(metadata) if metadata.is_dir() && metadata.uid() == uid => {
+            format!("{runtime_dir}/{}", defaults::PODMAN_USER_RUNROOT_NAME)
+        },
+        _ => {
+            warn!("No runtime directory {runtime_dir} of the user found");
+            warn!("Using podman runroot below {storage_dir} instead");
+            warn!("Rootless networking might fail on hosts using SELinux");
+            format!("{storage_dir}/{}", defaults::PODMAN_STORAGE_RUNROOT_NAME)
+        }
+    }
+}
+
 fn podman_storage_config(podman_dir: &str) -> String {
     /*!
     Provide the contents of the podman storage config file
@@ -194,9 +237,7 @@ fn podman_storage_config(podman_dir: &str) -> String {
     let storage_dir = format!(
         "{}/{}", podman_dir, defaults::PODMAN_STORAGE_NAME
     );
-    let runroot_dir = format!(
-        "{}/{}", storage_dir, defaults::PODMAN_STORAGE_RUNROOT_NAME
-    );
+    let runroot_dir = podman_runroot(&storage_dir);
     // rootless_storage_path is deprecated in favor of graphroot, but
     // containers-storage before its config rework (podman 4.x) ignores
     // graphroot for rootless users when CONTAINERS_STORAGE_CONF is set.
@@ -243,4 +284,59 @@ pub fn user_home() -> Option<String> {
     get_user_by_uid(get_current_uid()).map(
         |user| user.home_dir().to_string_lossy().to_string()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_runroot;
+    use std::os::unix::fs::symlink;
+    use tempfile::tempdir;
+    use uzers::get_current_uid;
+
+    #[test]
+    fn test_user_runroot_in_runtime_dir() {
+        let runtime_dir = tempdir().unwrap();
+        let runtime_dir = runtime_dir.path().to_str().unwrap();
+        assert_eq!(
+            format!("{runtime_dir}/flakes"),
+            user_runroot("/storage", runtime_dir, get_current_uid())
+        );
+    }
+
+    #[test]
+    fn test_user_runroot_fallback_no_runtime_dir() {
+        let runtime_dir = tempdir().unwrap();
+        let runtime_dir = format!(
+            "{}/missing", runtime_dir.path().to_str().unwrap()
+        );
+        assert_eq!(
+            "/storage/runroot",
+            user_runroot("/storage", &runtime_dir, get_current_uid())
+        );
+    }
+
+    #[test]
+    fn test_user_runroot_fallback_runtime_dir_of_other_user() {
+        let runtime_dir = tempdir().unwrap();
+        let runtime_dir = runtime_dir.path().to_str().unwrap();
+        assert_eq!(
+            "/storage/runroot",
+            user_runroot("/storage", runtime_dir, get_current_uid() + 1)
+        );
+    }
+
+    #[test]
+    fn test_user_runroot_fallback_runtime_dir_symlink() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let runtime_dir = tmp.path().join("link");
+        symlink(&target, &runtime_dir).unwrap();
+        assert_eq!(
+            "/storage/runroot",
+            user_runroot(
+                "/storage", runtime_dir.to_str().unwrap(), get_current_uid()
+            )
+        );
+    }
 }

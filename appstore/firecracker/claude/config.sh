@@ -20,10 +20,19 @@ fi
 #--------------------------------------
 /usr/sbin/sshd-gen-keys-start
 
+#======================================
+# Add Distro
+#--------------------------------------
 zypper ar https://download.opensuse.org/distribution/leap/16.0/repo/oss Leap
 
+#======================================
+# Install claude
+#--------------------------------------
 npm install -g @anthropic-ai/claude-code@latest
 
+#======================================
+# Install Google SDK
+#--------------------------------------
 curl https://sdk.cloud.google.com > install.sh
 bash install.sh --disable-prompts --install-dir=/usr/share
 
@@ -31,6 +40,18 @@ ln -s /usr/share/google-cloud-sdk/bin/gcloud /usr/bin/gcloud
 ln -s /usr/share/google-cloud-sdk/bin/gsutil /usr/bin/gsutil
 ln -s /usr/share/google-cloud-sdk/bin/bq /usr/bin/bq
 
+#======================================
+# Install Amazon SDK
+#--------------------------------------
+rm -rf awscliv2.zip aws
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.13.33.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install --bin-dir /usr/bin --install-dir /usr/share/aws-cli
+rm -rf awscliv2.zip aws
+
+#======================================
+# Setup ai user
+#--------------------------------------
 cat > /home/ai/.alias <<'EOF'
 alias ll='ls -lhv'
 EOF
@@ -45,7 +66,7 @@ source /etc/profile.d/bash-git-prompt.sh
 GIT_PROMPT_ONLY_IN_REPO=0
 GIT_PROMPT_THEME=Crunch
 
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:/usr/sbin:/sbin:/usr/sbin:/sbin:$PATH"
 
 pushd /home/ai
 EOF

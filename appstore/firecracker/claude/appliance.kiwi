@@ -98,6 +98,7 @@
         <package name="libopenssl-3-devel"/>
         <package name="libopenssl-devel"/>
         <package name="graphviz"/>
+        <package name="unzip"/>
     </packages>
     <packages type="bootstrap">
         <package name="filesystem"/>

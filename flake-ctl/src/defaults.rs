@@ -75,6 +75,16 @@ pub const PODMAN_STORAGE_NAME:&str =
     "storage";
 pub const PODMAN_STORAGE_RUNROOT_NAME:&str =
     "runroot";
+// Parent of the runtime directories of the users as they are
+// provided by systemd-logind, /run/user/UID. The runroot of the
+// podman storage of a user is placed in a sub directory of the
+// runtime directory of that user, named as follows. The runtime
+// directory is a tmpfs with the SELinux context rootless podman
+// and its network helpers, e.g pasta, expect
+pub const USER_RUNTIME_DIR_PREFIX:&str =
+    "/run/user";
+pub const PODMAN_USER_RUNROOT_NAME:&str =
+    "flakes";
 pub const PODMAN_STORAGE_DRIVER:&str =
     "overlay";
 // Prefix of the name of the container instance created by

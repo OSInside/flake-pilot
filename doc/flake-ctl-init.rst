@@ -41,7 +41,22 @@ creates the setup as follows:
 
 3. The podman storage configuration file
    $HOME/.config/flakes/podman/storage.conf. It points podman to
-   a storage location of the calling user
+   a storage location of the calling user. The podman runroot,
+   which also holds the network namespaces of rootless containers,
+   is placed in the runtime directory of the user,
+   /run/user/UID/flakes, which is provided by systemd-logind. Below
+   the home directory, pasta, the network helper of rootless
+   podman, cannot open the network namespaces on hosts with
+   SELinux enabled. Only if the runtime directory does not exist,
+   the runroot is placed in $HOME/.config/flakes/podman/storage/runroot
+   and a warning is shown
+
+A storage configuration created by an older version of the command
+places the runroot below the home directory. To make use of the
+runtime directory, call the command with **--force** or change the
+`runroot` entry in the existing file, e.g to "/run/user/1000/flakes".
+Variables like $UID are not expanded in the file, the user ID has
+to be written literally
 
 The created files are meant to be adjusted as desired. Therefore
 a file which already exists is kept and only reported unless the
@@ -107,6 +122,7 @@ FILES
 * $HOME/.config/flakes.yml
 * $HOME/.config/flakes
 * $HOME/.config/flakes/podman/storage.conf
+* /run/user/UID/flakes
 
 EXAMPLE
 -------
